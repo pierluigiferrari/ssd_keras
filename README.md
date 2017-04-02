@@ -1,4 +1,4 @@
-###README is under construction and will be expanded soon
+### README is under construction and will be expanded soon
 
 ## SSD implementation in Keras
 ---
