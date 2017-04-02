@@ -93,9 +93,9 @@ def build_model(image_size,
     conv7 = ELU(name='elu7')(conv7)
 
     # Build the convolutional classifiers on top of conv layers 4, 5, 6, and 7
-    # We build two classifiers on top of each of these layers: One for classes, one for boxes
-    # We precidt a class for each box, hence the classes classifiers have depth n_classes*n_boxes
-    # We predict 4 box offset values delta(cx,cy,w,h) for each box, hence the boxes classifiers have depth n_boxes*4
+    # We build two classifiers on top of each of these layers: One for classes (classification), one for boxes (localization)
+    # We precidt a class for each box, hence the classes classifiers have depth `n_boxes * n_classes`
+    # We predict 4 box coordinates `(xmin, xmax, ymin, ymax)` for each box, hence the boxes classifiers have depth `n_boxes * 4`
     # Output shape of classes: (batch, height, width, n_boxes * n_classes)
     classes4 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes4')(conv4)
     classes5 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes5')(conv5)
