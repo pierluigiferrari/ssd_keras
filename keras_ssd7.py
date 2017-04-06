@@ -2,9 +2,16 @@ import numpy as np
 from keras.models import Model
 from keras.layers import Input, Lambda, Convolution2D, MaxPooling2D, BatchNormalization, ELU, Reshape, Concatenate, Activation
 
+from keras_layer_AnchorBoxes import AnchorBoxes
+
 def build_model(image_size,
                 n_classes,
-                n_boxes):
+                min_scale=0.1,
+                max_scale=0.8,
+                scales=None,
+                aspect_ratios=[0.5, 1, 2],
+                two_boxes_for_ar1=True,
+                limit_boxes=True):
     '''
     Build a Keras model with SSD architecture, see references.
 
@@ -48,16 +55,33 @@ def build_model(image_size,
         https://arxiv.org/abs/1512.02325v5
     '''
 
-    # Input image format
-    in_row, in_col, ch = image_size[0], image_size[1], image_size[2]
+    n_classifier_layers = 4 # The number of classifier conv layers in the network
 
-    # Input layer and normalization
-    x = Input(shape=(in_row, in_col, ch))
+    # Check/compute the scaling factors for the anchor boxes
+    if (min_scale is None or max_scale is None) and scales is None:
+        raise ValueError("Either `min_scale` and `max_scale` or `scales` need to be specified.")
+    if scales:
+        if len(scales) != n_classifier_layers:
+            raise ValueError("It must be either scales is None or len(scales) == {}, but len(scales) == {}.".format(n_classifier_layers, len(scales)))
+    else:
+        scales = np.linspace(min_scale, max_scale, n_classifier_layers)
+
+    # Compute the number of boxes per cell
+    if (1 in aspect_ratios) & two_boxes_for_ar1:
+        n_boxes = len(aspect_ratios) + 1
+    else:
+        n_boxes = len(aspect_ratios)
+
+    # Input image format
+    img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
+
+    # Design the actual network
+    x = Input(shape=(img_height, img_width, img_channels))
     normed = Lambda(lambda z: z/127.5 - 1., # Convert input feature range to [-1,1]
-                    output_shape=(in_row, in_col, ch),
+                    output_shape=(img_height, img_width, img_channels),
                     name='lambda1')(x)
 
-    # Build the network
+
     conv1 = Convolution2D(32, (5, 5), name='conv1', strides=(1, 1), padding="same")(normed)
     conv1 = BatchNormalization(axis=3, momentum=0.99, name='bn1')(conv1) # Tensorflow uses filter format [filter_height, filter_width, in_channels, out_channels], hence axis = 3
     conv1 = ELU(name='elu1')(conv1)
@@ -96,29 +120,45 @@ def build_model(image_size,
     # We build two classifiers on top of each of these layers: One for classes (classification), one for boxes (localization)
     # We precidt a class for each box, hence the classes classifiers have depth `n_boxes * n_classes`
     # We predict 4 box coordinates `(xmin, xmax, ymin, ymax)` for each box, hence the boxes classifiers have depth `n_boxes * 4`
-    # Output shape of classes: (batch, height, width, n_boxes * n_classes)
+    # Output shape of classes: `(batch, height, width, n_boxes * n_classes)`
     classes4 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes4')(conv4)
     classes5 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes5')(conv5)
     classes6 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes6')(conv6)
     classes7 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes7')(conv7)
-    # Output shape of boxes: (batch, height, width, n_boxes * 4)
+    # Output shape of boxes: `(batch, height, width, n_boxes * 4)`
     boxes4 = Convolution2D(n_boxes * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes4')(conv4)
     boxes5 = Convolution2D(n_boxes * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes5')(conv5)
     boxes6 = Convolution2D(n_boxes * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes6')(conv6)
     boxes7 = Convolution2D(n_boxes * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes7')(conv7)
+    # Generate the anchor boxes
+    # Output shape of anchors: `(batch, height, width, n_boxes, 4)`
+    anchors4 = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1],
+                           aspect_ratios=aspect_ratios, two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, name='anchors4')(boxes4)
+    anchors5 = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2],
+                           aspect_ratios=aspect_ratios, two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, name='anchors5')(boxes5)
+    anchors6 = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3],
+                           aspect_ratios=aspect_ratios, two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, name='anchors6')(boxes6)
+    anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=1,
+                           aspect_ratios=aspect_ratios, two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, name='anchors7')(boxes7)
 
-    # Reshape the class predictions, yielding 3D tensors of shape (batch, height * width * n_boxes, n_classes)
+
+    # Reshape the class predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, n_classes)`
     # We want the classes in an isolated last axis to perform softmax on
     classes4_reshaped = Reshape((-1, n_classes), name='classes4_reshape')(classes4)
     classes5_reshaped = Reshape((-1, n_classes), name='classes5_reshape')(classes5)
     classes6_reshaped = Reshape((-1, n_classes), name='classes6_reshape')(classes6)
     classes7_reshaped = Reshape((-1, n_classes), name='classes7_reshape')(classes7)
-    # Reshape the box predictions, yielding 3D tensors of shape (batch, height * width * n_boxes, 4)
+    # Reshape the box predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, 4)`
     # We want `(cx,cy,w,h)` in an isolated last axis to compute the smooth L1 loss
     boxes4_reshaped = Reshape((-1, 4), name='boxes4_reshape')(boxes4)
     boxes5_reshaped = Reshape((-1, 4), name='boxes5_reshape')(boxes5)
     boxes6_reshaped = Reshape((-1, 4), name='boxes6_reshape')(boxes6)
     boxes7_reshaped = Reshape((-1, 4), name='boxes7_reshape')(boxes7)
+    # Reshape the box predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, 4)`
+    anchors4_reshaped = Reshape((-1, 4), name='anchors4_reshape')(anchors4)
+    anchors5_reshaped = Reshape((-1, 4), name='anchors5_reshape')(anchors5)
+    anchors6_reshaped = Reshape((-1, 4), name='anchors6_reshape')(anchors6)
+    anchors7_reshaped = Reshape((-1, 4), name='anchors7_reshape')(anchors7)
 
     # Concatenate the predictions from the different layers
     # Axis 0 (batch) and axis 2 (n_classes or 4, respectively) are identical for all layer predictions,
@@ -135,13 +175,18 @@ def build_model(image_size,
                                                            boxes6_reshaped,
                                                            boxes7_reshaped])
 
+    # Output shape of `anchors_final`: (batch, n_boxes_total, 4)
+    anchors_final = Concatenate(axis=1, name='anchors_final')([anchors4_reshaped,
+                                                               anchors5_reshaped,
+                                                               anchors6_reshaped,
+                                                               anchors7_reshaped])
     # The box coordinate predictions will go into the loss function just the way they are,
     # but for the class predictions, we'll apply a softmax activation layer first
     classes_final = Activation('softmax', name='classes_final')(classes_merged)
 
-    # Concatenate the class and box predictions to one large predictions vector
-    # Output shape of `predictions`: (batch, n_boxes_total, n_classes + n_boxes)
-    predictions = Concatenate(axis=2, name='predictions')([classes_final, boxes_final])
+    # Concatenate the class and box predictions and the anchors to one large predictions vector
+    # Output shape of `predictions`: (batch, n_boxes_total, n_classes + 4 + 4)
+    predictions = Concatenate(axis=2, name='predictions')([classes_final, boxes_final, anchors_final])
 
     model = Model(inputs=x, outputs=predictions)
 
