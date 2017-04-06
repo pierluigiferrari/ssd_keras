@@ -12,7 +12,7 @@ from copy import deepcopy
 from PIL import Image
 import csv
 
-def build_filelists(path='./data/labels.csv', n_classes=3):
+def parse_CSV(path='./data/labels.csv', n_classes=3):
     '''
     Build a list of image filepaths and a list of the corresponding ground truth bounding boxes and
     category labels for object detection from a CSV file.
