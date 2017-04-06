@@ -93,7 +93,8 @@ class SSDBoxEncoder:
                  aspect_ratios=[0.5, 1, 2],
                  two_boxes_for_ar1=True,
                  limit_boxes=True,
-                 iou_threshold=0.5):
+                 pos_iou_threshold=0.5,
+                 neg_iou_threshold=0.3):
         '''
         Arguments:
             img_height (int): The height of the input images.
@@ -117,9 +118,15 @@ class SSDBoxEncoder:
                 geometric mean of said scaling factor and next bigger scaling factor.
             limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
                 Defaults to `True`.
-            iou_threshold (float, optional): The intersection-over-union similarity threshold that must be
+            pos_iou_threshold (float, optional): The intersection-over-union similarity threshold that must be
                 met in order to match a given ground truth box to a given anchor box. Defaults to 0.5.
+            neg_iou_threshold (float, optional): The maximum allowed intersection-over-union similarity of an
+                anchor box with any ground truth box to be labeled a negative (i.e. background) box. If an
+                anchor box is neither a positive, nor a negative box, it will be ignored during training.
         '''
+        classifier_sizes = np.array(classifier_sizes)
+        if len(classifier_sizes.shape) == 1:
+            classifier_sizes = np.expand_dims(classifier_sizes, axis=0)
 
         if (min_scale is None or max_scale is None) and scales is None:
             raise ValueError("Either `min_scale` and `max_scale` or `scales` need to be specified.")
@@ -127,6 +134,9 @@ class SSDBoxEncoder:
         if scales:
             if len(scales) != len(classifier_sizes):
                 raise ValueError("It must be either scales is None or len(scales) == len(classifier_sizes), but len(scales) == {} and len(classifier_sizes) == {}".format(len(scales), len(classifier_sizes)))
+
+        if neg_iou_threshold > pos_iou_threshold:
+            raise ValueError("It cannot be `neg_iou_threshold > pos_iou_threshold`.")
 
         self.img_height = img_height
         self.img_width = img_width
@@ -138,7 +148,8 @@ class SSDBoxEncoder:
         self.aspect_ratios = aspect_ratios
         self.two_boxes_for_ar1 = two_boxes_for_ar1
         self.limit_boxes = limit_boxes
-        self.iou_threshold = iou_threshold
+        self.pos_iou_threshold = pos_iou_threshold
+        self.neg_iou_threshold = neg_iou_threshold
 
     def generate_anchor_boxes(self,
                               batch_size,
@@ -377,23 +388,26 @@ class SSDBoxEncoder:
 
         class_vector = np.eye(self.n_classes, dtype=np.int32) # An identity matrix that we'll use as one-hot class vectors
 
-        for i in range(y_encode_template.shape[0]):
+        for i in range(y_encode_template.shape[0]): # For each batch item...
             available_boxes = np.ones((y_encode_template.shape[1]), dtype=np.int32) # 1 for all anchor boxes that are not yet matched to a ground truth box, 0 otherwise
-            for true_box in ground_truth_labels[i]:
+            negative_boxes = np.ones((y_encode_template.shape[1]), dtype=np.int32) # 1 for all negative boxes, 0 otherwise
+            for true_box in ground_truth_labels[i]: # For each ground truth box belonging to the current batch item...
                 similarities = iou(y_encode_template[i,:,-8:-4], true_box[:4]) # The iou similarities for all anchor boxes
+                negative_boxes[similarities >= self.neg_iou_threshold] = 0 # If a negative box gets an IoU match >= `self.neg_iou_threshold`, it's no longer a valid negative box
                 similarities *= available_boxes # Filter out anchor boxes which aren't available anymore (i.e. already matched to a different ground truth box)
                 available_and_thresh_met = np.copy(similarities)
-                available_and_thresh_met[available_and_thresh_met < self.iou_threshold] = 0 # Filter out anchor boxes which don't meet the iou threshold
+                available_and_thresh_met[available_and_thresh_met < self.pos_iou_threshold] = 0 # Filter out anchor boxes which don't meet the iou threshold
                 assign_indices = np.nonzero(available_and_thresh_met)[0] # Get the indices of the left-over anchor boxes to which we want to assign this ground truth box
                 if len(assign_indices) > 0: # If we have any matches
-                    y_encoded[i,assign_indices,:-4] = np.concatenate((class_vector[true_box[4]], true_box[:4].astype(np.int32)), axis=0) # Write the ground truth box coordinates and class to all assigned anchor box positions
+                    y_encoded[i,assign_indices,:-4] = np.concatenate((class_vector[true_box[4]], true_box[:4].astype(np.int32)), axis=0) # Write the ground truth box coordinates and class to all assigned anchor box positions. Remember that the last four elements of `y_encoded` are just dummy entries.
                     available_boxes[assign_indices] = 0 # Make the assigned anchor boxes unavailable for the next ground truth box
                 else: # If we don't have any matches
                     best_match_index = np.argmax(similarities) # Get the index of the best iou match out of all available boxes
                     y_encoded[i,best_match_index,:-4] = np.concatenate((class_vector[true_box[4]], true_box[:4].astype(np.int32)), axis=0) # Write the ground truth box coordinates and class to the best match anchor box position
                     available_boxes[best_match_index] = 0 # Make the assigned anchor box unavailable for the next ground truth box
+                    negative_boxes[best_match_index] = 0 # The assigned anchor box is no longer a negative box
             # Set the classes of all remaining available anchor boxes to class zero
-            background_class_indices = np.nonzero(available_boxes)[0]
+            background_class_indices = np.nonzero(negative_boxes)[0]
             y_encoded[i,background_class_indices,0] = 1
 
         return y_encoded
