@@ -495,6 +495,7 @@ class SSDBoxEncoder:
             for true_box in ground_truth_labels[i]: # For each ground truth box belonging to the current batch item...
                 if self.coords == 'centroids':
                     true_box = convert_coordinates(true_box, start_index=0, conversion='minmax2centroids')
+                if np.any(true_box[2:] == 0): continue # We have to protect ourselves against bad ground truth data: The width and height of a ground truth box cannot be zero, otherwise we'll get an error when we take the natural log below (and of course it doesn't make much sense to have such a box)
                 similarities = iou(y_encode_template[i,:,-8:-4], true_box[:4], coords=self.coords) # The iou similarities for all anchor boxes
                 negative_boxes[similarities >= self.neg_iou_threshold] = 0 # If a negative box gets an IoU match >= `self.neg_iou_threshold`, it's no longer a valid negative box
                 similarities *= available_boxes # Filter out anchor boxes which aren't available anymore (i.e. already matched to a different ground truth box)
