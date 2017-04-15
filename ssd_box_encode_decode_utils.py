@@ -121,7 +121,7 @@ def convert_coordinates2(tensor, start_index, conversion='minmax2centroids'):
 
     return tensor1
 
-def decode_y(y_pred, coords='centroids'):
+def decode_y(y_pred, confidence_thresh=0.8, coords='centroids'):
     '''
     Convert model prediction output back to a format that contains only the positive box predictions
     (i.e. the same format that `enconde_y()` takes as input).
@@ -131,18 +131,21 @@ def decode_y(y_pred, coords='centroids'):
             of shape `(batch_size, #boxes, #classes + 4 + 4)`, where `#boxes` is the total number of
             boxes predicted by the model per image and the last axis contains
             `[one-hot vector for the classes, 4 predicted coordinate offsets, 4 anchor box coordinates]`.
+        confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence
+            required for a given box to be considered a positive prediction. Defaults to 0.8.
         coords (str, optional): The box coordinate format that the model outputs. Can be either 'centroids'
             for the format `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax'
             for the format `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
 
     Returns:
         A python list of length `batch_size` where each list element represents the predicted boxes
-        for one image and contains a Numpy array of shape `(boxes, 5)` where each row is a box prediction for
-        a non-background class for the respective image in the format `[xmin, xmax, ymin, ymax, class_id]`.
+        for one image and contains a Numpy array of shape `(boxes, 6)` where each row is a box prediction for
+        a non-background class for the respective image in the format `[xmin, xmax, ymin, ymax, class_id, confidence]`.
     '''
     # 1: Convert the classes from one-hot encoding to their class ID
-    y_pred_converted = np.copy(y_pred[:,:,-9:-4]) # Slice out the four offset predictions plus one element where we'll write the class IDs in the next step
-    y_pred_converted[:,:,0] = np.argmax(y_pred[:,:,:-8], axis=-1)
+    y_pred_converted = np.copy(y_pred[:,:,-10:-4]) # Slice out the four offset predictions plus one element where we'll write the class IDs in the next step
+    y_pred_converted[:,:,0] = np.argmax(y_pred[:,:,:-8], axis=-1) # The indices of the highest confidence values in the one-hot class vectors are the class ID
+    y_pred_converted[:,:,1] = np.amax(y_pred[:,:,:-8], axis=-1) # Store the confidence values themselves, too
 
     # 2: Convert the box coordinates from the predicted anchor box offsets to predicted absolute coordinates
     if coords == 'centroids':
@@ -160,9 +163,10 @@ def decode_y(y_pred, coords='centroids'):
     # 3: Decode our huge `(batch, #boxes, 5)` into a list of length `batch` where each list entry is an array containing only the positive predictions
     y_pred_decoded = []
     for batch_item in y_pred_converted: # For each image in the batch...
-        boxes = batch_item[np.nonzero(batch_item[:,0])] # ...get all boxes that don't belong to the background class...
+        boxes = batch_item[np.nonzero(batch_item[:,0])] # ...get all boxes that don't belong to the background class,...
+        boxes = boxes[boxes[:,1] >= confidence_thresh] # ...then filter out those positive boxes for which the prediction confidence is too low...
         # TODO: Change the indexing in step 1 above so that this inefficient roll operation becomes obsolete
-        boxes = np.roll(boxes, -1, axis=-1) # ...and change the order from [class_id, xmin, xmax, ymin, ymax] to [xmin, xmax, ymin, ymax, class_id], like in the ground truth data
+        boxes = np.roll(boxes, -2, axis=-1) # ...and then change the order from [class_id, confidence, xmin, xmax, ymin, ymax] to [xmin, xmax, ymin, ymax, class_id, confidence], so that the first 5 columns are ordered like in the ground truth data
         y_pred_decoded.append(boxes)
 
     return y_pred_decoded
