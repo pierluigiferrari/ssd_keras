@@ -53,7 +53,7 @@ def iou(boxes1, boxes2, coords='centroids'):
 
 def convert_coordinates(tensor, start_index, conversion='minmax2centroids'):
     '''
-    Convert 2D box coordinates between two coordinate formats.
+    Convert coordinates for axis-aligned 2D boxes between two coordinate formats.
 
     Creates a copy of `tensor`, i.e. does not operate in place. Currently there are
     two supported coordinate formats that can be converted from and to each other:
@@ -121,7 +121,7 @@ def convert_coordinates2(tensor, start_index, conversion='minmax2centroids'):
 
     return tensor1
 
-def decode_y(y_pred, confidence_thresh=0.8, coords='centroids'):
+def decode_y(y_pred, confidence_thresh=0.9, coords='centroids'):
     '''
     Convert model prediction output back to a format that contains only the positive box predictions
     (i.e. the same format that `enconde_y()` takes as input).
@@ -132,7 +132,7 @@ def decode_y(y_pred, confidence_thresh=0.8, coords='centroids'):
             boxes predicted by the model per image and the last axis contains
             `[one-hot vector for the classes, 4 predicted coordinate offsets, 4 anchor box coordinates]`.
         confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence
-            required for a given box to be considered a positive prediction. Defaults to 0.8.
+            required for a given box to be considered a positive prediction. Defaults to 0.9.
         coords (str, optional): The box coordinate format that the model outputs. Can be either 'centroids'
             for the format `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax'
             for the format `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
@@ -153,6 +153,7 @@ def decode_y(y_pred, confidence_thresh=0.8, coords='centroids'):
         y_pred_converted[:,:,[-2,-1]] *= y_pred[:,:,[-2,-1]] # (w(pred) / w(anchor)) * w(anchor) == w(pred), (h(pred) / h(anchor)) * h(anchor) == h(pred)
         y_pred_converted[:,:,[-4,-3]] *= y_pred[:,:,[-2,-1]] # (delta_cx(pred) / w(anchor)) * w(anchor) == delta_cx(pred), (delta_cy(pred) / h(anchor)) * h(anchor) == delta_cy(pred)
         y_pred_converted[:,:,[-4,-3]] += y_pred[:,:,[-4,-3]] # delta_cx(pred) + cx(anchor) == cx(pred), delta_cy(pred) + cy(anchor) == cy(pred)
+        y_pred_converted = convert_coordinates(y_pred_converted, start_index=-4, conversion='centroids2minmax')
     elif coords == 'minmax':
         y_pred_converted[:,:,[-4,-3]] *= np.expand_dims(y_pred[:,:,-3] - y_pred[:,:,-4], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
         y_pred_converted[:,:,[-2,-1]] *= np.expand_dims(y_pred[:,:,-1] - y_pred[:,:,-2], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
