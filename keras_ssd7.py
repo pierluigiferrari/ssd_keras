@@ -11,7 +11,8 @@ def build_model(image_size,
                 scales=None,
                 aspect_ratios=[0.5, 1, 2],
                 two_boxes_for_ar1=True,
-                limit_boxes=True):
+                limit_boxes=True,
+                coords='centroids'):
     '''
     Build a Keras model with SSD architecture, see references.
 
@@ -119,7 +120,7 @@ def build_model(image_size,
     # Build the convolutional classifiers on top of conv layers 4, 5, 6, and 7
     # We build two classifiers on top of each of these layers: One for classes (classification), one for boxes (localization)
     # We precidt a class for each box, hence the classes classifiers have depth `n_boxes * n_classes`
-    # We predict 4 box coordinates `(xmin, xmax, ymin, ymax)` for each box, hence the boxes classifiers have depth `n_boxes * 4`
+    # We predict 4 box coordinates for each box, hence the boxes classifiers have depth `n_boxes * 4`
     # Output shape of classes: `(batch, height, width, n_boxes * n_classes)`
     classes4 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes4')(conv4)
     classes5 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes5')(conv5)
@@ -132,24 +133,23 @@ def build_model(image_size,
     boxes7 = Convolution2D(n_boxes * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes7')(conv7)
     # Generate the anchor boxes
     # Output shape of anchors: `(batch, height, width, n_boxes, 4)`
-    anchors4 = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1],
-                           aspect_ratios=aspect_ratios, two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, name='anchors4')(boxes4)
-    anchors5 = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2],
-                           aspect_ratios=aspect_ratios, two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, name='anchors5')(boxes5)
-    anchors6 = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3],
-                           aspect_ratios=aspect_ratios, two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, name='anchors6')(boxes6)
-    anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=1,
-                           aspect_ratios=aspect_ratios, two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, name='anchors7')(boxes7)
-
+    anchors4 = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios,
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors4')(boxes4)
+    anchors5 = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios,
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors5')(boxes5)
+    anchors6 = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios,
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors6')(boxes6)
+    anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=1, aspect_ratios=aspect_ratios,
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors7')(boxes7)
 
     # Reshape the class predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, n_classes)`
-    # We want the classes in an isolated last axis to perform softmax on
+    # We want the classes isolated in the last axis to perform softmax on them
     classes4_reshaped = Reshape((-1, n_classes), name='classes4_reshape')(classes4)
     classes5_reshaped = Reshape((-1, n_classes), name='classes5_reshape')(classes5)
     classes6_reshaped = Reshape((-1, n_classes), name='classes6_reshape')(classes6)
     classes7_reshaped = Reshape((-1, n_classes), name='classes7_reshape')(classes7)
     # Reshape the box predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, 4)`
-    # We want `(cx,cy,w,h)` in an isolated last axis to compute the smooth L1 loss
+    # We want the four box coordinates isolated in the last axis to compute the smooth L1 loss
     boxes4_reshaped = Reshape((-1, 4), name='boxes4_reshape')(boxes4)
     boxes5_reshaped = Reshape((-1, 4), name='boxes5_reshape')(boxes5)
     boxes6_reshaped = Reshape((-1, 4), name='boxes6_reshape')(boxes6)
