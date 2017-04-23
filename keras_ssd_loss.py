@@ -2,7 +2,7 @@
 
 import tensorflow as tf
 
-class SSD_Loss:
+class SSDLoss:
     '''
     The SSD loss, see https://arxiv.org/abs/1512.02325.
     '''
