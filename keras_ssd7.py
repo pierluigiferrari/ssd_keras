@@ -9,7 +9,8 @@ def build_model(image_size,
                 min_scale=0.1,
                 max_scale=0.8,
                 scales=None,
-                aspect_ratios=[0.5, 1, 2],
+                aspect_ratios_global=[0.5, 1.0, 2.0],
+                aspect_ratios_per_layer=None,
                 two_boxes_for_ar1=True,
                 limit_boxes=True,
                 coords='centroids'):
@@ -35,13 +36,29 @@ def build_model(image_size,
         n_classes (int): The number of categories for classification including
             the background class (i.e. the number of positive classes +1 for
             the background calss).
-        n_boxes (int): The number of boxes the model will generate per cell,
-            where a 2D convolutional classifier layer with output shape
-            `(batch, height, width, depth)` has `height * width` cells. The purpose
-            of multiple boxes per cell is for the different feature maps of a
-            classifier layer to learn to recognize objects of specific shapes
-            (i.e. specific aspect ratios) within the same spatial location in
-            an image.
+        min_scale (float, optional): The smallest scaling factor for the size of the anchor boxes as a fraction
+            of the shorter side of the input images. Defaults to 0.1.
+        max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
+            of the shorter side of the input images. All scaling factors between the smallest and the
+            largest will be linearly interpolated. Defaults to 0.9.
+        scales (list, optional): A list containing one scaling factor per convolutional classifier layer.
+            Defaults to `None`. If a list is passed, this argument overrides `min_scale` and
+            `max_scale`. All scaling factors should be in [0,1].
+        aspect_ratios_global (list, optional): The list of aspect ratios for which anchor boxes are to be
+            generated. This list is valid for all prediction layers. Defaults to `[0.5, 1.0, 2.0]`.
+        aspect_ratios_per_layer (list, optional): A list containing one aspect ratio list for each prediction layer.
+            If a list is passed, it overrides `aspect_ratios_global`. Defaults to `None`.
+        two_boxes_for_ar1 (bool, optional): Only relevant for aspect ratio lists that contain 1. Will be ignored otherwise.
+            If `True`, two anchor boxes will be generated for aspect ratio 1. The first will be generated
+            using the scaling factor for the respective layer, the second one will be generated using
+            geometric mean of said scaling factor and next bigger scaling factor. Defaults to `True`, following the original
+            implementation.
+        limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
+            This would normally be set to `True`, but here it defaults to `False`, following the original
+            implementation.
+        coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
+            `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
+            `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
 
     Returns:
         model: The Keras SSD model.
@@ -58,6 +75,46 @@ def build_model(image_size,
 
     n_classifier_layers = 4 # The number of classifier conv layers in the network
 
+    if aspect_ratios_global is None and aspect_ratios_per_layer is None:
+        raise ValueError("`aspect_ratios_global` and `aspect_ratios_per_layer` cannot both be None. At least one needs to be specified.")
+    if aspect_ratios_per_layer:
+        if len(aspect_ratios_per_layer) != n_classifier_layers:
+            raise ValueError("It must be either aspect_ratios_per_layer is None or len(aspect_ratios_per_layer) == {}, but len(aspect_ratios_per_layer) == {}.".format(n_classifier_layers, len(aspect_ratios_per_layer)))
+
+    # The aspect ratios for each classifier layer
+    if aspect_ratios_per_layer:
+        aspect_ratios_conv4 = aspect_ratios_per_layer[0]
+        aspect_ratios_conv5 = aspect_ratios_per_layer[1]
+        aspect_ratios_conv6 = aspect_ratios_per_layer[2]
+        aspect_ratios_conv7 = aspect_ratios_per_layer[3]
+    else:
+        aspect_ratios_conv4 = aspect_ratios_global
+        aspect_ratios_conv5 = aspect_ratios_global
+        aspect_ratios_conv6 = aspect_ratios_global
+        aspect_ratios_conv7 = aspect_ratios_global
+
+    # The number of boxes predicted per cell for each classifier layer
+    if aspect_ratios_per_layer: # This is the case for the original implementation
+        n_boxes = []
+        for aspect_ratios in aspect_ratios_per_layer:
+            if (1 in aspect_ratios) & two_boxes_for_ar1:
+                n_boxes.append(len(aspect_ratios) + 1) # +1 for the second box for aspect ratio 1
+            else:
+                n_boxes.append(len(aspect_ratios))
+        n_boxes_conv4 = n_boxes[0]
+        n_boxes_conv5 = n_boxes[1]
+        n_boxes_conv6 = n_boxes[2]
+        n_boxes_conv7 = n_boxes[3]
+    else:
+        if (1 in aspect_ratios_global) & two_boxes_for_ar1:
+            n_boxes = len(aspect_ratios_global) + 1
+        else:
+            n_boxes = len(aspect_ratios_global)
+        n_boxes_conv4 = n_boxes
+        n_boxes_conv5 = n_boxes
+        n_boxes_conv6 = n_boxes
+        n_boxes_conv7 = n_boxes
+
     # Check/compute the scaling factors for the anchor boxes
     if (min_scale is None or max_scale is None) and scales is None:
         raise ValueError("Either `min_scale` and `max_scale` or `scales` need to be specified.")
@@ -66,12 +123,6 @@ def build_model(image_size,
             raise ValueError("It must be either scales is None or len(scales) == {}, but len(scales) == {}.".format(n_classifier_layers, len(scales)))
     else:
         scales = np.linspace(min_scale, max_scale, n_classifier_layers)
-
-    # Compute the number of boxes per cell
-    if (1 in aspect_ratios) & two_boxes_for_ar1:
-        n_boxes = len(aspect_ratios) + 1
-    else:
-        n_boxes = len(aspect_ratios)
 
     # Input image format
     img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
@@ -122,24 +173,24 @@ def build_model(image_size,
     # We precidt a class for each box, hence the classes classifiers have depth `n_boxes * n_classes`
     # We predict 4 box coordinates for each box, hence the boxes classifiers have depth `n_boxes * 4`
     # Output shape of classes: `(batch, height, width, n_boxes * n_classes)`
-    classes4 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes4')(conv4)
-    classes5 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes5')(conv5)
-    classes6 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes6')(conv6)
-    classes7 = Convolution2D(n_boxes * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes7')(conv7)
+    classes4 = Convolution2D(n_boxes_conv4 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes4')(conv4)
+    classes5 = Convolution2D(n_boxes_conv5 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes5')(conv5)
+    classes6 = Convolution2D(n_boxes_conv6 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes6')(conv6)
+    classes7 = Convolution2D(n_boxes_conv7 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes7')(conv7)
     # Output shape of boxes: `(batch, height, width, n_boxes * 4)`
-    boxes4 = Convolution2D(n_boxes * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes4')(conv4)
-    boxes5 = Convolution2D(n_boxes * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes5')(conv5)
-    boxes6 = Convolution2D(n_boxes * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes6')(conv6)
-    boxes7 = Convolution2D(n_boxes * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes7')(conv7)
+    boxes4 = Convolution2D(n_boxes_conv4 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes4')(conv4)
+    boxes5 = Convolution2D(n_boxes_conv5 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes5')(conv5)
+    boxes6 = Convolution2D(n_boxes_conv6 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes6')(conv6)
+    boxes7 = Convolution2D(n_boxes_conv7 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes7')(conv7)
     # Generate the anchor boxes
     # Output shape of anchors: `(batch, height, width, n_boxes, 4)`
-    anchors4 = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios,
+    anchors4 = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios_conv4,
                            two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors4')(boxes4)
-    anchors5 = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios,
+    anchors5 = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios_conv5,
                            two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors5')(boxes5)
-    anchors6 = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios,
+    anchors6 = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6,
                            two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors6')(boxes6)
-    anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=1, aspect_ratios=aspect_ratios,
+    anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=1.0, aspect_ratios=aspect_ratios_conv7,
                            two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors7')(boxes7)
 
     # Reshape the class predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, n_classes)`
