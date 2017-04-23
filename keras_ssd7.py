@@ -7,7 +7,7 @@ from keras_layer_AnchorBoxes import AnchorBoxes
 def build_model(image_size,
                 n_classes,
                 min_scale=0.1,
-                max_scale=0.8,
+                max_scale=0.9,
                 scales=None,
                 aspect_ratios_global=[0.5, 1.0, 2.0],
                 aspect_ratios_per_layer=None,
@@ -40,10 +40,17 @@ def build_model(image_size,
             of the shorter side of the input images. Defaults to 0.1.
         max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
             of the shorter side of the input images. All scaling factors between the smallest and the
-            largest will be linearly interpolated. Defaults to 0.9.
-        scales (list, optional): A list containing one scaling factor per convolutional classifier layer.
+            largest will be linearly interpolated. Note that the second to last of the linearly interpolated
+            scaling factors will actually be the scaling factor for the last classifier layer, while the last
+            scaling factor is used for the second box for aspect ratio 1 in the last classifier layer
+            if `two_boxes_for_ar1` is `True`. Defaults to 0.9.
+        scales (list, optional): A list of floats containing scaling factors per convolutional classifier layer.
+            This list must be one element longer than the number of classifier layers. The first `k` elements are the
+            scaling factors for the `k` classifier layers, while the last element is used for the second box
+            for aspect ratio 1 in the last classifier layer if `two_boxes_for_ar1` is `True`. This additional
+            last scaling factor must be passed either way, even if it is not being used.
             Defaults to `None`. If a list is passed, this argument overrides `min_scale` and
-            `max_scale`. All scaling factors should be in [0,1].
+            `max_scale`. All scaling factors must be greater than zero.
         aspect_ratios_global (list, optional): The list of aspect ratios for which anchor boxes are to be
             generated. This list is valid for all prediction layers. Defaults to `[0.5, 1.0, 2.0]`.
         aspect_ratios_per_layer (list, optional): A list containing one aspect ratio list for each prediction layer.
@@ -119,10 +126,10 @@ def build_model(image_size,
     if (min_scale is None or max_scale is None) and scales is None:
         raise ValueError("Either `min_scale` and `max_scale` or `scales` need to be specified.")
     if scales:
-        if len(scales) != n_classifier_layers:
-            raise ValueError("It must be either scales is None or len(scales) == {}, but len(scales) == {}.".format(n_classifier_layers, len(scales)))
+        if len(scales) != n_classifier_layers+1:
+            raise ValueError("It must be either scales is None or len(scales) == {}, but len(scales) == {}.".format(n_classifier_layers+1, len(scales)))
     else:
-        scales = np.linspace(min_scale, max_scale, n_classifier_layers)
+        scales = np.linspace(min_scale, max_scale, n_classifier_layers+1)
 
     # Input image format
     img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
@@ -190,7 +197,7 @@ def build_model(image_size,
                            two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors5')(boxes5)
     anchors6 = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6,
                            two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors6')(boxes6)
-    anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=1.0, aspect_ratios=aspect_ratios_conv7,
+    anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios_conv7,
                            two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors7')(boxes7)
 
     # Reshape the class predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, n_classes)`

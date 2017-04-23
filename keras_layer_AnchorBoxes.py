@@ -41,7 +41,7 @@ class AnchorBoxes(Layer):
                  img_width,
                  this_scale,
                  next_scale,
-                 aspect_ratios=[0.5, 1, 2],
+                 aspect_ratios=[0.5, 1.0, 2.0],
                  two_boxes_for_ar1=True,
                  limit_boxes=True,
                  coords='centroids',
@@ -55,7 +55,7 @@ class AnchorBoxes(Layer):
             next_scale (float): A float in [0, 1], the next larger scaling factor. Only relevant if
                 `self.two_boxes_for_ar1 == True`.
             aspect_ratios (list, optional): The list of aspect ratios for which default boxes are to be
-                generated. Defaults to [0.5, 1, 2].
+                generated for this layer. Defaults to [0.5, 1.0, 2.0].
             two_boxes_for_ar1 (bool, optional): Only relevant if `aspect_ratios` contains 1.
                 If `True`, two default boxes will be generated for aspect ratio 1. The first will be generated
                 using the scaling factor for the respective layer, the second one will be generated using
@@ -65,8 +65,8 @@ class AnchorBoxes(Layer):
         '''
         if K.backend() != 'tensorflow':
             raise TypeError("This layer only supports TensorFlow at the moment, but you are using the {} backend.".format(K.backend()))
-        if (this_scale < 0) or (next_scale < 0) or (this_scale > 1) or (next_scale > 1):
-            raise ValueError("`this_scale` and `next_scale` must be in [0, 1], but `this_scale` == {}, `next_scale` == {}".format(this_scale, next_scale))
+        if (this_scale < 0) or (next_scale < 0) or (this_scale > 1):
+            raise ValueError("`this_scale` must be in [0, 1] and `next_scale` must be >0, but `this_scale` == {}, `next_scale` == {}".format(this_scale, next_scale))
         self.img_height = img_height
         self.img_width = img_width
         self.this_scale = this_scale

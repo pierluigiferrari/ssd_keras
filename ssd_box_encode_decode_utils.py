@@ -190,7 +190,7 @@ class SSDBoxEncoder:
                  n_classes,
                  classifier_sizes,
                  min_scale=0.1,
-                 max_scale=0.8,
+                 max_scale=0.9,
                  scales=None,
                  aspect_ratios_global=[0.5, 1.0, 2.0],
                  aspect_ratios_per_layer=None,
@@ -210,10 +210,17 @@ class SSDBoxEncoder:
                 of the shorter side of the input images. Defaults to 0.1.
             max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
                 of the shorter side of the input images. All scaling factors between the smallest and the
-                largest will be linearly interpolated. Defaults to 0.8.
-            scales (list, optional): A list containing one scaling factor per convolutional classifier layer.
+                largest will be linearly interpolated. Note that the second to last of the linearly interpolated
+                scaling factors will actually be the scaling factor for the last classifier layer, while the last
+                scaling factor is used for the second box for aspect ratio 1 in the last classifier layer
+                if `two_boxes_for_ar1` is `True`. Defaults to 0.9.
+            scales (list, optional): A list of floats containing scaling factors per convolutional classifier layer.
+                This list must be one element longer than the number of classifier layers. The first `k` elements are the
+                scaling factors for the `k` classifier layers, while the last element is used for the second box
+                for aspect ratio 1 in the last classifier layer if `two_boxes_for_ar1` is `True`. This additional
+                last scaling factor must be passed either way, even if it is not being used.
                 Defaults to `None`. If a list is passed, this argument overrides `min_scale` and
-                `max_scale`. All scaling factors must be in [0,1].
+                `max_scale`. All scaling factors must be greater than zero.
             aspect_ratios_global (list, optional): The list of aspect ratios for which anchor boxes are to be
                 generated. This list is valid for all prediction layers. Defaults to [0.5, 1.0, 2.0].
             aspect_ratios_per_layer (list, optional): A list containing one aspect ratio list for each prediction layer.
@@ -241,8 +248,8 @@ class SSDBoxEncoder:
             raise ValueError("Either `min_scale` and `max_scale` or `scales` need to be specified.")
 
         if scales:
-            if (len(scales) != len(classifier_sizes)): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
-                raise ValueError("It must be either scales is None or len(scales) == len(classifier_sizes), but len(scales) == {} and len(classifier_sizes) == {}".format(len(scales), len(classifier_sizes)))
+            if (len(scales) != len(classifier_sizes)+1): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
+                raise ValueError("It must be either scales is None or len(scales) == len(classifier_sizes)+1, but len(scales) == {} and len(classifier_sizes)+1 == {}".format(len(scales), len(classifier_sizes)+1))
 
         if aspect_ratios_per_layer:
             if (len(aspect_ratios_per_layer) != len(classifier_sizes)): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
@@ -424,7 +431,7 @@ class SSDBoxEncoder:
         # 1: Get the anchor box scaling factors for each conv layer from which we're going to make predictions
         #    If `scales` is given explicitly, we'll use that instead of computing it from `min_scale` and `max_scale`
         if not self.scales:
-            self.scales = np.linspace(self.min_scale, self.max_scale, len(self.classifier_sizes))
+            self.scales = np.linspace(self.min_scale, self.max_scale, len(self.classifier_sizes)+1)
 
         # 2: For each conv classifier layer (i.e. for each scale factor) get the tensors for
         #    the anchor box coordinates of shape `(batch, n_boxes_total, 4)`
@@ -433,7 +440,7 @@ class SSDBoxEncoder:
             wh_list = [] # List to hold the box widths and heights
             cell_sizes = [] # List to hold horizontal and vertical distances between any two boxes
             if self.aspect_ratios_per_layer: # If individual aspect ratios are given per layer, we need to pass them to `generate_anchor_boxes()` accordingly
-                for i in range(len(self.scales)-1):
+                for i in range(len(self.classifier_sizes)):
                     boxes, wh, cells = self.generate_anchor_boxes(batch_size=batch_size,
                                                                   feature_map_size=self.classifier_sizes[i],
                                                                   aspect_ratios=self.aspect_ratios_per_layer[i],
@@ -443,18 +450,8 @@ class SSDBoxEncoder:
                     boxes_tensor.append(boxes)
                     wh_list.append(wh)
                     cell_sizes.append(cells)
-                # For the last scale value, set `next_scale = 1`
-                boxes, wh, cells = self.generate_anchor_boxes(batch_size=batch_size,
-                                                              feature_map_size=self.classifier_sizes[-1],
-                                                              aspect_ratios=self.aspect_ratios_per_layer[-1],
-                                                              this_scale=self.scales[-1],
-                                                              next_scale=1.0,
-                                                              diagnostics=True)
-                boxes_tensor.append(boxes)
-                wh_list.append(wh)
-                cell_sizes.append(cells)
             else: # Use the same global aspect ratio list for all layers
-                for i in range(len(self.scales)-1):
+                for i in range(len(self.classifier_sizes)):
                     boxes, wh, cells = self.generate_anchor_boxes(batch_size=batch_size,
                                                                   feature_map_size=self.classifier_sizes[i],
                                                                   aspect_ratios=self.aspect_ratios_global,
@@ -464,47 +461,23 @@ class SSDBoxEncoder:
                     boxes_tensor.append(boxes)
                     wh_list.append(wh)
                     cell_sizes.append(cells)
-                # For the last scale value, set `next_scale = 1`
-                boxes, wh, cells = self.generate_anchor_boxes(batch_size=batch_size,
-                                                              feature_map_size=self.classifier_sizes[-1],
-                                                              aspect_ratios=self.aspect_ratios_global,
-                                                              this_scale=self.scales[-1],
-                                                              next_scale=1.0,
-                                                              diagnostics=True)
-                boxes_tensor.append(boxes)
-                wh_list.append(wh)
-                cell_sizes.append(cells)
         else:
             if self.aspect_ratios_per_layer:
-                for i in range(len(self.scales)-1):
+                for i in range(len(self.classifier_sizes)):
                     boxes_tensor.append(self.generate_anchor_boxes(batch_size=batch_size,
                                                                    feature_map_size=self.classifier_sizes[i],
                                                                    aspect_ratios=self.aspect_ratios_per_layer[i],
                                                                    this_scale=self.scales[i],
                                                                    next_scale=self.scales[i+1],
                                                                    diagnostics=False))
-                # For the the last scale value, set `next_scale = 1`
-                boxes_tensor.append(self.generate_anchor_boxes(batch_size=batch_size,
-                                                               feature_map_size=self.classifier_sizes[-1],
-                                                               aspect_ratios=self.aspect_ratios_per_layer[-1],
-                                                               this_scale=self.scales[-1],
-                                                               next_scale=1.0,
-                                                               diagnostics=False))
             else:
-                for i in range(len(self.scales)-1):
+                for i in range(len(self.classifier_sizes)):
                     boxes_tensor.append(self.generate_anchor_boxes(batch_size=batch_size,
                                                                    feature_map_size=self.classifier_sizes[i],
                                                                    aspect_ratios=self.aspect_ratios_global,
                                                                    this_scale=self.scales[i],
                                                                    next_scale=self.scales[i+1],
                                                                    diagnostics=False))
-                # For the the last scale value, set `next_scale = 1`
-                boxes_tensor.append(self.generate_anchor_boxes(batch_size=batch_size,
-                                                               feature_map_size=self.classifier_sizes[-1],
-                                                               aspect_ratios=self.aspect_ratios_global,
-                                                               this_scale=self.scales[-1],
-                                                               next_scale=1.0,
-                                                               diagnostics=False))
 
         boxes_tensor = np.concatenate(boxes_tensor, axis=1) # Concatenate the anchor tensors from the individual layers to one
 
