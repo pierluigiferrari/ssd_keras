@@ -103,7 +103,7 @@ def histogram_eq(image):
 
     return image1
 
-class Batch_Generator:
+class BatchGenerator:
     '''
     A generator to generate batches of samples and corresponding labels indefinitely.
 
