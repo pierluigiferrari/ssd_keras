@@ -143,31 +143,29 @@ def decode_y(y_pred, confidence_thresh=0.9, coords='centroids'):
         a non-background class for the respective image in the format `[xmin, xmax, ymin, ymax, class_id, confidence]`.
     '''
     # 1: Convert the classes from one-hot encoding to their class ID
-    y_pred_converted = np.copy(y_pred[:,:,-10:-4]) # Slice out the four offset predictions plus one element where we'll write the class IDs in the next step
-    y_pred_converted[:,:,0] = np.argmax(y_pred[:,:,:-8], axis=-1) # The indices of the highest confidence values in the one-hot class vectors are the class ID
-    y_pred_converted[:,:,1] = np.amax(y_pred[:,:,:-8], axis=-1) # Store the confidence values themselves, too
+    y_pred_converted = np.copy(y_pred[:,:,-8:-2]) # Slice out the four offset predictions plus two elements whereto we'll write the class IDs and confidences in the next step
+    y_pred_converted[:,:,-2] = np.argmax(y_pred[:,:,:-8], axis=-1) # The indices of the highest confidence values in the one-hot class vectors are the class ID
+    y_pred_converted[:,:,-1] = np.amax(y_pred[:,:,:-8], axis=-1) # Store the confidence values themselves, too
 
     # 2: Convert the box coordinates from the predicted anchor box offsets to predicted absolute coordinates
     if coords == 'centroids':
-        y_pred_converted[:,:,[-2,-1]] = np.exp(y_pred_converted[:,:,[-2,-1]]) # exp(ln(w(pred)/w(anchor))) == w(pred) / w(anchor), exp(ln(h(pred)/h(anchor))) == h(pred) / h(anchor)
-        y_pred_converted[:,:,[-2,-1]] *= y_pred[:,:,[-2,-1]] # (w(pred) / w(anchor)) * w(anchor) == w(pred), (h(pred) / h(anchor)) * h(anchor) == h(pred)
-        y_pred_converted[:,:,[-4,-3]] *= y_pred[:,:,[-2,-1]] # (delta_cx(pred) / w(anchor)) * w(anchor) == delta_cx(pred), (delta_cy(pred) / h(anchor)) * h(anchor) == delta_cy(pred)
-        y_pred_converted[:,:,[-4,-3]] += y_pred[:,:,[-4,-3]] # delta_cx(pred) + cx(anchor) == cx(pred), delta_cy(pred) + cy(anchor) == cy(pred)
-        y_pred_converted = convert_coordinates(y_pred_converted, start_index=-4, conversion='centroids2minmax')
+        y_pred_converted[:,:,[2,3]] = np.exp(y_pred_converted[:,:,[2,3]]) # exp(ln(w(pred)/w(anchor))) == w(pred) / w(anchor), exp(ln(h(pred)/h(anchor))) == h(pred) / h(anchor)
+        y_pred_converted[:,:,[2,3]] *= y_pred[:,:,[-2,-1]] # (w(pred) / w(anchor)) * w(anchor) == w(pred), (h(pred) / h(anchor)) * h(anchor) == h(pred)
+        y_pred_converted[:,:,[0,1]] *= y_pred[:,:,[-2,-1]] # (delta_cx(pred) / w(anchor)) * w(anchor) == delta_cx(pred), (delta_cy(pred) / h(anchor)) * h(anchor) == delta_cy(pred)
+        y_pred_converted[:,:,[0,1]] += y_pred[:,:,[-4,-3]] # delta_cx(pred) + cx(anchor) == cx(pred), delta_cy(pred) + cy(anchor) == cy(pred)
+        y_pred_converted = convert_coordinates(y_pred_converted, start_index=0, conversion='centroids2minmax')
     elif coords == 'minmax':
-        y_pred_converted[:,:,[-4,-3]] *= np.expand_dims(y_pred[:,:,-3] - y_pred[:,:,-4], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
-        y_pred_converted[:,:,[-2,-1]] *= np.expand_dims(y_pred[:,:,-1] - y_pred[:,:,-2], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
-        y_pred_converted[:,:,-4:] += y_pred[:,:,-4:] # delta_pred + anchor == pred for all four coordinates
+        y_pred_converted[:,:,[0,1]] *= np.expand_dims(y_pred[:,:,-3] - y_pred[:,:,-4], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
+        y_pred_converted[:,:,[2,3]] *= np.expand_dims(y_pred[:,:,-1] - y_pred[:,:,-2], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
+        y_pred_converted[:,:,:-2] += y_pred[:,:,-4:] # delta_pred + anchor == pred for all four coordinates
     else:
         raise ValueError("Unexpected value for `coords`. Supported values are 'minmax' and 'centroids'.")
 
     # 3: Decode our huge `(batch, #boxes, 5)` into a list of length `batch` where each list entry is an array containing only the positive predictions
     y_pred_decoded = []
     for batch_item in y_pred_converted: # For each image in the batch...
-        boxes = batch_item[np.nonzero(batch_item[:,0])] # ...get all boxes that don't belong to the background class,...
-        boxes = boxes[boxes[:,1] >= confidence_thresh] # ...then filter out those positive boxes for which the prediction confidence is too low...
-        # TODO: Change the indexing in step 1 above so that this inefficient roll operation becomes obsolete
-        boxes = np.roll(boxes, -2, axis=-1) # ...and then change the order from [class_id, confidence, xmin, xmax, ymin, ymax] to [xmin, xmax, ymin, ymax, class_id, confidence], so that the first 5 columns are ordered like in the ground truth data
+        boxes = batch_item[np.nonzero(batch_item[:,-2])] # ...get all boxes that don't belong to the background class,...
+        boxes = boxes[boxes[:,-1] >= confidence_thresh] # ...then filter out those positive boxes for which the prediction confidence is too low
         y_pred_decoded.append(boxes)
 
     return y_pred_decoded
