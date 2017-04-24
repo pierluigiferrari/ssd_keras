@@ -121,7 +121,7 @@ def convert_coordinates2(tensor, start_index, conversion='minmax2centroids'):
 
     return tensor1
 
-def decode_y(y_pred, confidence_thresh=0.9, coords='centroids'):
+def decode_y(y_pred, confidence_thresh=0.5, coords='centroids'):
     '''
     Convert model prediction output back to a format that contains only the positive box predictions
     (i.e. the same format that `enconde_y()` takes as input).
@@ -132,7 +132,10 @@ def decode_y(y_pred, confidence_thresh=0.9, coords='centroids'):
             boxes predicted by the model per image and the last axis contains
             `[one-hot vector for the classes, 4 predicted coordinate offsets, 4 anchor box coordinates]`.
         confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence
-            required for a given box to be considered a positive prediction. Defaults to 0.9.
+            required for a given box to be considered a positive prediction. A lower value will result
+            in better recall, while a higher value will result in better precision. Do not use a high value
+            for this parameter with the goal to combat the inevitably many duplicates that an SSD will
+            produce, subsequent non-maximum suppression should take care of those. Defaults to 0.5.
         coords (str, optional): The box coordinate format that the model outputs. Can be either 'centroids'
             for the format `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax'
             for the format `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
@@ -169,6 +172,50 @@ def decode_y(y_pred, confidence_thresh=0.9, coords='centroids'):
         y_pred_decoded.append(boxes)
 
     return y_pred_decoded
+
+def greedy_nms(y_pred_decoded, iou_threshold=0.45, coords='minmax'):
+    '''
+    Perform greedy non-maximum suppression on the input boxes.
+
+    Greedy NMS works by selecting the box with the highest confidence value and
+    removing all boxes around it that are too close to it measured by IoU-similarity.
+    Out of the boxes that are left over, once again the one with the highest
+    confidence is selected and so on, until no boxes with too much overlap are left.
+
+    This is a basic, straight-forward NMS algorithm that is relatively efficient,
+    but it has a number of downsides. One of those downsides is that the box with
+    the highest confidence might not always be the box with the best fit to the object.
+    There are more sophisticated NMS techniques like [this one](https://lirias.kuleuven.be/bitstream/123456789/506283/1/3924_postprint.pdf)
+    that use a combination of nearby boxes, but in general there will probably
+    always be a trade-off between speed and quality for any given NMS technique.
+
+    Arguments:
+        y_pred_decoded (list): The input boxes. For a given batch size `n` this
+            is a list of length `n` where each list element is a 2D Numpy array.
+            For a batch item with `k` predicted boxes this 2D Numpy array has
+            shape `(k, 6)`, where each row contains the coordinates of the respective
+            box in the format `[xmin, xmax, ymin, ymax, class_id, confidence]`.
+            Technically, the number of columns doesn't have to be 6, it can be
+            arbitrary as long as the first four elements of each row are
+            `xmin`, `xmax`, `ymin`, `ymax` (in this order) and the last element
+            is the prediction confidence.
+        iou_threshold (float, optional):
+    '''
+    y_pred_decoded_nms = []
+    for batch_item in y_pred_decoded: # For the labels of each batch item...
+        boxes_left = np.copy(batch_item)
+        maxima = [] # This is where we store the boxes that make it through the non-maximum suppression
+        while boxes_left.shape[0] > 0: # While there are still boxes left to compare...
+            maximum_index = np.argmax(boxes_left[:,-1]) # ...get the index of the next box with the highest confidence...
+            maximum_box = np.copy(boxes_left[maximum_index]) # ...copy that box and...
+            maxima.append(maximum_box) # ...append it to `maxima` because we'll definitely keep it
+            boxes_left = np.delete(boxes_left, maximum_index, axis=0) # Now remove the maximum box from `boxes_left`
+            if boxes_left.shape[0] == 0: break # If there are no boxes left after this step, break. Otherwise...
+            similarities = iou(boxes_left[:,:4], maximum_box[:4], coords=coords) # ...compare (IoU) the other left over boxes to the maximum box...
+            boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
+        y_pred_decoded_nms.append(np.array(maxima))
+
+    return y_pred_decoded_nms
 
 class SSDBoxEncoder:
     '''
