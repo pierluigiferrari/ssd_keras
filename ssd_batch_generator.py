@@ -277,10 +277,15 @@ class BatchGenerator:
                 Scales the image by a factor randomly picked from a uniform distribution in the boundaries
                 of `[min, max]`. Both min and max must be >=0.
             limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries
-                post any transformation.
-            include_thresh (float, optional): Determines the minimum fraction of the area of a ground truth box
-                that must be left after clipping in order for the box to still be included in the batch data.
-                Only relevant if `limit_boxes` is `True`. Defaults to 0.3.
+                post any transformation. This should always be set to `True`, even if you set `include_thresh`
+                below to 0. I don't even know why I made this an option. If this is set to `False`, you could
+                end up with some boxes that lie entirely outside the image boundaries after a given transformation
+                and such boxes would of course not make any sense and have a strongly adverse effect on the learning.
+            include_thresh (float, optional): Only relevant if `limit_boxes` is `True`. Determines the minimum
+                fraction of the area of a ground truth box that must be left after limiting in order for the box
+                to still be included in the batch data. If set to 0, all boxes are kept except those which lie
+                entirely outside of the image bounderies after limiting. If set to 1, only boxes that did not
+                need to be limited at all are kept. Defaults to 0.3.
             diagnostics (bool, optional): If `True`, yields three additional output items:
                 1) A list of the image file names in the batch.
                 2) An array with the original, unaltered images.
@@ -363,7 +368,8 @@ class BatchGenerator:
                             # `include_thresh` of the box area before limiting.
                             before_area = (before_limiting[:,1] - before_limiting[:,0]) * (before_limiting[:,3] - before_limiting[:,2])
                             after_area = (batch_y[i][:,1] - batch_y[i][:,0]) * (batch_y[i][:,3] - batch_y[i][:,2])
-                            batch_y[i] = batch_y[i][after_area >= include_thresh * before_area]
+                            if include_thresh == 0: batch_y[i] = batch_y[i][after_area > include_thresh * before_area] # If `include_thresh == 0`, we want to make sure that boxes with area 0 get thrown out, hence the ">" sign instead of the ">=" sign
+                            else: batch_y[i] = batch_y[i][after_area >= include_thresh * before_area] # Especially for the case `include_thresh == 1` we want the ">=" sign, otherwise no boxes would be left at all
 
                 if scale:
                     p = np.random.uniform(0,1)
@@ -392,12 +398,15 @@ class BatchGenerator:
                             # `include_thresh` of the box area before limiting.
                             before_area = (before_limiting[:,1] - before_limiting[:,0]) * (before_limiting[:,3] - before_limiting[:,2])
                             after_area = (batch_y[i][:,1] - batch_y[i][:,0]) * (batch_y[i][:,3] - batch_y[i][:,2])
-                            batch_y[i] = batch_y[i][after_area >= include_thresh * before_area]
+                            if include_thresh == 0: batch_y[i] = batch_y[i][after_area > include_thresh * before_area] # If `include_thresh == 0`, we want to make sure that boxes with area 0 get thrown out, hence the ">" sign instead of the ">=" sign
+                            else: batch_y[i] = batch_y[i][after_area >= include_thresh * before_area] # Especially for the case `include_thresh == 1` we want the ">=" sign, otherwise no boxes would be left at all
 
                 if crop:
                     batch_X[i] = np.copy(batch_X[i][crop[0]:img_height-crop[1], crop[2]:img_width-crop[3]])
                     if limit_boxes:
                         before_limiting = deepcopy(batch_y[i])
+                        # We only need to check those coordinates that could possibly have been affected by the cropping
+                        # For example, if we only crop off the top and/or bottom of images, there is no need to check the x-coordinates
                         if crop[0] > 0:
                             y_coords = batch_y[i][:,[2,3]]
                             y_coords[y_coords < crop[0]] = crop[0]
@@ -420,7 +429,8 @@ class BatchGenerator:
                         # `include_thresh` of the box area before limiting.
                         before_area = (before_limiting[:,1] - before_limiting[:,0]) * (before_limiting[:,3] - before_limiting[:,2])
                         after_area = (batch_y[i][:,1] - batch_y[i][:,0]) * (batch_y[i][:,3] - batch_y[i][:,2])
-                        batch_y[i] = batch_y[i][after_area >= include_thresh * before_area]
+                        if include_thresh == 0: batch_y[i] = batch_y[i][after_area > include_thresh * before_area] # If `include_thresh == 0`, we want to make sure that boxes with area 0 get thrown out, hence the ">" sign instead of the ">=" sign
+                        else: batch_y[i] = batch_y[i][after_area >= include_thresh * before_area] # Especially for the case `include_thresh == 1` we want the ">=" sign, otherwise no boxes would be left at all
                     if crop[0] > 0:
                         batch_y[i][:,[2,3]] -= crop[0]
                     if crop[2] > 0:
