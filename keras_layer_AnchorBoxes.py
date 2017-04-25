@@ -44,9 +44,12 @@ class AnchorBoxes(Layer):
                  aspect_ratios=[0.5, 1.0, 2.0],
                  two_boxes_for_ar1=True,
                  limit_boxes=True,
+                 variances=[1.0, 1.0, 1.0, 1.0],
                  coords='centroids',
                  **kwargs):
         '''
+        All arguments need to be set to the same values used to train the model, otherwise the behavior is undefined.
+
         Arguments:
             img_height (int): The height of the input images.
             img_width (int): The width of the input images.
@@ -62,11 +65,27 @@ class AnchorBoxes(Layer):
                 geometric mean of said scaling factor and next bigger scaling factor. Defaults to `True`.
             limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
                 Defaults to `True`.
+            variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
+                to be precise) for the encoded predicted box coordinates. A variance value of 1.0 would apply
+                no scaling at all to the predictions, while values in (0,1) upscale the encoded predictions and values greater
+                than 1.0 downscale the encoded predictions. If you want to reproduce the configuration of the original SSD,
+                set this to `[0.1, 0.1, 0.2, 0.2]`, provided the coordinate format is 'centroids'. Defaults to `[1.0, 1.0, 1.0, 1.0]`.
+            coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
+                `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
+                `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
         '''
         if K.backend() != 'tensorflow':
             raise TypeError("This layer only supports TensorFlow at the moment, but you are using the {} backend.".format(K.backend()))
+
         if (this_scale < 0) or (next_scale < 0) or (this_scale > 1):
             raise ValueError("`this_scale` must be in [0, 1] and `next_scale` must be >0, but `this_scale` == {}, `next_scale` == {}".format(this_scale, next_scale))
+
+        if len(variances) != 4:
+            raise ValueError("4 variance values must be pased, but {} values were received.".format(len(variances)))
+        variances = np.array(variances)
+        if np.any(variances <= 0):
+            raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
+
         self.img_height = img_height
         self.img_width = img_width
         self.this_scale = this_scale
@@ -74,6 +93,7 @@ class AnchorBoxes(Layer):
         self.aspect_ratios = aspect_ratios
         self.two_boxes_for_ar1 = two_boxes_for_ar1
         self.limit_boxes = limit_boxes
+        self.variances = variances
         self.coords = coords
         # Compute the number of boxes per cell
         if (1 in aspect_ratios) & two_boxes_for_ar1:
@@ -103,6 +123,7 @@ class AnchorBoxes(Layer):
         # The shorter side of the image will be used to compute `w` and `h` using `scale` and `aspect_ratios`.
         self.aspect_ratios = np.sort(self.aspect_ratios)
         size = min(self.img_height, self.img_width)
+        # Compute the box widths and and heights for all aspect ratios
         wh_list = []
         for ar in self.aspect_ratios:
             if (ar == 1) & self.two_boxes_for_ar1:
@@ -163,8 +184,15 @@ class AnchorBoxes(Layer):
             # Convert `(xmin, xmax, ymin, ymax)` back to `(cx, cy, w, h)`
             boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='minmax2centroids')
 
+        # 4: Create a tensor to contain the variances and append it to `boxes_tensor`. This tensor has the same shape
+        #    as `boxes_tensor` and simply contains the same 4 variance values for every position in the last axis.
+        variances_tensor = np.zeros_like(boxes_tensor) # Has shape `(feature_map_height, feature_map_width, n_boxes, 4)`
+        variances_tensor += self.variances # Long live broadcasting
+        # Now `boxes_tensor` becomes a tensor of shape `(feature_map_height, feature_map_width, n_boxes, 8)`
+        boxes_tensor = np.concatenate((boxes_tensor, variances_tensor), axis=-1)
+
         # Now prepend one dimension to `boxes_tensor` to account for the batch size and tile it along
-        # The result will be a 5D tensor of shape `(batch_size, feature_map_height, feature_map_width, n_boxes, 4)`
+        # The result will be a 5D tensor of shape `(batch_size, feature_map_height, feature_map_width, n_boxes, 8)`
         boxes_tensor = np.expand_dims(boxes_tensor, axis=0)
         boxes_tensor = K.tile(K.constant(boxes_tensor, dtype='float32'), (K.shape(x)[0], 1, 1, 1, 1))
 
@@ -175,4 +203,4 @@ class AnchorBoxes(Layer):
             batch_size, feature_map_height, feature_map_width, feature_map_channels = input_shape
         else: # Not yet relevant since TensorFlow is the only supported backend right now, but it can't harm to have this in here for the future
             batch_size, feature_map_channels, feature_map_height, feature_map_width = input_shape
-        return (batch_size, feature_map_height, feature_map_width, self.n_boxes, 4)
+        return (batch_size, feature_map_height, feature_map_width, self.n_boxes, 8)

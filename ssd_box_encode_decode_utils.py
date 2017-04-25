@@ -10,8 +10,8 @@ import numpy as np
 def iou(boxes1, boxes2, coords='centroids'):
     '''
     Compute the intersection-over-union similarity (also known as Jaccard similarity)
-    of two 2D rectangular boxes or of multiple 2D rectangular boxes contained in two
-    arrays with broadcast-compatible shapes.
+    of two axis-aligned 2D rectangular boxes or of multiple axis-aligned 2D rectangular
+    boxes contained in two arrays with broadcast-compatible shapes.
 
     Three common use cases would be to compute the similarities for 1 vs. 1, 1 vs. `n`,
     or `n` vs. `n` boxes. The two arguments are symmetric.
@@ -76,17 +76,17 @@ def convert_coordinates(tensor, start_index, conversion='minmax2centroids'):
         tensor elsewhere.
     '''
     ind = start_index
-    tensor1 = np.copy(tensor)
+    tensor1 = np.copy(tensor).astype(np.float)
     if conversion == 'minmax2centroids':
-        tensor1[..., ind] = (tensor[..., ind] + tensor[..., ind+1]) / 2 # Set cx
-        tensor1[..., ind+1] = (tensor[..., ind+2] + tensor[..., ind+3]) / 2 # Set cy
+        tensor1[..., ind] = (tensor[..., ind] + tensor[..., ind+1]) / 2.0 # Set cx
+        tensor1[..., ind+1] = (tensor[..., ind+2] + tensor[..., ind+3]) / 2.0 # Set cy
         tensor1[..., ind+2] = tensor[..., ind+1] - tensor[..., ind] # Set w
         tensor1[..., ind+3] = tensor[..., ind+3] - tensor[..., ind+2] # Set h
     elif conversion == 'centroids2minmax':
-        tensor1[..., ind] = tensor[..., ind] - tensor[..., ind+2] / 2 # Set xmin
-        tensor1[..., ind+1] = tensor[..., ind] + tensor[..., ind+2] / 2 # Set xmax
-        tensor1[..., ind+2] = tensor[..., ind+1] - tensor[..., ind+3] / 2 # Set ymin
-        tensor1[..., ind+3] = tensor[..., ind+1] + tensor[..., ind+3] / 2 # Set ymax
+        tensor1[..., ind] = tensor[..., ind] - tensor[..., ind+2] / 2.0 # Set xmin
+        tensor1[..., ind+1] = tensor[..., ind] + tensor[..., ind+2] / 2.0 # Set xmax
+        tensor1[..., ind+2] = tensor[..., ind+1] - tensor[..., ind+3] / 2.0 # Set ymin
+        tensor1[..., ind+3] = tensor[..., ind+1] + tensor[..., ind+3] / 2.0 # Set ymax
     else:
         raise ValueError("Unexpected conversion value. Supported values are 'minmax2centroids' and 'centroids2minmax'.")
 
@@ -103,7 +103,7 @@ def convert_coordinates2(tensor, start_index, conversion='minmax2centroids'):
     For details please refer to the documentation of `convert_coordinates()`.
     '''
     ind = start_index
-    tensor1 = np.copy(tensor)
+    tensor1 = np.copy(tensor).astype(np.float)
     if conversion == 'minmax2centroids':
         M = np.array([[0.5, 0. , -1.,  0.],
                       [0.5, 0. ,  1.,  0.],
@@ -128,9 +128,9 @@ def decode_y(y_pred, confidence_thresh=0.5, coords='centroids'):
 
     Arguments:
         y_pred (array): The prediction output of the SSD model, expected to be a Numpy array
-            of shape `(batch_size, #boxes, #classes + 4 + 4)`, where `#boxes` is the total number of
+            of shape `(batch_size, #boxes, #classes + 4 + 4 + 4)`, where `#boxes` is the total number of
             boxes predicted by the model per image and the last axis contains
-            `[one-hot vector for the classes, 4 predicted coordinate offsets, 4 anchor box coordinates]`.
+            `[one-hot vector for the classes, 4 predicted coordinate offsets, 4 anchor box coordinates, 4 variances]`.
         confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence
             required for a given box to be considered a positive prediction. A lower value will result
             in better recall, while a higher value will result in better precision. Do not use a high value
@@ -146,25 +146,26 @@ def decode_y(y_pred, confidence_thresh=0.5, coords='centroids'):
         a non-background class for the respective image in the format `[xmin, xmax, ymin, ymax, class_id, confidence]`.
     '''
     # 1: Convert the classes from one-hot encoding to their class ID
-    y_pred_converted = np.copy(y_pred[:,:,-8:-2]) # Slice out the four offset predictions plus two elements whereto we'll write the class IDs and confidences in the next step
-    y_pred_converted[:,:,-2] = np.argmax(y_pred[:,:,:-8], axis=-1) # The indices of the highest confidence values in the one-hot class vectors are the class ID
-    y_pred_converted[:,:,-1] = np.amax(y_pred[:,:,:-8], axis=-1) # Store the confidence values themselves, too
+    y_pred_converted = np.copy(y_pred[:,:,-12:-6]) # Slice out the four offset predictions plus two elements whereto we'll write the class IDs and confidences in the next step
+    y_pred_converted[:,:,-2] = np.argmax(y_pred[:,:,:-12], axis=-1) # The indices of the highest confidence values in the one-hot class vectors are the class ID
+    y_pred_converted[:,:,-1] = np.amax(y_pred[:,:,:-12], axis=-1) # Store the confidence values themselves, too
 
     # 2: Convert the box coordinates from the predicted anchor box offsets to predicted absolute coordinates
     if coords == 'centroids':
-        y_pred_converted[:,:,[2,3]] = np.exp(y_pred_converted[:,:,[2,3]]) # exp(ln(w(pred)/w(anchor))) == w(pred) / w(anchor), exp(ln(h(pred)/h(anchor))) == h(pred) / h(anchor)
-        y_pred_converted[:,:,[2,3]] *= y_pred[:,:,[-2,-1]] # (w(pred) / w(anchor)) * w(anchor) == w(pred), (h(pred) / h(anchor)) * h(anchor) == h(pred)
-        y_pred_converted[:,:,[0,1]] *= y_pred[:,:,[-2,-1]] # (delta_cx(pred) / w(anchor)) * w(anchor) == delta_cx(pred), (delta_cy(pred) / h(anchor)) * h(anchor) == delta_cy(pred)
-        y_pred_converted[:,:,[0,1]] += y_pred[:,:,[-4,-3]] # delta_cx(pred) + cx(anchor) == cx(pred), delta_cy(pred) + cy(anchor) == cy(pred)
+        y_pred_converted[:,:,[2,3]] = np.exp(y_pred_converted[:,:,[2,3]] * y_pred[:,:,[-2,-1]]) # exp(ln(w(pred)/w(anchor)) / w_variance * w_variance) == w(pred) / w(anchor), exp(ln(h(pred)/h(anchor)) / h_variance * h_variance) == h(pred) / h(anchor)
+        y_pred_converted[:,:,[2,3]] *= y_pred[:,:,[-6,-5]] # (w(pred) / w(anchor)) * w(anchor) == w(pred), (h(pred) / h(anchor)) * h(anchor) == h(pred)
+        y_pred_converted[:,:,[0,1]] *= y_pred[:,:,[-4,-3]] * y_pred[:,:,[-6,-5]] # (delta_cx(pred) / w(anchor) / cx_variance) * cx_variance * w(anchor) == delta_cx(pred), (delta_cy(pred) / h(anchor) / cy_variance) * cy_variance * h(anchor) == delta_cy(pred)
+        y_pred_converted[:,:,[0,1]] += y_pred[:,:,[-8,-7]] # delta_cx(pred) + cx(anchor) == cx(pred), delta_cy(pred) + cy(anchor) == cy(pred)
         y_pred_converted = convert_coordinates(y_pred_converted, start_index=0, conversion='centroids2minmax')
     elif coords == 'minmax':
-        y_pred_converted[:,:,[0,1]] *= np.expand_dims(y_pred[:,:,-3] - y_pred[:,:,-4], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
-        y_pred_converted[:,:,[2,3]] *= np.expand_dims(y_pred[:,:,-1] - y_pred[:,:,-2], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
-        y_pred_converted[:,:,:-2] += y_pred[:,:,-4:] # delta_pred + anchor == pred for all four coordinates
+        y_pred_converted[:,:,:-2] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
+        y_pred_converted[:,:,[0,1]] *= np.expand_dims(y_pred[:,:,-7] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
+        y_pred_converted[:,:,[2,3]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-6], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
+        y_pred_converted[:,:,:-2] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
     else:
         raise ValueError("Unexpected value for `coords`. Supported values are 'minmax' and 'centroids'.")
 
-    # 3: Decode our huge `(batch, #boxes, 5)` into a list of length `batch` where each list entry is an array containing only the positive predictions
+    # 3: Decode our huge `(batch, #boxes, 6)` tensor into a list of length `batch` where each list entry is an array containing only the positive predictions
     y_pred_decoded = []
     for batch_item in y_pred_converted: # For each image in the batch...
         boxes = batch_item[np.nonzero(batch_item[:,-2])] # ...get all boxes that don't belong to the background class,...
@@ -241,6 +242,7 @@ class SSDBoxEncoder:
                  aspect_ratios_per_layer=None,
                  two_boxes_for_ar1=True,
                  limit_boxes=True,
+                 variances=[1.0, 1.0, 1.0, 1.0],
                  pos_iou_threshold=0.5,
                  neg_iou_threshold=0.3,
                  coords='centroids'):
@@ -276,6 +278,11 @@ class SSDBoxEncoder:
                 geometric mean of said scaling factor and next bigger scaling factor.
             limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
                 Defaults to `True`.
+            variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
+                to be precise) for the encoded ground truth (i.e. target) box coordinates. A variance value of 1.0 would apply
+                no scaling at all to the targets, while values in (0,1) upscale the encoded targets and values greater than 1.0
+                downscale the encoded targets. If you want to reproduce the configuration of the original SSD,
+                set this to `[0.1, 0.1, 0.2, 0.2]`, provided the coordinate format is 'centroids'. Defaults to `[1.0, 1.0, 1.0, 1.0]`.
             pos_iou_threshold (float, optional): The intersection-over-union similarity threshold that must be
                 met in order to match a given ground truth box to a given anchor box. Defaults to 0.5.
             neg_iou_threshold (float, optional): The maximum allowed intersection-over-union similarity of an
@@ -300,6 +307,12 @@ class SSDBoxEncoder:
             if (len(aspect_ratios_per_layer) != len(classifier_sizes)): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
                 raise ValueError("It must be either aspect_ratios_per_layer is None or len(aspect_ratios_per_layer) == len(classifier_sizes), but len(aspect_ratios_per_layer) == {} and len(classifier_sizes) == {}".format(len(aspect_ratios_per_layer), len(classifier_sizes)))
 
+        if len(variances) != 4:
+            raise ValueError("4 variance values must be pased, but {} values were received.".format(len(variances)))
+        variances = np.array(variances)
+        if np.any(variances <= 0):
+            raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
+
         if neg_iou_threshold > pos_iou_threshold:
             raise ValueError("It cannot be `neg_iou_threshold > pos_iou_threshold`.")
 
@@ -317,6 +330,7 @@ class SSDBoxEncoder:
         self.aspect_ratios_per_layer = aspect_ratios_per_layer
         self.two_boxes_for_ar1 = two_boxes_for_ar1
         self.limit_boxes = limit_boxes
+        self.variances = variances
         self.pos_iou_threshold = pos_iou_threshold
         self.neg_iou_threshold = neg_iou_threshold
         self.coords = coords
@@ -374,6 +388,7 @@ class SSDBoxEncoder:
         # The shorter side of the image will be used to compute `w` and `h` using `scale` and `aspect_ratios`.
         aspect_ratios = np.sort(aspect_ratios)
         size = min(self.img_height, self.img_width)
+        # Compute the box widths and and heights for all aspect ratios
         wh_list = []
         n_boxes = len(aspect_ratios)
         for ar in aspect_ratios:
@@ -530,11 +545,16 @@ class SSDBoxEncoder:
         #    It will contain all zeros for now, the classes will be set in the matching process that follows
         classes_tensor = np.zeros((batch_size, boxes_tensor.shape[1], self.n_classes))
 
-        # 4: Concatenate the classes and boxes tensors to get our final template for y_encoded. We also need
-        #    to append a dummy tensor of the shape of `boxes_tensor` so that `y_encode_template` has the same
-        #    shape as the SSD model output tensor. The content of this dummy tensor is irrelevant, it won't be
-        #    used, so we'll just use `boxes_tensor` a second time.
-        y_encode_template = np.concatenate((classes_tensor, boxes_tensor, boxes_tensor), axis=2)
+        # 4: Create a tensor to contain the variances. This tensor has the same shape as `boxes_tensor` and simply
+        #    contains the same 4 variance values for every position in the last axis.
+        variances_tensor = np.zeros_like(boxes_tensor)
+        variances_tensor += self.variances # Long live broadcasting
+
+        # 4: Concatenate the classes, boxes and variances tensors to get our final template for y_encoded. We also need
+        #    another tensor of the shape of `boxes_tensor` as a space filler so that `y_encode_template` has the same
+        #    shape as the SSD model output tensor. The content of this tensor is irrelevant, we'll just use
+        #    `boxes_tensor` a second time.
+        y_encode_template = np.concatenate((classes_tensor, boxes_tensor, boxes_tensor, variances_tensor), axis=2)
 
         if diagnostics:
             return y_encode_template, wh_list, cell_sizes
@@ -581,21 +601,22 @@ class SSDBoxEncoder:
             available_boxes = np.ones((y_encode_template.shape[1])) # 1 for all anchor boxes that are not yet matched to a ground truth box, 0 otherwise
             negative_boxes = np.ones((y_encode_template.shape[1])) # 1 for all negative boxes, 0 otherwise
             for true_box in ground_truth_labels[i]: # For each ground truth box belonging to the current batch item...
+                true_box = true_box.astype(np.float)
+                if (true_box[1] - true_box[0] == 0) or (true_box[3] - true_box[2] == 0): continue # Protect ourselves against bad ground truth data: boxes with width or height equal to zero
                 if self.coords == 'centroids':
                     true_box = convert_coordinates(true_box, start_index=0, conversion='minmax2centroids')
-                if np.any(true_box[2:] == 0): continue # We have to protect ourselves against bad ground truth data: The width and height of a ground truth box cannot be zero, otherwise we'll get an error when we take the natural log below (and of course it doesn't make much sense to have such a box)
-                similarities = iou(y_encode_template[i,:,-8:-4], true_box[:4], coords=self.coords) # The iou similarities for all anchor boxes
+                similarities = iou(y_encode_template[i,:,-12:-8], true_box[:4], coords=self.coords) # The iou similarities for all anchor boxes
                 negative_boxes[similarities >= self.neg_iou_threshold] = 0 # If a negative box gets an IoU match >= `self.neg_iou_threshold`, it's no longer a valid negative box
                 similarities *= available_boxes # Filter out anchor boxes which aren't available anymore (i.e. already matched to a different ground truth box)
                 available_and_thresh_met = np.copy(similarities)
                 available_and_thresh_met[available_and_thresh_met < self.pos_iou_threshold] = 0 # Filter out anchor boxes which don't meet the iou threshold
                 assign_indices = np.nonzero(available_and_thresh_met)[0] # Get the indices of the left-over anchor boxes to which we want to assign this ground truth box
                 if len(assign_indices) > 0: # If we have any matches
-                    y_encoded[i,assign_indices,:-4] = np.concatenate((class_vector[true_box[4]], true_box[:4].astype(np.int32)), axis=0) # Write the ground truth box coordinates and class to all assigned anchor box positions. Remember that the last four elements of `y_encoded` are just dummy entries.
+                    y_encoded[i,assign_indices,:-8] = np.concatenate((class_vector[int(true_box[4])], true_box[:4]), axis=0) # Write the ground truth box coordinates and class to all assigned anchor box positions. Remember that the last four elements of `y_encoded` are just dummy entries.
                     available_boxes[assign_indices] = 0 # Make the assigned anchor boxes unavailable for the next ground truth box
                 else: # If we don't have any matches
                     best_match_index = np.argmax(similarities) # Get the index of the best iou match out of all available boxes
-                    y_encoded[i,best_match_index,:-4] = np.concatenate((class_vector[true_box[4]], true_box[:4].astype(np.int32)), axis=0) # Write the ground truth box coordinates and class to the best match anchor box position
+                    y_encoded[i,best_match_index,:-8] = np.concatenate((class_vector[int(true_box[4])], true_box[:4]), axis=0) # Write the ground truth box coordinates and class to the best match anchor box position
                     available_boxes[best_match_index] = 0 # Make the assigned anchor box unavailable for the next ground truth box
                     negative_boxes[best_match_index] = 0 # The assigned anchor box is no longer a negative box
             # Set the classes of all remaining available anchor boxes to class zero
@@ -604,13 +625,14 @@ class SSDBoxEncoder:
 
         # 3: Convert absolute box coordinates to offsets from the anchor boxes and normalize them
         if self.coords == 'centroids':
-            y_encoded[:,:,[-8,-7]] -= y_encode_template[:,:,[-8,-7]] # cx(gt) - cx(anchor), cy(gt) - cy(anchor)
-            y_encoded[:,:,[-8,-7]] /= y_encode_template[:,:,[-6,-5]] # (cx(gt) - cx(anchor)) / w(anchor), (cy(gt) - cy(anchor)) / h(anchor)
-            y_encoded[:,:,[-6,-5]] /= y_encode_template[:,:,[-6,-5]] # w(gt) / w(anchor), h(gt) / h(anchor)
-            y_encoded[:,:,[-6,-5]] = np.log(y_encoded[:,:,[-6,-5]]) # ln(w(gt) / w(anchor)), ln(h(gt) / h(anchor)) (natural logarithm)
+            y_encoded[:,:,[-12,-11]] -= y_encode_template[:,:,[-12,-11]] # cx(gt) - cx(anchor), cy(gt) - cy(anchor)
+            y_encoded[:,:,[-12,-11]] /= y_encode_template[:,:,[-10,-9]] * y_encode_template[:,:,[-4,-3]] # (cx(gt) - cx(anchor)) / w(anchor) / cx_variance, (cy(gt) - cy(anchor)) / h(anchor) / cy_variance
+            y_encoded[:,:,[-10,-9]] /= y_encode_template[:,:,[-10,-9]] # w(gt) / w(anchor), h(gt) / h(anchor)
+            y_encoded[:,:,[-10,-9]] = np.log(y_encoded[:,:,[-10,-9]]) / y_encode_template[:,:,[-2,-1]] # ln(w(gt) / w(anchor)) / w_variance, ln(h(gt) / h(anchor)) / h_variance (ln == natural logarithm)
         else:
-            y_encoded[:,:,-8:-4] -= y_encode_template[:,:,-8:-4] # (gt - anchor) for all four coordinates
-            y_encoded[:,:,[-8,-7]] /= np.expand_dims(y_encode_template[:,:,-7] - y_encode_template[:,:,-8], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
-            y_encoded[:,:,[-6,-5]] /= np.expand_dims(y_encode_template[:,:,-5] - y_encode_template[:,:,-6], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
+            y_encoded[:,:,-12:-8] -= y_encode_template[:,:,-12:-8] # (gt - anchor) for all four coordinates
+            y_encoded[:,:,[-12,-11]] /= np.expand_dims(y_encode_template[:,:,-11] - y_encode_template[:,:,-12], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
+            y_encoded[:,:,[-10,-9]] /= np.expand_dims(y_encode_template[:,:,-9] - y_encode_template[:,:,-10], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
+            y_encoded[:,:,-12:-8] /= y_encode_template[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
 
         return y_encoded

@@ -13,6 +13,7 @@ def build_model(image_size,
                 aspect_ratios_per_layer=None,
                 two_boxes_for_ar1=True,
                 limit_boxes=True,
+                variances=[1.0, 1.0, 1.0, 1.0],
                 coords='centroids'):
     '''
     Build a Keras model with SSD architecture, see references.
@@ -63,6 +64,11 @@ def build_model(image_size,
         limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
             This would normally be set to `True`, but here it defaults to `False`, following the original
             implementation.
+        variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
+            to be precise) for the encoded predicted box coordinates. A variance value of 1.0 would apply
+            no scaling at all to the predictions, while values in (0,1) upscale the encoded predictions and values greater
+            than 1.0 downscale the encoded predictions. If you want to reproduce the configuration of the original SSD,
+            set this to `[0.1, 0.1, 0.2, 0.2]`, provided the coordinate format is 'centroids'. Defaults to `[1.0, 1.0, 1.0, 1.0]`.
         coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
             `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
             `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
@@ -131,6 +137,12 @@ def build_model(image_size,
     else:
         scales = np.linspace(min_scale, max_scale, n_classifier_layers+1)
 
+    if len(variances) != 4:
+        raise ValueError("4 variance values must be pased, but {} values were received.".format(len(variances)))
+    variances = np.array(variances)
+    if np.any(variances <= 0):
+        raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
+
     # Input image format
     img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
 
@@ -190,15 +202,15 @@ def build_model(image_size,
     boxes6 = Convolution2D(n_boxes_conv6 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes6')(conv6)
     boxes7 = Convolution2D(n_boxes_conv7 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes7')(conv7)
     # Generate the anchor boxes
-    # Output shape of anchors: `(batch, height, width, n_boxes, 4)`
+    # Output shape of anchors: `(batch, height, width, n_boxes, 8)`
     anchors4 = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios_conv4,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors4')(boxes4)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='anchors4')(boxes4)
     anchors5 = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios_conv5,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors5')(boxes5)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='anchors5')(boxes5)
     anchors6 = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors6')(boxes6)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='anchors6')(boxes6)
     anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios_conv7,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='anchors7')(boxes7)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='anchors7')(boxes7)
 
     # Reshape the class predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, n_classes)`
     # We want the classes isolated in the last axis to perform softmax on them
@@ -212,11 +224,11 @@ def build_model(image_size,
     boxes5_reshaped = Reshape((-1, 4), name='boxes5_reshape')(boxes5)
     boxes6_reshaped = Reshape((-1, 4), name='boxes6_reshape')(boxes6)
     boxes7_reshaped = Reshape((-1, 4), name='boxes7_reshape')(boxes7)
-    # Reshape the box predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, 4)`
-    anchors4_reshaped = Reshape((-1, 4), name='anchors4_reshape')(anchors4)
-    anchors5_reshaped = Reshape((-1, 4), name='anchors5_reshape')(anchors5)
-    anchors6_reshaped = Reshape((-1, 4), name='anchors6_reshape')(anchors6)
-    anchors7_reshaped = Reshape((-1, 4), name='anchors7_reshape')(anchors7)
+    # Reshape the box predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, 8)`
+    anchors4_reshaped = Reshape((-1, 8), name='anchors4_reshape')(anchors4)
+    anchors5_reshaped = Reshape((-1, 8), name='anchors5_reshape')(anchors5)
+    anchors6_reshaped = Reshape((-1, 8), name='anchors6_reshape')(anchors6)
+    anchors7_reshaped = Reshape((-1, 8), name='anchors7_reshape')(anchors7)
 
     # Concatenate the predictions from the different layers
     # Axis 0 (batch) and axis 2 (n_classes or 4, respectively) are identical for all layer predictions,
@@ -233,7 +245,7 @@ def build_model(image_size,
                                                            boxes6_reshaped,
                                                            boxes7_reshaped])
 
-    # Output shape of `anchors_final`: (batch, n_boxes_total, 4)
+    # Output shape of `anchors_final`: (batch, n_boxes_total, 8)
     anchors_final = Concatenate(axis=1, name='anchors_final')([anchors4_reshaped,
                                                                anchors5_reshaped,
                                                                anchors6_reshaped,
@@ -243,7 +255,7 @@ def build_model(image_size,
     classes_final = Activation('softmax', name='classes_final')(classes_merged)
 
     # Concatenate the class and box predictions and the anchors to one large predictions vector
-    # Output shape of `predictions`: (batch, n_boxes_total, n_classes + 4 + 4)
+    # Output shape of `predictions`: (batch, n_boxes_total, n_classes + 4 + 8)
     predictions = Concatenate(axis=2, name='predictions')([classes_final, boxes_final, anchors_final])
 
     model = Model(inputs=x, outputs=predictions)

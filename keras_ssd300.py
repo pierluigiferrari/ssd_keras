@@ -18,7 +18,8 @@ def ssd_300(image_size,
                                      [0.5, 1.0, 2.0],
                                      [0.5, 1.0, 2.0]],
             two_boxes_for_ar1=True,
-            limit_boxes=True,
+            limit_boxes=False,
+            variances=[0.1, 0.1, 0.2, 0.2],
             coords='centroids'):
     '''
     Build a Keras model with SSD_300 architecture, see references.
@@ -68,9 +69,14 @@ def ssd_300(image_size,
         limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
             This would normally be set to `True`, but here it defaults to `False`, following the original
             implementation.
+        variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
+            to be precise) for the encoded predicted box coordinates. A variance value of 1.0 would apply
+            no scaling at all to the predictions, while values in (0,1) upscale the encoded predictions and values greater
+            than 1.0 downscale the encoded predictions. Defaults to `[0.1, 0.1, 0.2, 0.2]`, following the original
+            implementation. The coordinate format must be 'centroids'.
         coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
             `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
-            `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
+            `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids', following the original implementation.
 
     Returns:
         model: The Keras SSD model.
@@ -143,6 +149,12 @@ def ssd_300(image_size,
             raise ValueError("It must be either scales is None or len(scales) == {}, but len(scales) == {}.".format(n_classifier_layers+1, len(scales)))
     else:
         scales = np.linspace(min_scale, max_scale, n_classifier_layers+1)
+
+    if len(variances) != 4:
+        raise ValueError("4 variance values must be pased, but {} values were received.".format(len(variances)))
+    variances = np.array(variances)
+    if np.any(variances <= 0):
+        raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
 
     # Input image format
     img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
@@ -217,19 +229,19 @@ def ssd_300(image_size,
 
     ### Generate the anchor boxes (called "priors" in the original Caffe/C++ implementation, so I'll keep their layer names)
 
-    # Output shape of anchors: `(batch, height, width, n_boxes, 4)`
+    # Output shape of anchors: `(batch, height, width, n_boxes, 8)`
     conv4_3_norm_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios_conv4_3,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='conv4_3_norm_mbox_priorbox')(conv4_3_norm)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='conv4_3_norm_mbox_priorbox')(conv4_3_norm)
     fc7_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios_fc7,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='fc7_mbox_priorbox')(fc7)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='fc7_mbox_priorbox')(fc7)
     conv6_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6_2,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='conv6_2_mbox_priorbox')(conv6_2)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='conv6_2_mbox_priorbox')(conv6_2)
     conv7_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios_conv7_2,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='conv7_2_mbox_priorbox')(conv7_2)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='conv7_2_mbox_priorbox')(conv7_2)
     conv8_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[4], next_scale=scales[5], aspect_ratios=aspect_ratios_conv8_2,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='conv8_2_mbox_priorbox')(conv8_2)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='conv8_2_mbox_priorbox')(conv8_2)
     conv9_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[5], next_scale=scales[6], aspect_ratios=aspect_ratios_conv9_2,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, coords=coords, name='conv9_2_mbox_priorbox')(conv9_2)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='conv9_2_mbox_priorbox')(conv9_2)
 
     ### Reshape
 
@@ -249,13 +261,13 @@ def ssd_300(image_size,
     conv7_2_mbox_loc_reshape = Reshape((-1, 4), name='conv7_2_mbox_loc_reshape')(conv7_2_mbox_loc)
     conv8_2_mbox_loc_reshape = Reshape((-1, 4), name='conv8_2_mbox_loc_reshape')(conv8_2_mbox_loc)
     conv9_2_mbox_loc_reshape = Reshape((-1, 4), name='conv9_2_mbox_loc_reshape')(conv9_2_mbox_loc)
-    # Reshape the anchor box tensors, yielding 3D tensors of shape `(batch, height * width * n_boxes, 4)`
-    conv4_3_norm_mbox_priorbox_reshape = Reshape((-1, 4), name='conv4_3_norm_mbox_priorbox_reshape')(conv4_3_norm_mbox_priorbox)
-    fc7_mbox_priorbox_reshape = Reshape((-1, 4), name='fc7_mbox_priorbox_reshape')(fc7_mbox_priorbox)
-    conv6_2_mbox_priorbox_reshape = Reshape((-1, 4), name='conv6_2_mbox_priorbox_reshape')(conv6_2_mbox_priorbox)
-    conv7_2_mbox_priorbox_reshape = Reshape((-1, 4), name='conv7_2_mbox_priorbox_reshape')(conv7_2_mbox_priorbox)
-    conv8_2_mbox_priorbox_reshape = Reshape((-1, 4), name='conv8_2_mbox_priorbox_reshape')(conv8_2_mbox_priorbox)
-    conv9_2_mbox_priorbox_reshape = Reshape((-1, 4), name='conv9_2_mbox_priorbox_reshape')(conv9_2_mbox_priorbox)
+    # Reshape the anchor box tensors, yielding 3D tensors of shape `(batch, height * width * n_boxes, 8)`
+    conv4_3_norm_mbox_priorbox_reshape = Reshape((-1, 8), name='conv4_3_norm_mbox_priorbox_reshape')(conv4_3_norm_mbox_priorbox)
+    fc7_mbox_priorbox_reshape = Reshape((-1, 8), name='fc7_mbox_priorbox_reshape')(fc7_mbox_priorbox)
+    conv6_2_mbox_priorbox_reshape = Reshape((-1, 8), name='conv6_2_mbox_priorbox_reshape')(conv6_2_mbox_priorbox)
+    conv7_2_mbox_priorbox_reshape = Reshape((-1, 8), name='conv7_2_mbox_priorbox_reshape')(conv7_2_mbox_priorbox)
+    conv8_2_mbox_priorbox_reshape = Reshape((-1, 8), name='conv8_2_mbox_priorbox_reshape')(conv8_2_mbox_priorbox)
+    conv9_2_mbox_priorbox_reshape = Reshape((-1, 8), name='conv9_2_mbox_priorbox_reshape')(conv9_2_mbox_priorbox)
 
     ### Concatenate the predictions from the different layers
 
@@ -277,7 +289,7 @@ def ssd_300(image_size,
                                                      conv8_2_mbox_loc_reshape,
                                                      conv9_2_mbox_loc_reshape])
 
-    # Output shape of `mbox_priorbox`: (batch, n_boxes_total, 4)
+    # Output shape of `mbox_priorbox`: (batch, n_boxes_total, 8)
     mbox_priorbox = Concatenate(axis=1, name='mbox_priorbox')([conv4_3_norm_mbox_priorbox_reshape,
                                                                fc7_mbox_priorbox_reshape,
                                                                conv6_2_mbox_priorbox_reshape,
@@ -290,7 +302,7 @@ def ssd_300(image_size,
     mbox_conf_softmax = Activation('softmax', name='mbox_conf_softmax')(mbox_conf)
 
     # Concatenate the class and box predictions and the anchors to one large predictions vector
-    # Output shape of `predictions`: (batch, n_boxes_total, n_classes + 4 + 4)
+    # Output shape of `predictions`: (batch, n_boxes_total, n_classes + 4 + 8)
     predictions = Concatenate(axis=2, name='predictions')([mbox_conf_softmax, mbox_loc, mbox_priorbox])
 
     model = Model(inputs=x, outputs=predictions)
