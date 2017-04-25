@@ -278,7 +278,7 @@ class BatchGenerator:
                 of `[min, max]`. Both min and max must be >=0.
             limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries
                 post any transformation. This should always be set to `True`, even if you set `include_thresh`
-                below to 0. I don't even know why I made this an option. If this is set to `False`, you could
+                to 0. I don't even know why I made this an option. If this is set to `False`, you could
                 end up with some boxes that lie entirely outside the image boundaries after a given transformation
                 and such boxes would of course not make any sense and have a strongly adverse effect on the learning.
             include_thresh (float, optional): Only relevant if `limit_boxes` is `True`. Determines the minimum
@@ -293,8 +293,8 @@ class BatchGenerator:
                 This can be useful for diagnostic purposes. Defaults to `False`. Only works if `train = True`.
 
         Yields:
-            The next batch as a tuple containing a numpy array that contains the images and a python list
-            that contains the corresponding labels for each image as 2D numpy arrays.
+            The next batch as a tuple containing a Numpy array that contains the images and a python list
+            that contains the corresponding labels for each image as 2D Numpy arrays.
         '''
 
         self.filenames, self.labels = shuffle(self.filenames, self.labels) # Shuffle the data before we begin
