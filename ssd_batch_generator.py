@@ -11,6 +11,7 @@ from sklearn.utils import shuffle
 from copy import deepcopy
 from PIL import Image
 import csv
+import os
 
 # Image processing functions used by the generator to perform the following image manipulations:
 # - Translation
@@ -103,9 +104,11 @@ def histogram_eq(image):
 
     return image1
 
-class BatchGenerator:
+class BatchGeneratorCSV:
     '''
     A generator to generate batches of samples and corresponding labels indefinitely.
+
+    The labels are read from a CSV file.
 
     Shuffles the dataset consistently after each complete pass.
 
@@ -116,29 +119,40 @@ class BatchGenerator:
     def __init__(self,
                  images_path='./data/',
                  labels_path='./data/labels.csv',
-                 n_classes=None):
+                 include_classes='all',
+                 input_format=['image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'],
+                 box_output_format=['class_id', 'xmin', 'xmax', 'ymin', 'ymax']):
         '''
         Arguments:
-            images_path (str): The filepath to the image samples, ending on a slash.
-            labels_path (str): The filepath to a CSV file that contains lines with
-                `(image file name, xmin, xmax, ymin, ymax, class_id)` for each ground truth bounding box.
-                `xmin` and `xmax` are the left-most and right-most horizontal coordinates of the box,
-                `ymin` and `ymax` are the top-most and bottom-most vertical coordinates of the box.
-                `class_id` is an integer greater than zero that is the class number associated with a given
-                box. The class ID 0 is reserved for the background class. The image file name is expected
-                to be just the name of the image file without the directory path at which the image is located.
-            n_classes (int, optional): If set, limits the number of classes included in the generated dataset
-                to the first `n_classes` classes. For example, if a label CSV file contains 10 different
-                positive classes and `n_classes` is set to be 4, then only the first three positive classes
-                will be included in the generated dataset (the fourth class being the background class, 0),
-                i.e. the dataset would contain the classes 0, 1, 2, and 3. This can be useful for experimental
-                purposes to limit the problem complexity by reducing the number of classes the model needs to
-                learn to distinguish. Defaults to `None`, in which case all classes found in the labels CSV
-                file will be included in the dataset.
+            images_path (str): The filepath to the image samples.
+            labels_path (str): The filepath to a CSV file that contains one ground truth bounding box per line
+                and each line contains the following six items: image file name, class ID, xmin, xmax, ymin, ymax.
+                The six items do not have to be in a specific order, but they must be the first six columns of
+                each line. The order of these items in the CSV file must be specified in `input_format`.
+                The class ID is an integer greater than zero. Class ID 0 is reserved for the background class.
+                `xmin` and `xmax` are the left-most and right-most absolute horizontal coordinates of the box,
+                `ymin` and `ymax` are the top-most and bottom-most absolute vertical coordinates of the box.
+                The image name is expected to be just the name of the image file without the directory path
+                at which the image is located.
+            include_classes (list, optional): Either 'all' or a list of integers containing the class IDs that
+                are to be included in the dataset. Defaults to 'all', in which case all boxes will be included
+                in the dataset.
+            input_format (list, optional): A list of six strings representing the order of the six items
+                image file name, class ID, xmin, xmax, ymin, ymax in the input CSV file. The expected strings
+                are 'image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'. Defaults to
+                `['image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id']`.
+            box_output_format (list, optional): A list of five string representing the desired order of the five
+                items class ID, xmin, xmax, ymin, ymax in the generated data. The expected strings are
+                'xmin', 'xmax', 'ymin', 'ymax', 'class_id'. If you want to train the model, this
+                must be the order that the box encoding class requires as input. Defaults to
+                `['class_id', 'xmin', 'xmax', 'ymin', 'ymax']`. This list only specifies the five box parameters
+                that are relevant as training targets, a list of filenames is generated separately.
         '''
         self.images_path = images_path
         self.labels_path = labels_path
-        self.n_classes = n_classes
+        self.include_classes = include_classes
+        self.input_format = input_format
+        self.box_output_format = box_output_format
         # `self.filenames` is a list containing all file names of the image samples. Note that it does not contain the actual image files themselves.
         self.filenames = [] # All unique image filenames will go here
         # `self.labels` is a list containing one 2D Numpy array per image. For an image with `k` ground truth bounding boxes,
@@ -154,33 +168,17 @@ class BatchGenerator:
         with open(self.labels_path, newline='') as csvfile:
             csvread = csv.reader(csvfile, delimiter=',')
             k = 0
-            if self.n_classes:
-                for i in csvread:
-                    if k == 0: # Skip the header row
-                        k += 1
-                        continue
-                    else:
-                        if int(i[5].strip()) >= self.n_classes:
-                            continue
-                        else:
-                            data.append([i[0].strip(),
-                                         int(i[1].strip()),
-                                         int(i[2].strip()),
-                                         int(i[3].strip()),
-                                         int(i[4].strip()),
-                                         int(i[5].strip())])
-            else:
-                for i in csvread:
-                    if k == 0: # Skip the header row
-                        k += 1
-                        continue
-                    else:
-                        data.append([i[0].strip(),
-                                     int(i[1].strip()),
-                                     int(i[2].strip()),
-                                     int(i[3].strip()),
-                                     int(i[4].strip()),
-                                     int(i[5].strip())])
+            for i in csvread: # For every line (i.e for every bounding box) in the CSV file...
+                if k == 0: # Skip the header row
+                    k += 1
+                    continue
+                else:
+                    if self.include_classes == 'all' or int(i[self.input_format.index('class_id')].strip()) in self.include_classes: # If the class_id is among the classes that are to be included in the dataset...
+                        obj = [] # Store the box class and coordinates here
+                        obj.append(i[self.input_format.index('image_name')].strip()) # Select the image name column in the input format and append its content to `obj`
+                        for item in self.box_output_format: # For each item in the output format...
+                            obj.append(int(i[self.input_format.index(item)].strip())) # ...select the respective column in the input format and append it to `obj`
+                        data.append(obj)
 
         data = sorted(data) # The data needs to be sorted, otherwise the next step won't give the correct result
 
@@ -294,11 +292,18 @@ class BatchGenerator:
 
         Yields:
             The next batch as a tuple containing a Numpy array that contains the images and a python list
-            that contains the corresponding labels for each image as 2D Numpy arrays.
+            that contains the corresponding labels for each image as 2D Numpy arrays. The output format
+            of the labels is according to the `box_output_format` that was specified in the constructor.
         '''
 
         self.filenames, self.labels = shuffle(self.filenames, self.labels) # Shuffle the data before we begin
         current = 0
+
+        # Find out the indices of the box coordinates in the label data
+        xmin = self.box_output_format.index('xmin')
+        xmax = self.box_output_format.index('xmax')
+        ymin = self.box_output_format.index('ymin')
+        ymax = self.box_output_format.index('ymax')
 
         while True:
 
@@ -310,7 +315,7 @@ class BatchGenerator:
                 current = 0
 
             for filename in self.filenames[current:current+batch_size]:
-                with Image.open('{}{}'.format(self.images_path, filename)) as img:
+                with Image.open('{}'.format(os.path.join(self.images_path, filename))) as img:
                     batch_X.append(np.array(img))
             batch_y = deepcopy(self.labels[current:current+batch_size])
 
@@ -344,30 +349,30 @@ class BatchGenerator:
                     p = np.random.uniform(0,1)
                     if p >= (1-flip):
                         batch_X[i] = _flip(batch_X[i])
-                        batch_y[i][:,[0,1]] = img_width - batch_y[i][:,[1,0]] # xmin and xmax are swapped when mirrored
+                        batch_y[i][:,[xmin,xmax]] = img_width - batch_y[i][:,[xmax,xmin]] # xmin and xmax are swapped when mirrored
 
                 if translate:
                     p = np.random.uniform(0,1)
                     if p >= (1-translate[2]):
                         batch_X[i], xshift, yshift = _translate(batch_X[i], translate[0], translate[1])
-                        batch_y[i][:,[0,1]] += xshift
-                        batch_y[i][:,[2,3]] += yshift
+                        batch_y[i][:,[xmin,xmax]] += xshift
+                        batch_y[i][:,[ymin,ymax]] += yshift
                         if limit_boxes:
                             before_limiting = deepcopy(batch_y[i])
-                            x_coords = batch_y[i][:,[0,1]]
+                            x_coords = batch_y[i][:,[xmin,xmax]]
                             x_coords[x_coords >= img_width] = img_width - 1
                             x_coords[x_coords < 0] = 0
-                            batch_y[i][:,[0,1]] = x_coords
-                            y_coords = batch_y[i][:,[2,3]]
+                            batch_y[i][:,[xmin,xmax]] = x_coords
+                            y_coords = batch_y[i][:,[ymin,ymax]]
                             y_coords[y_coords >= img_height] = img_height - 1
                             y_coords[y_coords < 0] = 0
-                            batch_y[i][:,[2,3]] = y_coords
+                            batch_y[i][:,[ymin,ymax]] = y_coords
                             # Some objects might have gotten pushed so far outside the image boundaries in the transformation
                             # process that they don't serve as useful training examples anymore, because too little of them is
                             # visible. We'll remove all boxes that we had to limit so much that their area is less than
                             # `include_thresh` of the box area before limiting.
-                            before_area = (before_limiting[:,1] - before_limiting[:,0]) * (before_limiting[:,3] - before_limiting[:,2])
-                            after_area = (batch_y[i][:,1] - batch_y[i][:,0]) * (batch_y[i][:,3] - batch_y[i][:,2])
+                            before_area = (before_limiting[:,xmax] - before_limiting[:,xmin]) * (before_limiting[:,ymax] - before_limiting[:,ymin])
+                            after_area = (batch_y[i][:,xmax] - batch_y[i][:,xmin]) * (batch_y[i][:,ymax] - batch_y[i][:,ymin])
                             if include_thresh == 0: batch_y[i] = batch_y[i][after_area > include_thresh * before_area] # If `include_thresh == 0`, we want to make sure that boxes with area 0 get thrown out, hence the ">" sign instead of the ">=" sign
                             else: batch_y[i] = batch_y[i][after_area >= include_thresh * before_area] # Especially for the case `include_thresh == 1` we want the ">=" sign, otherwise no boxes would be left at all
 
@@ -376,28 +381,28 @@ class BatchGenerator:
                     if p >= (1-scale[2]):
                         batch_X[i], M, scale_factor = _scale(batch_X[i], scale[0], scale[1])
                         # Transform two opposite corner points of the rectangular boxes using the transformation matrix `M`
-                        toplefts = np.array([batch_y[i][:,0], batch_y[i][:,2], np.ones(batch_y[i].shape[0])])
-                        bottomrights = np.array([batch_y[i][:,1], batch_y[i][:,3], np.ones(batch_y[i].shape[0])])
+                        toplefts = np.array([batch_y[i][:,xmin], batch_y[i][:,ymin], np.ones(batch_y[i].shape[0])])
+                        bottomrights = np.array([batch_y[i][:,xmax], batch_y[i][:,ymax], np.ones(batch_y[i].shape[0])])
                         new_toplefts = (np.dot(M, toplefts)).T
                         new_bottomrights = (np.dot(M, bottomrights)).T
-                        batch_y[i][:,[0,2]] = new_toplefts.astype(np.int)
-                        batch_y[i][:,[1,3]] = new_bottomrights.astype(np.int)
+                        batch_y[i][:,[xmin,ymin]] = new_toplefts.astype(np.int)
+                        batch_y[i][:,[xmax,ymax]] = new_bottomrights.astype(np.int)
                         if limit_boxes and (scale_factor > 1): # We don't need to do any limiting in case we shrunk the image
                             before_limiting = deepcopy(batch_y[i])
-                            x_coords = batch_y[i][:,[0,1]]
+                            x_coords = batch_y[i][:,[xmin,xmax]]
                             x_coords[x_coords >= img_width] = img_width - 1
                             x_coords[x_coords < 0] = 0
-                            batch_y[i][:,[0,1]] = x_coords
-                            y_coords = batch_y[i][:,[2,3]]
+                            batch_y[i][:,[xmin,xmax]] = x_coords
+                            y_coords = batch_y[i][:,[ymin,ymax]]
                             y_coords[y_coords >= img_height] = img_height - 1
                             y_coords[y_coords < 0] = 0
-                            batch_y[i][:,[2,3]] = y_coords
+                            batch_y[i][:,[ymin,ymax]] = y_coords
                             # Some objects might have gotten pushed so far outside the image boundaries in the transformation
                             # process that they don't serve as useful training examples anymore, because too little of them is
                             # visible. We'll remove all boxes that we had to limit so much that their area is less than
                             # `include_thresh` of the box area before limiting.
-                            before_area = (before_limiting[:,1] - before_limiting[:,0]) * (before_limiting[:,3] - before_limiting[:,2])
-                            after_area = (batch_y[i][:,1] - batch_y[i][:,0]) * (batch_y[i][:,3] - batch_y[i][:,2])
+                            before_area = (before_limiting[:,xmax] - before_limiting[:,xmin]) * (before_limiting[:,ymax] - before_limiting[:,ymin])
+                            after_area = (batch_y[i][:,xmax] - batch_y[i][:,xmin]) * (batch_y[i][:,ymax] - batch_y[i][:,ymin])
                             if include_thresh == 0: batch_y[i] = batch_y[i][after_area > include_thresh * before_area] # If `include_thresh == 0`, we want to make sure that boxes with area 0 get thrown out, hence the ">" sign instead of the ">=" sign
                             else: batch_y[i] = batch_y[i][after_area >= include_thresh * before_area] # Especially for the case `include_thresh == 1` we want the ">=" sign, otherwise no boxes would be left at all
 
@@ -408,40 +413,40 @@ class BatchGenerator:
                         # We only need to check those coordinates that could possibly have been affected by the cropping
                         # For example, if we only crop off the top and/or bottom of images, there is no need to check the x-coordinates
                         if crop[0] > 0:
-                            y_coords = batch_y[i][:,[2,3]]
+                            y_coords = batch_y[i][:,[ymin,ymax]]
                             y_coords[y_coords < crop[0]] = crop[0]
-                            batch_y[i][:,[2,3]] = y_coords
+                            batch_y[i][:,[ymin,ymax]] = y_coords
                         if crop[1] > 0:
-                            y_coords = batch_y[i][:,[2,3]]
+                            y_coords = batch_y[i][:,[ymin,ymax]]
                             y_coords[y_coords >= (img_height - crop[1])] = img_height - crop[1] - 1
-                            batch_y[i][:,[2,3]] = y_coords
+                            batch_y[i][:,[ymin,ymax]] = y_coords
                         if crop[2] > 0:
-                            x_coords = batch_y[i][:,[0,1]]
+                            x_coords = batch_y[i][:,[xmin,xmax]]
                             x_coords[x_coords < crop[2]] = crop[2]
-                            batch_y[i][:,[0,1]] = x_coords
+                            batch_y[i][:,[xmin,xmax]] = x_coords
                         if crop[3] > 0:
-                            x_coords = batch_y[i][:,[0,1]]
+                            x_coords = batch_y[i][:,[xmin,xmax]]
                             x_coords[x_coords >= (img_width - crop[3])] = img_width - crop[3] - 1
-                            batch_y[i][:,[0,1]] = x_coords
+                            batch_y[i][:,[xmin,xmax]] = x_coords
                         # Some objects might have gotten pushed so far outside the image boundaries in the transformation
                         # process that they don't serve as useful training examples anymore, because too little of them is
                         # visible. We'll remove all boxes that we had to limit so much that their area is less than
                         # `include_thresh` of the box area before limiting.
-                        before_area = (before_limiting[:,1] - before_limiting[:,0]) * (before_limiting[:,3] - before_limiting[:,2])
-                        after_area = (batch_y[i][:,1] - batch_y[i][:,0]) * (batch_y[i][:,3] - batch_y[i][:,2])
+                        before_area = (before_limiting[:,xmax] - before_limiting[:,xmin]) * (before_limiting[:,ymax] - before_limiting[:,ymin])
+                        after_area = (batch_y[i][:,xmax] - batch_y[i][:,xmin]) * (batch_y[i][:,ymax] - batch_y[i][:,ymin])
                         if include_thresh == 0: batch_y[i] = batch_y[i][after_area > include_thresh * before_area] # If `include_thresh == 0`, we want to make sure that boxes with area 0 get thrown out, hence the ">" sign instead of the ">=" sign
                         else: batch_y[i] = batch_y[i][after_area >= include_thresh * before_area] # Especially for the case `include_thresh == 1` we want the ">=" sign, otherwise no boxes would be left at all
                     if crop[0] > 0:
-                        batch_y[i][:,[2,3]] -= crop[0]
+                        batch_y[i][:,[ymin,ymax]] -= crop[0]
                     if crop[2] > 0:
-                        batch_y[i][:,[0,1]] -= crop[2]
+                        batch_y[i][:,[xmin,xmax]] -= crop[2]
                     img_height -= crop[0] - crop[1]
                     img_width -= crop[2] - crop[3]
 
                 if resize:
                     batch_X[i] = cv2.resize(batch_X[i], dsize=resize)
-                    batch_y[i][:,[0,1]] = (batch_y[i][:,[0,1]] * (resize[0] / img_width)).astype(np.int)
-                    batch_y[i][:,[2,3]] = (batch_y[i][:,[2,3]] * (resize[1] / img_height)).astype(np.int)
+                    batch_y[i][:,[xmin,xmax]] = (batch_y[i][:,[xmin,xmax]] * (resize[0] / img_width)).astype(np.int)
+                    batch_y[i][:,[ymin,ymax]] = (batch_y[i][:,[ymin,ymax]] * (resize[1] / img_height)).astype(np.int)
 
                 if gray:
                     batch_X[i] = np.expand_dims(cv2.cvtColor(batch_X[i], cv2.COLOR_RGB2GRAY), 3)
@@ -531,7 +536,7 @@ class BatchGenerator:
 
         for k, filename in enumerate(self.filenames[start:stop]):
             i = k + start
-            with Image.open('{}{}'.format(self.images_path, filename)) as img:
+            with Image.open('{}'.format(os.path.join(self.images_path, filename))) as img:
                 image = np.array(img)
             targets = np.copy(self.labels[i])
 
