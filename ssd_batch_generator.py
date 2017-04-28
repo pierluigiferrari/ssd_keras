@@ -211,14 +211,15 @@ class BatchGeneratorCSV:
                  batch_size=32,
                  train=True,
                  ssd_box_encoder=None,
-                 crop=False,
-                 resize=False,
-                 gray=False,
                  equalize=False,
                  brightness=False,
                  flip=False,
                  translate=False,
                  scale=False,
+                 random_crop=False,
+                 crop=False,
+                 resize=False,
+                 gray=False,
                  limit_boxes=True,
                  include_thresh=0.3,
                  diagnostics=False):
@@ -236,7 +237,9 @@ class BatchGeneratorCSV:
         `resize`, `gray`, and `equalize` are image conversion tools and should be
         used consistently during training and inference. The remaining transformations
         serve for data augmentation. Each data augmentation process can set its own
-        independent application probability.
+        independent application probability. The transformations are performed
+        in the order of their arguments, i.e. equalization is performed first,
+        grayscale conversion is performed last.
 
         `prob` works the same way in all arguments in which it appears. It must be a float in [0,1]
         and determines the probability that the respective transform is applied to any given image.
@@ -250,13 +253,6 @@ class BatchGeneratorCSV:
                 the output format of the labels is identical to the input format. Defaults to `True`.
             ssd_box_encoder (SSDBoxEncoder, optional): Only required if `train = True`. An SSDBoxEncoder object
                 to encode the ground truth labels to the required format for training an SSD model.
-            crop (tuple, optional): `False` or a tuple of four integers, `(crop_top, crop_bottom, crop_left, crop_right)`,
-                with the number of pixels to crop off of each side of the images.
-                The targets are adjusted accordingly. Note: Cropping happens before resizing.
-            resize (tuple, optional): `False` or a tuple of 2 integers for the desired output
-                size of the images in pixels. The expected format is `(width, height)`.
-                The box coordinates are adjusted accordingly. Note: Resizing happens after cropping.
-            gray (bool, optional): If `True`, converts the images to grayscale.
             equalize (bool, optional): If `True`, performs histogram equalization on the images.
                 This can improve contrast and lead the improved model performance.
             brightness (tuple, optional): `False` or a tuple containing three floats, `(min, max, prob)`.
@@ -274,6 +270,23 @@ class BatchGeneratorCSV:
             scale (tuple, optional): `False` or a tuple containing three floats, `(min, max, prob)`.
                 Scales the image by a factor randomly picked from a uniform distribution in the boundaries
                 of `[min, max]`. Both min and max must be >=0.
+            random_crop (tuple, optional): `False` or a tuple of four integers, `(height, width, min_1_object, max_#_trials)`,
+                where `height` and `width` are the height and width of the patch that is to be cropped out at a random
+                position in the input image. Note that `height` and `width` can be arbitrary - they are allowed to be larger
+                than the image height and width, in which case the original image will be randomly placed on a black background
+                canvas of size `(height, width)`. `min_1_object` is either 0 or 1. If 1, there must be at least one detectable
+                object remaining in the image for the crop to be valid, and if 0, crops with no detectable objects left in the
+                image patch are allowed. `max_#_trials` is only relevant if `min_1_object == 1` and sets the maximum number
+                of attempts to get a valid crop. If no valid crop was obtained within this maximum number of attempts,
+                the respective image will be removed from the batch without replacement (i.e. for each removed image, the batch
+                will be one sample smaller). Defaults to `False`.
+            crop (tuple, optional): `False` or a tuple of four integers, `(crop_top, crop_bottom, crop_left, crop_right)`,
+                with the number of pixels to crop off of each side of the images.
+                The targets are adjusted accordingly. Note: Cropping happens before resizing.
+            resize (tuple, optional): `False` or a tuple of 2 integers for the desired output
+                size of the images in pixels. The expected format is `(width, height)`.
+                The box coordinates are adjusted accordingly. Note: Resizing happens after cropping.
+            gray (bool, optional): If `True`, converts the images to grayscale.
             limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries
                 post any transformation. This should always be set to `True`, even if you set `include_thresh`
                 to 0. I don't even know why I made this an option. If this is set to `False`, you could
@@ -319,15 +332,18 @@ class BatchGeneratorCSV:
                     batch_X.append(np.array(img))
             batch_y = deepcopy(self.labels[current:current+batch_size])
 
+            this_filenames = self.filenames[current:current+batch_size] # The filenames of the files in the current batch
+
             if diagnostics:
-                ret1 = self.filenames[current:current+batch_size] # The filenames of the files in the batch
-                ret2 = np.copy(batch_X) # The original, unaltered images
-                ret3 = deepcopy(batch_y) # The original, unaltered labels
+                original_images = np.copy(batch_X) # The original, unaltered images
+                original_labels = deepcopy(batch_y) # The original, unaltered labels
 
             current += batch_size
 
             # At this point we're done producing the batch. Now perform some
             # optional image transformations:
+
+            batch_items_to_remove = [] # In case we need to remove any images from the batch because of failed random cropping, store their indices here
 
             for i in range(len(batch_X)):
 
@@ -354,9 +370,12 @@ class BatchGeneratorCSV:
                 if translate:
                     p = np.random.uniform(0,1)
                     if p >= (1-translate[2]):
+                        # Translate the image and return the shift values so that we can adjust the labels
                         batch_X[i], xshift, yshift = _translate(batch_X[i], translate[0], translate[1])
+                        # Adjust the labels
                         batch_y[i][:,[xmin,xmax]] += xshift
                         batch_y[i][:,[ymin,ymax]] += yshift
+                        # Limit the box coordinates to lie within the image boundaries
                         if limit_boxes:
                             before_limiting = deepcopy(batch_y[i])
                             x_coords = batch_y[i][:,[xmin,xmax]]
@@ -379,7 +398,9 @@ class BatchGeneratorCSV:
                 if scale:
                     p = np.random.uniform(0,1)
                     if p >= (1-scale[2]):
+                        # Rescale the image and return the transformation matrix M so we can use it to adjust the box coordinates
                         batch_X[i], M, scale_factor = _scale(batch_X[i], scale[0], scale[1])
+                        # Adjust the box coordinates
                         # Transform two opposite corner points of the rectangular boxes using the transformation matrix `M`
                         toplefts = np.array([batch_y[i][:,xmin], batch_y[i][:,ymin], np.ones(batch_y[i].shape[0])])
                         bottomrights = np.array([batch_y[i][:,xmax], batch_y[i][:,ymax], np.ones(batch_y[i].shape[0])])
@@ -387,6 +408,7 @@ class BatchGeneratorCSV:
                         new_bottomrights = (np.dot(M, bottomrights)).T
                         batch_y[i][:,[xmin,ymin]] = new_toplefts.astype(np.int)
                         batch_y[i][:,[xmax,ymax]] = new_bottomrights.astype(np.int)
+                        # Limit the box coordinates to lie within the image boundaries
                         if limit_boxes and (scale_factor > 1): # We don't need to do any limiting in case we shrunk the image
                             before_limiting = deepcopy(batch_y[i])
                             x_coords = batch_y[i][:,[xmin,xmax]]
@@ -406,27 +428,147 @@ class BatchGeneratorCSV:
                             if include_thresh == 0: batch_y[i] = batch_y[i][after_area > include_thresh * before_area] # If `include_thresh == 0`, we want to make sure that boxes with area 0 get thrown out, hence the ">" sign instead of the ">=" sign
                             else: batch_y[i] = batch_y[i][after_area >= include_thresh * before_area] # Especially for the case `include_thresh == 1` we want the ">=" sign, otherwise no boxes would be left at all
 
+                if random_crop:
+                    # Compute how much room we have in both dimensions to make a random crop.
+                    # A negative number here means that we want to crop out a patch that is larger than the original image in the respective dimension,
+                    # in which case we will create a black background canvas onto which we will randomly place the image.
+                    y_range = img_height - random_crop[0]
+                    x_range = img_width - random_crop[1]
+                    # Keep track of the number of trials and of whether or not the most recent crop contains at least one object
+                    min_1_object_fulfilled = False
+                    trial_counter = 0
+                    while (not min_1_object_fulfilled) and (trial_counter < random_crop[3]):
+                        # Select a random crop position from the possible crop positions
+                        if y_range >= 0: crop_ymin = np.random.randint(0, y_range + 1) # There are y_range + 1 possible positions for the crop in the vertical dimension
+                        else: crop_ymin = np.random.randint(0, -y_range + 1) # The possible positions for the image on the background canvas in the vertical dimension
+                        if x_range >= 0: crop_xmin = np.random.randint(0, x_range + 1) # There are x_range + 1 possible positions for the crop in the horizontal dimension
+                        else: crop_xmin = np.random.randint(0, -x_range + 1) # The possible positions for the image on the background canvas in the horizontal dimension
+                        # Perform the crop
+                        if y_range >= 0 and x_range >= 0: # If the patch to be cropped out is smaller than the original image in both dimenstions, we just perform a regular crop
+                            # Crop the image
+                            patch_X = np.copy(batch_X[i][crop_ymin:crop_ymin+random_crop[0], crop_xmin:crop_xmin+random_crop[1]])
+                            # Translate the box coordinates into the new coordinate system: Cropping shifts the origin by `(crop_ymin, crop_xmin)`
+                            patch_y = np.copy(batch_y[i])
+                            patch_y[:,[ymin,ymax]] -= crop_ymin
+                            patch_y[:,[xmin,xmax]] -= crop_xmin
+                            # Limit the box coordinates to lie within the new image boundaries
+                            if limit_boxes:
+                                # Both the x- and y-coordinates might need to be limited
+                                before_limiting = np.copy(patch_y)
+                                y_coords = patch_y[:,[ymin,ymax]]
+                                y_coords[y_coords < 0] = 0
+                                y_coords[y_coords >= random_crop[0]] = random_crop[0] - 1
+                                patch_y[:,[ymin,ymax]] = y_coords
+                                x_coords = patch_y[:,[xmin,xmax]]
+                                x_coords[x_coords < 0] = 0
+                                x_coords[x_coords >= random_crop[1]] = random_crop[1] - 1
+                                patch_y[:,[xmin,xmax]] = x_coords
+                        elif y_range >= 0 and x_range < 0: # If the crop is larger than the original image in the horizontal dimension only,...
+                            # Crop the image
+                            patch_X = np.copy(batch_X[i][crop_ymin:crop_ymin+random_crop[0]]) # ...crop the vertical dimension just as before,...
+                            canvas = np.zeros((random_crop[0], random_crop[1], patch_X.shape[2]), dtype=np.uint8) # ...generate a blank background image to place the patch onto,...
+                            canvas[:, crop_xmin:crop_xmin+img_width] = patch_X # ...and place the patch onto the canvas at the random `crop_xmin` position computed above.
+                            patch_X = canvas
+                            # Translate the box coordinates into the new coordinate system: In this case, the origin is shifted by `(crop_ymin, -crop_xmin)`
+                            patch_y = np.copy(batch_y[i])
+                            patch_y[:,[ymin,ymax]] -= crop_ymin
+                            patch_y[:,[xmin,xmax]] += crop_xmin
+                            # Limit the box coordinates to lie within the new image boundaries
+                            if limit_boxes:
+                                # Only the y-coordinates might need to be limited
+                                before_limiting = np.copy(patch_y)
+                                y_coords = patch_y[:,[ymin,ymax]]
+                                y_coords[y_coords < 0] = 0
+                                y_coords[y_coords >= random_crop[0]] = random_crop[0] - 1
+                                patch_y[:,[ymin,ymax]] = y_coords
+                        elif y_range < 0 and x_range >= 0: # If the crop is larger than the original image in the vertical dimension only,...
+                            # Crop the image
+                            patch_X = np.copy(batch_X[i][:,crop_xmin:crop_xmin+random_crop[1]]) # ...crop the horizontal dimension just as in the first case,...
+                            canvas = np.zeros((random_crop[0], random_crop[1], patch_X.shape[2]), dtype=np.uint8) # ...generate a blank background image to place the patch onto,...
+                            canvas[crop_ymin:crop_ymin+img_height, :] = patch_X # ...and place the patch onto the canvas at the random `crop_ymin` position computed above.
+                            patch_X = canvas
+                            # Translate the box coordinates into the new coordinate system: In this case, the origin is shifted by `(-crop_ymin, crop_xmin)`
+                            patch_y = np.copy(batch_y[i])
+                            patch_y[:,[ymin,ymax]] += crop_ymin
+                            patch_y[:,[xmin,xmax]] -= crop_xmin
+                            # Limit the box coordinates to lie within the new image boundaries
+                            if limit_boxes:
+                                # Only the x-coordinates might need to be limited
+                                before_limiting = np.copy(patch_y)
+                                x_coords = patch_y[:,[xmin,xmax]]
+                                x_coords[x_coords < 0] = 0
+                                x_coords[x_coords >= random_crop[1]] = random_crop[1] - 1
+                                patch_y[:,[xmin,xmax]] = x_coords
+                        else:  # If the crop is larger than the original image in both dimensions,...
+                            patch_X = np.copy(batch_X[i])
+                            canvas = np.zeros((random_crop[0], random_crop[1], patch_X.shape[2]), dtype=np.uint8) # ...generate a blank background image to place the patch onto,...
+                            canvas[crop_ymin:crop_ymin+img_height, crop_xmin:crop_xmin+img_width] = patch_X # ...and place the patch onto the canvas at the random `(crop_ymin, crop_xmin)` position computed above.
+                            patch_X = canvas
+                            # Translate the box coordinates into the new coordinate system: In this case, the origin is shifted by `(-crop_ymin, -crop_xmin)`
+                            patch_y = np.copy(batch_y[i])
+                            patch_y[:,[ymin,ymax]] += crop_ymin
+                            patch_y[:,[xmin,xmax]] += crop_xmin
+                            # Note that no limiting is necessary in this case
+                        # Some objects might have gotten pushed so far outside the image boundaries in the transformation
+                        # process that they don't serve as useful training examples anymore, because too little of them is
+                        # visible. We'll remove all boxes that we had to limit so much that their area is less than
+                        # `include_thresh` of the box area before limiting.
+                        if limit_boxes and (y_range >= 0 or x_range >= 0):
+                            before_area = (before_limiting[:,xmax] - before_limiting[:,xmin]) * (before_limiting[:,ymax] - before_limiting[:,ymin])
+                            after_area = (patch_y[:,xmax] - patch_y[:,xmin]) * (patch_y[:,ymax] - patch_y[:,ymin])
+                            if include_thresh == 0: patch_y = patch_y[after_area > include_thresh * before_area] # If `include_thresh == 0`, we want to make sure that boxes with area 0 get thrown out, hence the ">" sign instead of the ">=" sign
+                            else: patch_y = patch_y[after_area >= include_thresh * before_area] # Especially for the case `include_thresh == 1` we want the ">=" sign, otherwise no boxes would be left at all
+                        trial_counter += 1 # We've just used one of our trials
+                        # Check if we have found a valid crop
+                        if random_crop[2] == 0: # If `min_1_object == 0`, break out of the while loop after the first loop because we are fine with whatever crop we got
+                            batch_X[i] = patch_X # The cropped patch becomes our new batch item
+                            batch_y[i] = patch_y # The adjusted boxes become our new labels for this batch item
+                            # Update the image size so that subsequent transformations can work correctly
+                            img_height = random_crop[0]
+                            img_width = random_crop[1]
+                            break
+                        elif len(patch_y) > 0: # If we have at least one object left, this crop is valid and we can stop
+                            min_1_object_fulfilled = True
+                            batch_X[i] = patch_X # The cropped patch becomes our new batch item
+                            batch_y[i] = patch_y # The adjusted boxes become our new labels for this batch item
+                            # Update the image size so that subsequent transformations can work correctly
+                            img_height = random_crop[0]
+                            img_width = random_crop[1]
+                        elif trial_counter >= random_crop[3]: # If we've reached the trial limit and still not found a valid crop, remove this image from the batch
+                            batch_items_to_remove.append(i)
+
                 if crop:
+                    # Crop the image
                     batch_X[i] = np.copy(batch_X[i][crop[0]:img_height-crop[1], crop[2]:img_width-crop[3]])
+                    # Translate the box coordinates into the new coordinate system if necessary: The origin is shifted by `(crop[0], crop[2])` (i.e. by the top and left crop values)
+                    # If nothing was cropped off from the top or left of the image, the coordinate system stays the same as before
+                    if crop[0] > 0:
+                        batch_y[i][:,[ymin,ymax]] -= crop[0]
+                    if crop[2] > 0:
+                        batch_y[i][:,[xmin,xmax]] -= crop[2]
+                    # Update the image size so that subsequent transformations can work correctly
+                    img_height -= crop[0] + crop[1]
+                    img_width -= crop[2] + crop[3]
+                    # Limit the box coordinates to lie within the new image boundaries
                     if limit_boxes:
-                        before_limiting = deepcopy(batch_y[i])
-                        # We only need to check those coordinates that could possibly have been affected by the cropping
-                        # For example, if we only crop off the top and/or bottom of images, there is no need to check the x-coordinates
+                        before_limiting = np.copy(batch_y[i])
+                        # We only need to check those box coordinates that could possibly have been affected by the cropping
+                        # For example, if we only crop off the top and/or bottom of the image, there is no need to check the x-coordinates
                         if crop[0] > 0:
                             y_coords = batch_y[i][:,[ymin,ymax]]
-                            y_coords[y_coords < crop[0]] = crop[0]
+                            y_coords[y_coords < 0] = 0
                             batch_y[i][:,[ymin,ymax]] = y_coords
                         if crop[1] > 0:
                             y_coords = batch_y[i][:,[ymin,ymax]]
-                            y_coords[y_coords >= (img_height - crop[1])] = img_height - crop[1] - 1
+                            y_coords[y_coords >= img_height] = img_height - 1
                             batch_y[i][:,[ymin,ymax]] = y_coords
                         if crop[2] > 0:
                             x_coords = batch_y[i][:,[xmin,xmax]]
-                            x_coords[x_coords < crop[2]] = crop[2]
+                            x_coords[x_coords < 0] = 0
                             batch_y[i][:,[xmin,xmax]] = x_coords
                         if crop[3] > 0:
                             x_coords = batch_y[i][:,[xmin,xmax]]
-                            x_coords[x_coords >= (img_width - crop[3])] = img_width - crop[3] - 1
+                            x_coords[x_coords >= img_width] = img_width - 1
                             batch_y[i][:,[xmin,xmax]] = x_coords
                         # Some objects might have gotten pushed so far outside the image boundaries in the transformation
                         # process that they don't serve as useful training examples anymore, because too little of them is
@@ -436,33 +578,33 @@ class BatchGeneratorCSV:
                         after_area = (batch_y[i][:,xmax] - batch_y[i][:,xmin]) * (batch_y[i][:,ymax] - batch_y[i][:,ymin])
                         if include_thresh == 0: batch_y[i] = batch_y[i][after_area > include_thresh * before_area] # If `include_thresh == 0`, we want to make sure that boxes with area 0 get thrown out, hence the ">" sign instead of the ">=" sign
                         else: batch_y[i] = batch_y[i][after_area >= include_thresh * before_area] # Especially for the case `include_thresh == 1` we want the ">=" sign, otherwise no boxes would be left at all
-                    if crop[0] > 0:
-                        batch_y[i][:,[ymin,ymax]] -= crop[0]
-                    if crop[2] > 0:
-                        batch_y[i][:,[xmin,xmax]] -= crop[2]
-                    img_height -= crop[0] - crop[1]
-                    img_width -= crop[2] - crop[3]
 
                 if resize:
                     batch_X[i] = cv2.resize(batch_X[i], dsize=resize)
                     batch_y[i][:,[xmin,xmax]] = (batch_y[i][:,[xmin,xmax]] * (resize[0] / img_width)).astype(np.int)
                     batch_y[i][:,[ymin,ymax]] = (batch_y[i][:,[ymin,ymax]] * (resize[1] / img_height)).astype(np.int)
+                    img_width, img_height = resize # Updating these at this point is unnecessary, but it's one fewer source of error if this method gets expanded in the future
 
                 if gray:
                     batch_X[i] = np.expand_dims(cv2.cvtColor(batch_X[i], cv2.COLOR_RGB2GRAY), 3)
 
-            if train:
+            # If any batch items need to be removed because of failed random cropping, remove them now.
+            batch_X = np.delete(batch_X, batch_items_to_remove, axis=0)
+            for j in batch_items_to_remove:
+                batch_y.pop(j) # This isn't efficient, but this should hopefully not need to be done often anyway
+
+            if train: # During training we need the encoded labels instead of the format that `batch_y` has
                 if ssd_box_encoder is None:
                     raise ValueError("`ssd_box_encoder` cannot be `None` in training mode.")
-                y_true = ssd_box_encoder.encode_y(batch_y)
+                y_true = ssd_box_encoder.encode_y(batch_y) # Encode the labels into the `y_true` tensor that the cost function needs
 
             if train:
                 if diagnostics:
-                    yield (np.array(batch_X), y_true, batch_y, ret1, ret2, ret3)
+                    yield (np.array(batch_X), y_true, batch_y, this_filenames, original_images, original_labels)
                 else:
                     yield (np.array(batch_X), y_true)
             else:
-                yield (np.array(batch_X), batch_y)
+                yield (np.array(batch_X), batch_y, this_filenames)
 
     def get_filenames_labels(self):
         '''
