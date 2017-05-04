@@ -127,7 +127,7 @@ class BatchGenerator:
             include_classes (list, optional): Either 'all' or a list of integers containing the class IDs that
                 are to be included in the dataset. Defaults to 'all', in which case all boxes will be included
                 in the dataset.
-            box_output_format (list, optional): A list of five string representing the desired order of the five
+            box_output_format (list, optional): A list of five strings representing the desired order of the five
                 items class ID, xmin, xmax, ymin, ymax in the generated data. The expected strings are
                 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'. If you want to train the model, this
                 must be the order that the box encoding class requires as input. Defaults to
@@ -481,11 +481,12 @@ class BatchGenerator:
             # At this point we're done producing the batch. Now perform some
             # optional image transformations:
 
-            batch_items_to_remove = [] # In case we need to remove any images from the batch because of failed random cropping, store their indices here
+            batch_items_to_remove = [] # In case we need to remove any images from the batch because of failed random cropping, store their indices in this list
 
             for i in range(len(batch_X)):
 
                 img_height, img_width, ch = batch_X[i].shape
+                batch_y[i] = np.array(batch_y[i]) # Convert labels into an array (in case it isn't one already), otherwise the indexing below breaks
 
                 if equalize:
                     batch_X[i] = histogram_eq(batch_X[i])
@@ -672,7 +673,7 @@ class BatchGenerator:
                             # Update the image size so that subsequent transformations can work correctly
                             img_height = random_crop[0]
                             img_width = random_crop[1]
-                        elif trial_counter >= random_crop[3]: # If we've reached the trial limit and still not found a valid crop, remove this image from the batch
+                        elif (trial_counter >= random_crop[3]) and (not i in batch_items_to_remove): # If we've reached the trial limit and still not found a valid crop, remove this image from the batch
                             batch_items_to_remove.append(i)
 
                 if crop:
@@ -727,8 +728,8 @@ class BatchGenerator:
                     batch_X[i] = np.expand_dims(cv2.cvtColor(batch_X[i], cv2.COLOR_RGB2GRAY), 3)
 
             # If any batch items need to be removed because of failed random cropping, remove them now.
-            batch_X = np.delete(batch_X, batch_items_to_remove, axis=0)
-            for j in batch_items_to_remove:
+            for j in sorted(batch_items_to_remove, reverse=True):
+                batch_X.pop(j)
                 batch_y.pop(j) # This isn't efficient, but this should hopefully not need to be done often anyway
 
             if train: # During training we need the encoded labels instead of the format that `batch_y` has
@@ -736,6 +737,8 @@ class BatchGenerator:
                     raise ValueError("`ssd_box_encoder` cannot be `None` in training mode.")
                 y_true = ssd_box_encoder.encode_y(batch_y) # Encode the labels into the `y_true` tensor that the cost function needs
 
+            # CAUTION: Converting `batch_X` into an array will result in an empty batch if the images have varying sizes.
+            #          At this point, all images have to have the same size, otherwise you will get an error during training.
             if train:
                 if diagnostics:
                     yield (np.array(batch_X), y_true, batch_y, this_filenames, original_images, original_labels)
