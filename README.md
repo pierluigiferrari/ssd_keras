@@ -1,21 +1,71 @@
-### README is under construction and will be expanded soon
-
 ## SSD implementation in Keras
 ---
 
-This is a Keras implementation of the SSD model architecture proposed in the paper [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325).
+### 1. Overview
 
-This project is still in development. Parts that will be added or updated soon are, among others:
-* Currently there is only a smaller 7-layer architecture (keras_ssd7.py) in the repository. I will add the original VGG-16-based architecture with trained weights soon.
-* The NMS (non-maximum suppression) stage has not yet been implemented. I will add it soon.
+This is a Keras implementation of the SSD model architecture introduced by Wei Liu at al. in the paper [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325).
 
-A note on dependencies:
-This code requires Keras 2.0 or later, which in turn requires TensorFlow 1.0 or later. Both Keras and TensorFlow underwent some syntax changes in those releases, so the code won't run on older versions.
+The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and expand or adapt the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments. That being said, the goal of this project is not to provide a fully trained model that you can just plug in and use, at least not until I get around to porting the trained weights from the original Caffe implementation.
 
-In this repository:
-* keras_ssd7.py contains the Keras SSD7 model, a smaller version of the original VGG-16 model from the paper.
-* keras_layer_L2Normalization.py contains a custom L2 normalization layer. SSD7 does not implement this normalization layer, but the original VGG-16 implementation needs it to adjust for the pretrained weights.
-* keras_ssd_loss.py contains the custom loss function for the SSD model.
-* ssd_box_encode_decode_utils.py contains utilities to encode ground truth labels into the format required by the loss function to train the SSD model, and also a function to decode the output from the model for inference.
-* ssd_batch_generator.py contains a generator to generate mini-batches for training or inference. Note the label format it requires, see the documentation.
-* train_ssd7.ipynb contains the training setup as an example.
+There are currently two base network architectures in this repository. One is a port of the original SSD300 architecture that is based on a reduced atrous VGG-16 as described in the paper. The architecture and all default parameter settings were taken directly from the `.prototxt` files of the original Caffe implementation. The other is a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough to do an OK job on on Pascal VOC and a surprisingly good job on datasets with only a few object categories. Of course you're not going to get state-of-the-art results with that one.
+
+### 2. Usage
+
+Clone or download this repository, then:
+
+#### 2.1 Training and prediction
+
+The general training setup is layed out and explained in `train_ssd300.ipynb`. To train the model on Pascal VOC, download the datasets:
+
+```
+wget http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCtrainval_11-May-2012.tar
+wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar
+wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar
+```
+
+Set the file paths to the data accordingly in `train_ssd300.ipynb` and execute the cells. I would also recommend loading pre-trained weights at least for the reduced VGG-16 base network, although I haven't gotten around to porting weights from the Caffe implementation myself yet. Both training and prediction are covered in the notebook, but mAP evaluation is not.
+
+The `train_ssd7.ipynb` notebook contains the same setup for the 7-layer version, which can be trained from scratch relatively quickly the way it is.
+
+#### 2.2 Working with the generator
+
+If you'd like to train a model on arbitrary datasets, a brief introduction to the design of the data generator may be useful:
+
+The generator class `BatchGenerator` is in the module `ssd_batch_generator.py` and using it consists of three steps:
+
+1. Create an instance using the constructor. The constructor simply sets the file path to the images, a list of object classes to be included (you may not want to include all object classes that are annotated in the dataset), and the desired order in which the generator yields the ground truth box coordinates and class ID.
+2. Next, lists of image names and annotations (labels, targets, call them whatever you like) need to be parsed from one or multiple source files such as CSV or XML files by calling one of the parser methods that `BatchGenerator` provides. The generator object stores the data that is later used to generate the batches in two Python lists: `filenames` and `labels`. The former contains just the names of the images to be included, e.g. "001934375.jpg". The latter contains for each image a Numpy array with the bounding box coordinates and object class ID of each labeled object in the image. The job of the parse methods that the generator provides is to create these two lists. `parse_xml()` does this for the Pascal VOC data format and `parse_csv()` does it for any CSV file in which the image names, category IDs and box coordinates make up the first six columns of the file. Now if you have a dataset that stores its information in a format that is not compatible with the two existing parser methods, you can just write an additional parser method that can parse whatever format your annotations are in. As long as that parser method sets the two lists `filenames` and `labels` as described in the documentation, you can use this generator with any arbitrary dataset without having to change anything else.
+3. Finally, in order to actually generate a batch, call the `generate()` method. You have to set the desired batch size and whether or not to generate batches in training mode. If batches are generated in training mode, `generate()` calls the `encode_y()` method of `SSDBoxEncoder` from the module `ssd_box_encode_decode_utils.py` to convert the ground truth labels into the big tensor that the cost function needs. This is why you need to pass an `SSDBoxEncoder` instance to `generate()` in training mode. Inside `encode_y()` is where the anchor box matching and box coordinate conversion happens. If batches are generated not in training mode, then the ground truth labels are just returned in their regular format along with the images. The remaining arguments of `generate()` are mainly image manipulation features for online data augmentation and to get the images into the size you need. The documentation describes them in detail.
+
+#### 2.3 Encoding and decoding boxes
+
+The module `ssd_box_encode_decode_utils.py` contains all functions and classes related to encoding and decoding boxes. Encoding boxes means converting ground truth labels into the target format that the loss function needs during training. It is this encoding process in which the matching of ground truth boxes to anchor boxes (the paper calls them default boxes and in the original C++ code they are called priors - all the same thing) happens. Decoding boxes means converting raw model output back to the input label format, which entails various conversion and filtering processes such as non-maximum suppression (NMS).
+
+In order to train the model, you need to create an instance of `SSDBoxEncoder` that needs to be passed to the batch generator. The batch generator does the rest, so you don't usually need to call any of `SSDBoxEncoder`'s methods manually. If you choose to use your own generator, here is very briefly how the `SSDBoxEncoder` class is set up: In order to produce a tensor for training you only need to call `encode_y()`, which calls `generate_encode_template()` to make a template full of anchor boxes, which in turn calls `generate_anchor_boxes()` to compute the anchor box coordinates for each classifier layer. The matching happens in `encode_y()`.
+
+To decode the raw model output, call either `decode_y()` or `decode_y2()`. The former follows the procedure outlined in the paper, which entails doing NMS per object category, the latter is a more efficient alternative that does not distinguish object categories for NMS and I found it also delivers better results. Read the documentation for details about both functions.
+
+A note on the `SSDBoxEncoder` constructor: The `coords` argument lets you choose what coordinate format the model should learn. If you choose the 'centroids' format, the targets will be converted to the `(cx, cy, w, h)` coordinate format used in the original implementation. If you choose the 'minmax' format, the targets will be converted to the coordinate format `(xmin, xmax, ymin, ymax)`.
+
+#### 2.4 Using a different base network architecture
+
+If you want to build a different base network architecture, you could use `keras_ssd7.py` as a template. Put together the base network you want and create classifier and anchor box layers on top of each network layer from which you would like to make predictions. Create two classifier heads for each, one for localization, one for classification.
+
+### 3. Dependencies
+
+* Python 3.x
+* Numpy
+* Tensorflow 1.x
+* Keras 2.x
+* OpenCV (for data augmentation)
+* Beautiful Soup 4.x (to parse XML files)
+
+Both Tensorflow 1.0 and Keras 2.0 brought major syntax changes, so this code won't work with older versions. The Theano backend is currently not supported.
+
+### 4. ToDo / Contributing
+
+The following things are still on the to-do list and contributions are welcome:
+
+* Port weights from the original Caffe implementation, both for the reduced VGG-16 base network and for the fully trained networks in all configurations (SSD300, SSD512, trained on Pascal VOC, MS COCO etc.)
+* Write an mAP evaluation module
+* Support the Theano backend
