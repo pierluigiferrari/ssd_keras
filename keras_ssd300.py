@@ -1,3 +1,22 @@
+'''
+A Keras port of the original Caffe SSD300 network.
+
+Copyright (C) 2017 Pierluigi Ferrari
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'''
+
 import numpy as np
 from keras.models import Model
 from keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, Reshape, Concatenate
@@ -20,7 +39,8 @@ def ssd_300(image_size,
             two_boxes_for_ar1=True,
             limit_boxes=False,
             variances=[0.1, 0.1, 0.2, 0.2],
-            coords='centroids'):
+            coords='centroids',
+            normalize_coords=False):
     '''
     Build a Keras model with SSD_300 architecture, see references.
 
@@ -72,11 +92,13 @@ def ssd_300(image_size,
         variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
             to be precise) for the encoded predicted box coordinates. A variance value of 1.0 would apply
             no scaling at all to the predictions, while values in (0,1) upscale the encoded predictions and values greater
-            than 1.0 downscale the encoded predictions. Defaults to `[0.1, 0.1, 0.2, 0.2]`, following the original
-            implementation. The coordinate format must be 'centroids'.
+            than 1.0 downscale the encoded predictions. Defaults to `[0.1, 0.1, 0.2, 0.2]`, following the original implementation.
+            The coordinate format must be 'centroids'.
         coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
             `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
             `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids', following the original implementation.
+        normalize_coords (bool, optional): Set to `True` if the model is supposed to use relative instead of absolute coordinates,
+            i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates. Defaults to `False`.
 
     Returns:
         model: The Keras SSD model.
@@ -162,7 +184,7 @@ def ssd_300(image_size,
     ### Design the actual network
 
     x = Input(shape=(img_height, img_width, img_channels))
-    normed = Lambda(lambda z: z/127.5 - 1., # Convert input feature range to [-1,1]
+    normed = Lambda(lambda z: z/127.5 - 1.0, # Convert input feature range to [-1,1]
                     output_shape=(img_height, img_width, img_channels),
                     name='lambda1')(x)
 
@@ -231,17 +253,17 @@ def ssd_300(image_size,
 
     # Output shape of anchors: `(batch, height, width, n_boxes, 8)`
     conv4_3_norm_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios_conv4_3,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='conv4_3_norm_mbox_priorbox')(conv4_3_norm)
+                                             two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv4_3_norm_mbox_priorbox')(conv4_3_norm)
     fc7_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios_fc7,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='fc7_mbox_priorbox')(fc7)
+                                    two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='fc7_mbox_priorbox')(fc7)
     conv6_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6_2,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='conv6_2_mbox_priorbox')(conv6_2)
+                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv6_2_mbox_priorbox')(conv6_2)
     conv7_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios_conv7_2,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='conv7_2_mbox_priorbox')(conv7_2)
+                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv7_2_mbox_priorbox')(conv7_2)
     conv8_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[4], next_scale=scales[5], aspect_ratios=aspect_ratios_conv8_2,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='conv8_2_mbox_priorbox')(conv8_2)
+                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv8_2_mbox_priorbox')(conv8_2)
     conv9_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[5], next_scale=scales[6], aspect_ratios=aspect_ratios_conv9_2,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='conv9_2_mbox_priorbox')(conv9_2)
+                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv9_2_mbox_priorbox')(conv9_2)
 
     ### Reshape
 

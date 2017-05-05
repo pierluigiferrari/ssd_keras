@@ -1,3 +1,22 @@
+'''
+A small Keras model with SSD architecture.
+
+Copyright (C) 2017 Pierluigi Ferrari
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'''
+
 import numpy as np
 from keras.models import Model
 from keras.layers import Input, Lambda, Convolution2D, MaxPooling2D, BatchNormalization, ELU, Reshape, Concatenate, Activation
@@ -14,7 +33,8 @@ def build_model(image_size,
                 two_boxes_for_ar1=True,
                 limit_boxes=True,
                 variances=[1.0, 1.0, 1.0, 1.0],
-                coords='centroids'):
+                coords='centroids',
+                normalize_coords=False):
     '''
     Build a Keras model with SSD architecture, see references.
 
@@ -72,6 +92,8 @@ def build_model(image_size,
         coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
             `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
             `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
+        normalize_coords (bool, optional): Set to `True` if the model is supposed to use relative instead of absolute coordinates,
+            i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates. Defaults to `False`.
 
     Returns:
         model: The Keras SSD model.
@@ -152,7 +174,6 @@ def build_model(image_size,
                     output_shape=(img_height, img_width, img_channels),
                     name='lambda1')(x)
 
-
     conv1 = Convolution2D(32, (5, 5), name='conv1', strides=(1, 1), padding="same")(normed)
     conv1 = BatchNormalization(axis=3, momentum=0.99, name='bn1')(conv1) # Tensorflow uses filter format [filter_height, filter_width, in_channels, out_channels], hence axis = 3
     conv1 = ELU(name='elu1')(conv1)
@@ -204,13 +225,13 @@ def build_model(image_size,
     # Generate the anchor boxes
     # Output shape of anchors: `(batch, height, width, n_boxes, 8)`
     anchors4 = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios_conv4,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='anchors4')(boxes4)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors4')(boxes4)
     anchors5 = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios_conv5,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='anchors5')(boxes5)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors5')(boxes5)
     anchors6 = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='anchors6')(boxes6)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors6')(boxes6)
     anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios_conv7,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, name='anchors7')(boxes7)
+                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors7')(boxes7)
 
     # Reshape the class predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, n_classes)`
     # We want the classes isolated in the last axis to perform softmax on them

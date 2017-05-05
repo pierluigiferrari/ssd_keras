@@ -1,3 +1,22 @@
+'''
+A custom Keras layer to generate anchor boxes.
+
+Copyright (C) 2017 Pierluigi Ferrari
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'''
+
 import keras.backend as K
 from keras.engine.topology import InputSpec
 from keras.engine.topology import Layer
@@ -46,6 +65,7 @@ class AnchorBoxes(Layer):
                  limit_boxes=True,
                  variances=[1.0, 1.0, 1.0, 1.0],
                  coords='centroids',
+                 normalize_coords=False,
                  **kwargs):
         '''
         All arguments need to be set to the same values used to train the model, otherwise the behavior is undefined.
@@ -73,6 +93,8 @@ class AnchorBoxes(Layer):
             coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
                 `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
                 `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
+            normalize_coords (bool, optional): Set to `True` if the model uses relative instead of absolute coordinates,
+                i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates. Defaults to `False`.
         '''
         if K.backend() != 'tensorflow':
             raise TypeError("This layer only supports TensorFlow at the moment, but you are using the {} backend.".format(K.backend()))
@@ -95,6 +117,7 @@ class AnchorBoxes(Layer):
         self.limit_boxes = limit_boxes
         self.variances = variances
         self.coords = coords
+        self.normalize_coords = normalize_coords
         # Compute the number of boxes per cell
         if (1 in aspect_ratios) & two_boxes_for_ar1:
             self.n_boxes = len(aspect_ratios) + 1
@@ -178,6 +201,11 @@ class AnchorBoxes(Layer):
             y_coords[y_coords >= self.img_height] = self.img_height - 1
             y_coords[y_coords < 0] = 0
             boxes_tensor[:,:,:,[2, 3]] = y_coords
+
+        # `normalize_coords` is enabled, normalize the coordinates to be within [0,1]
+        if self.normalize_coords:
+            boxes_tensor[:, :, :, :2] /= self.img_width
+            boxes_tensor[:, :, :, 2:] /= self.img_height
 
         if self.coords == 'centroids':
             # TODO: Implement box limiting directly for `(cx, cy, w, h)` so that we don't have to unnecessarily convert back and forth
