@@ -11,7 +11,7 @@ There are currently two base network architectures in this repository. One is a 
 
 ### 2. Examples
 
-Below are some examples of an SSD7 (i.e. the small 7-layer version) trained on a street traffic dataset released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations). The results you see below are predictions after only 7000 training steps at batch size 32. Admittedly, cars are rather easy objects to detect and the model sucks at recognizing pedestrians (which is also owed to there being very few pedestrians in the dataset), but it's still cool what such a small model can do after 7000 training iterations. Predictions are shown as blue boxes with labels and ground truth boxes are shown in green for comparison (without labels for better clarity).
+Below are some examples of an SSD7 (i.e. the small 7-layer version) trained on two street traffic datasets released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations) with roughly 20,000 images in total. The results you see below are predictions after only 7000 training steps at batch size 32. Admittedly, cars are rather easy objects to detect and the model sucks at recognizing pedestrians (which is also owed to there being very few pedestrians in the dataset), but it's still cool what such a small model can do after 7000 training iterations. Predictions are shown as blue boxes with labels and ground truth boxes are shown in green for comparison (without labels for better clarity).
 
 | | |
 |---|---|
