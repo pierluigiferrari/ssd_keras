@@ -18,7 +18,7 @@ Below are some examples of an SSD7 (i.e. the small 7-layer version) trained on t
 | ![img01](./examples/pred_01.png) | ![img01](./examples/pred_02.png) |
 | ![img01](./examples/pred_03.png) | ![img01](./examples/pred_04.png) |
 
-### 3. Usage
+### 3. How to use it
 
 Clone or download this repository, then:
 
@@ -32,7 +32,7 @@ wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar
 wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar
 ```
 
-Set the file paths to the data accordingly in `train_ssd300.ipynb` and execute the cells. I would also recommend loading pre-trained weights at least for the reduced VGG-16 base network, although I haven't gotten around to porting weights from the Caffe implementation myself yet. Both training and prediction are covered in the notebook, but mAP evaluation is not.
+Set the file paths to the data accordingly in `train_ssd300.ipynb` and execute the cells. I would also recommend loading pre-trained weights at least for the reduced VGG-16 base network, although I haven't gotten around to porting weights from the Caffe implementation myself yet. Training and prediction are covered in the notebook, but mAP evaluation is not.
 
 The `train_ssd7.ipynb` notebook contains the same setup for the 7-layer version, which can be trained from scratch relatively quickly the way it is.
 
