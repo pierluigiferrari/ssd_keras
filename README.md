@@ -9,6 +9,15 @@ The main goal of this project is to create an SSD implementation that is well do
 
 There are currently two base network architectures in this repository. One is a port of the original SSD300 architecture that is based on a reduced atrous VGG-16 as described in the paper. The architecture and all default parameter settings were taken directly from the `.prototxt` files of the original Caffe implementation. The other is a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough to do an OK job on on Pascal VOC and a surprisingly good job on datasets with only a few object categories. Of course you're not going to get state-of-the-art results with that one.
 
+### 2. Examples
+
+These are some examples of an SSD7 (i.e. the small 7-layer version) trained on street traffic dataset released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations). The results you see below are predictions after only 7000 training steps at batch size 32. Admittedly, cars are rather easy objects to detect and the model sucks at recognizing pedestrians (which is also owed to there being very few pedestrians in the dataset), but it's still remarkable what such a small model can do after 7000 training iterations.
+
+| | |
+|---|---|
+| ![img01](./examples/pred_01.png) | ![img01](./examples/pred_02.png) |
+| ![img01](./examples/pred_03.png) | ![img01](./examples/pred_04.png) |
+
 ### 2. Usage
 
 Clone or download this repository, then:
