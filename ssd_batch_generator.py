@@ -146,6 +146,8 @@ class BatchGenerator:
                 items class ID, xmin, xmax, ymin, ymax in the generated data. The expected strings are
                 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'. If you want to train the model, this
                 must be the order that the box encoding class requires as input. Defaults to
+                `['class_id', 'xmin', 'xmax', 'ymin', 'ymax']`. Note that even though the parser methods are
+                able to produce different output formats, the SSDBoxEncoder currently requires the format
                 `['class_id', 'xmin', 'xmax', 'ymin', 'ymax']`. This list only specifies the five box parameters
                 that are relevant as training targets, a list of filenames is generated separately.
         '''
