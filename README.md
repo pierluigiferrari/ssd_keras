@@ -18,11 +18,11 @@ These are some examples of an SSD7 (i.e. the small 7-layer version) trained on s
 | ![img01](./examples/pred_01.png) | ![img01](./examples/pred_02.png) |
 | ![img01](./examples/pred_03.png) | ![img01](./examples/pred_04.png) |
 
-### 2. Usage
+### 3. Usage
 
 Clone or download this repository, then:
 
-#### 2.1 Training and prediction
+#### 3.1 Training and prediction
 
 The general training setup is layed out and explained in `train_ssd300.ipynb`. To train the model on Pascal VOC, download the datasets:
 
@@ -36,7 +36,7 @@ Set the file paths to the data accordingly in `train_ssd300.ipynb` and execute t
 
 The `train_ssd7.ipynb` notebook contains the same setup for the 7-layer version, which can be trained from scratch relatively quickly the way it is.
 
-#### 2.2 Working with the generator
+#### 3.2 Working with the generator
 
 If you'd like to train a model on arbitrary datasets, a brief introduction to the design of the data generator may be useful:
 
@@ -46,7 +46,7 @@ The generator class `BatchGenerator` is in the module `ssd_batch_generator.py` a
 2. Next, lists of image names and annotations (labels, targets, call them whatever you like) need to be parsed from one or multiple source files such as CSV or XML files by calling one of the parser methods that `BatchGenerator` provides. The generator object stores the data that is later used to generate the batches in two Python lists: `filenames` and `labels`. The former contains just the names of the images to be included, e.g. "001934375.jpg". The latter contains for each image a Numpy array with the bounding box coordinates and object class ID of each labeled object in the image. The job of the parse methods that the generator provides is to create these two lists. `parse_xml()` does this for the Pascal VOC data format and `parse_csv()` does it for any CSV file in which the image names, category IDs and box coordinates make up the first six columns of the file. Now if you have a dataset that stores its information in a format that is not compatible with the two existing parser methods, you can just write an additional parser method that can parse whatever format your annotations are in. As long as that parser method sets the two lists `filenames` and `labels` as described in the documentation, you can use this generator with any arbitrary dataset without having to change anything else.
 3. Finally, in order to actually generate a batch, call the `generate()` method. You have to set the desired batch size and whether or not to generate batches in training mode. If batches are generated in training mode, `generate()` calls the `encode_y()` method of `SSDBoxEncoder` from the module `ssd_box_encode_decode_utils.py` to convert the ground truth labels into the big tensor that the cost function needs. This is why you need to pass an `SSDBoxEncoder` instance to `generate()` in training mode. Inside `encode_y()` is where the anchor box matching and box coordinate conversion happens. If batches are generated not in training mode, then the ground truth labels are just returned in their regular format along with the images. The remaining arguments of `generate()` are mainly image manipulation features for online data augmentation and to get the images into the size you need. The documentation describes them in detail.
 
-#### 2.3 Encoding and decoding boxes
+#### 3.3 Encoding and decoding boxes
 
 The module `ssd_box_encode_decode_utils.py` contains all functions and classes related to encoding and decoding boxes. Encoding boxes means converting ground truth labels into the target format that the loss function needs during training. It is this encoding process in which the matching of ground truth boxes to anchor boxes (the paper calls them default boxes and in the original C++ code they are called priors - all the same thing) happens. Decoding boxes means converting raw model output back to the input label format, which entails various conversion and filtering processes such as non-maximum suppression (NMS).
 
@@ -56,11 +56,11 @@ To decode the raw model output, call either `decode_y()` or `decode_y2()`. The f
 
 A note on the `SSDBoxEncoder` constructor: The `coords` argument lets you choose what coordinate format the model should learn. If you choose the 'centroids' format, the targets will be converted to the `(cx, cy, w, h)` coordinate format used in the original implementation. If you choose the 'minmax' format, the targets will be converted to the coordinate format `(xmin, xmax, ymin, ymax)`.
 
-#### 2.4 Using a different base network architecture
+#### 3.4 Using a different base network architecture
 
 If you want to build a different base network architecture, you could use `keras_ssd7.py` as a template. Put together the base network you want and create classifier and anchor box layers on top of each network layer from which you would like to make predictions. Create two classifier heads for each, one for localization, one for classification.
 
-### 3. Dependencies
+### 4. Dependencies
 
 * Python 3.x
 * Numpy
@@ -71,7 +71,7 @@ If you want to build a different base network architecture, you could use `keras
 
 Both Tensorflow 1.0 and Keras 2.0 brought major syntax changes, so this code won't work with older versions. The Theano backend is currently not supported.
 
-### 4. ToDo / Contributing
+### 5. ToDo / Contributing
 
 The following things are still on the to-do list and contributions are welcome:
 
