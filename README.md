@@ -7,7 +7,7 @@ This is a Keras implementation of the SSD model architecture introduced by Wei L
 
 The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and expand or adapt the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments. That being said, the goal of this project is not to provide a fully trained model, at least not until I get around to porting the trained weights from the original Caffe implementation. At the moment, you will have to either train the model yourself or port some trained weights from elsewhere.
 
-There are currently two base network architectures in this repository. One is a port of the original SSD300 architecture that is based on a reduced atrous VGG-16 as described in the paper. The architecture and all default parameter settings were taken directly from the `.prototxt` files of the original Caffe implementation. The other is a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough to do an OK job on on Pascal VOC and a surprisingly good job on datasets with only a few object categories. Of course you're not going to get state-of-the-art results with that one.
+There are currently two base network architectures in this repository. The first one, `keras_ssd300.py`, is a port of the original SSD300 architecture that is based on a reduced atrous VGG-16 as described in the paper. The architecture and all default parameter settings were taken directly from the `.prototxt` files of the original Caffe implementation. The other, `keras_ssd7.py`, is a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough to do an OK job on on Pascal VOC and a surprisingly good job on datasets with only a few object categories. Of course you're not going to get state-of-the-art results with that one.
 
 ### 2. Examples
 
@@ -35,8 +35,6 @@ wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar
 ```
 
 Set the file paths to the data accordingly in `train_ssd300.ipynb` and execute the cells. I would also recommend loading pre-trained weights at least for the reduced VGG-16 base network, although I haven't gotten around to porting weights from the Caffe implementation myself yet. Training and prediction are covered in the notebook, but mAP evaluation is not.
-
-The `train_ssd7.ipynb` notebook contains the same setup for the 7-layer version, which can be trained from scratch relatively quickly the way it is.
 
 #### 3.2 Working with the generator
 
