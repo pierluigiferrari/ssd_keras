@@ -9,6 +9,8 @@ The main goal of this project is to create an SSD implementation that is well do
 
 There are currently two base network architectures in this repository. The first one, `keras_ssd300.py`, is a port of the original SSD300 architecture that is based on a reduced atrous VGG-16 as described in the paper. The architecture and all default parameter settings were taken directly from the `.prototxt` files of the original Caffe implementation. The other, `keras_ssd7.py`, is a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough to do an OK job on Pascal VOC and a surprisingly good job on datasets with only a few object categories. Of course you're not going to get state-of-the-art results with that one.
 
+If you want to build an arbitrary SSD model architecture, you can use `keras_ssd7.py` as a template. It provides documentation and comments to help you turn it into a deeper network easily.
+
 ### 2. Examples
 
 Below are some examples of an SSD7 (i.e. the small 7-layer version) trained on two street traffic datasets released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations) with roughly 20,000 images in total and 5 object categories (more info in `train_ssd7.ipynb`). The results you see below are predictions after only 7000 training steps at batch size 32. Admittedly, cars are rather easy objects to detect and the model sucks at detecting pedestrians (which is also owed to there being relatively few pedestrians in the dataset), but it's still cool what such a small model can do after 7000 training iterations. Predictions are shown as blue boxes with labels and ground truth boxes are shown in green for comparison (without labels for better clarity).

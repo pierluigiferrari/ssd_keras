@@ -219,6 +219,11 @@ def build_model(image_size,
     conv7 = BatchNormalization(axis=3, momentum=0.99, name='bn7')(conv7)
     conv7 = ELU(name='elu7')(conv7)
 
+    # The next part is about adding the convolutional predictor layers on top of the base network
+    # that we defined above. In this case we'll have four predictor layers, but of course you could
+    # easily rewrite this into an arbitrarily deep base network and add an arbitrary number of
+    # predictor layers on top of the base network by simply following the pattern shown here.
+
     # Build the convolutional classifiers on top of conv layers 4, 5, 6, and 7
     # We build two classifiers on top of each of these layers: One for classes (classification), one for boxes (localization)
     # We precidt a class for each box, hence the classes classifiers have depth `n_boxes * n_classes`
