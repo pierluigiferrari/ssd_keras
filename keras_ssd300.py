@@ -44,8 +44,15 @@ def ssd_300(image_size,
     '''
     Build a Keras model with SSD_300 architecture, see references.
 
-    The base network is a modified VGG-16, extended by the SSD architecture,
+    The base network is a reduced atrous VGG-16, extended by the SSD architecture,
     as described in the paper.
+
+    In case you're wondering why this function has so many arguments: All arguments except
+    the first two (`image_size` and `n_classes`) are only needed so that the anchor box
+    layers can produce the correct anchor boxes. In case you're training the network, the
+    parameters passed here must be the same as the ones used to set up `SSDBoxEncoder`.
+    In case you're loading trained weights, the parameters passed here must be the same
+    as the ones used to produce the trained weights.
 
     Note: Requires Keras v2.0 or later. Currently works only with the
     TensorFlow backend (v1.0 or later).
@@ -73,8 +80,9 @@ def ssd_300(image_size,
         aspect_ratios_global (list, optional): The list of aspect ratios for which anchor boxes are to be
             generated. This list is valid for all prediction layers. Defaults to None.
         aspect_ratios_per_layer (list, optional): A list containing one aspect ratio list for each prediction layer.
-            If a list is passed, it overrides `aspect_ratios_global`. Defaults to the aspect ratios used in the
-            original SSD300 architecture, i.e.:
+            This allows you to set the aspect ratios for each predictor layer individually, which is the case for the
+            original SSD300 implementation. If a list is passed, it overrides `aspect_ratios_global`.
+            Defaults to the aspect ratios used in the original SSD300 architecture, i.e.:
                 [[0.5, 1.0, 2.0],
                  [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
                  [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
@@ -115,13 +123,28 @@ def ssd_300(image_size,
 
     n_classifier_layers = 6 # The number of classifier conv layers in the network is 6 for the original SSD300
 
+    # Get a few exceptions out of the way first
     if aspect_ratios_global is None and aspect_ratios_per_layer is None:
         raise ValueError("`aspect_ratios_global` and `aspect_ratios_per_layer` cannot both be None. At least one needs to be specified.")
     if aspect_ratios_per_layer:
         if len(aspect_ratios_per_layer) != n_classifier_layers:
             raise ValueError("It must be either aspect_ratios_per_layer is None or len(aspect_ratios_per_layer) == {}, but len(aspect_ratios_per_layer) == {}.".format(n_classifier_layers, len(aspect_ratios_per_layer)))
 
-    # The aspect ratios for each classifier layer
+    if (min_scale is None or max_scale is None) and scales is None:
+        raise ValueError("Either `min_scale` and `max_scale` or `scales` need to be specified.")
+    if scales:
+        if len(scales) != n_classifier_layers+1:
+            raise ValueError("It must be either scales is None or len(scales) == {}, but len(scales) == {}.".format(n_classifier_layers+1, len(scales)))
+    else: # If no explicit list of scaling factors was passed, compute the list of scaling factors from `min_scale` and `max_scale`
+        scales = np.linspace(min_scale, max_scale, n_classifier_layers+1)
+
+    if len(variances) != 4:
+        raise ValueError("4 variance values must be pased, but {} values were received.".format(len(variances)))
+    variances = np.array(variances)
+    if np.any(variances <= 0):
+        raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
+
+    # Set the aspect ratios for each classifier layer. These are only needed for the anchor box layers.
     if aspect_ratios_per_layer:
         aspect_ratios_conv4_3 = aspect_ratios_per_layer[0]
         aspect_ratios_fc7 = aspect_ratios_per_layer[1]
@@ -137,8 +160,9 @@ def ssd_300(image_size,
         aspect_ratios_conv8_2 = aspect_ratios_global
         aspect_ratios_conv9_2 = aspect_ratios_global
 
-    # The number of boxes predicted per cell for each classifier layer
-    if aspect_ratios_per_layer: # This is the case for the original implementation
+    # Compute the number of boxes to be predicted per cell for each classifier layer.
+    # We need this so that we know how many channels the classifier layers need to have.
+    if aspect_ratios_per_layer:
         n_boxes = []
         for aspect_ratios in aspect_ratios_per_layer:
             if (1 in aspect_ratios) & two_boxes_for_ar1:
@@ -151,7 +175,7 @@ def ssd_300(image_size,
         n_boxes_conv7_2 = n_boxes[3] # 6 boxes per cell for the original implementation
         n_boxes_conv8_2 = n_boxes[4] # 4 boxes per cell for the original implementation
         n_boxes_conv9_2 = n_boxes[5] # 4 boxes per cell for the original implementation
-    else:
+    else: # If only a global aspect ratio list was passed, then the number of boxes is the same for each predictor layer
         if (1 in aspect_ratios_global) & two_boxes_for_ar1:
             n_boxes = len(aspect_ratios_global) + 1
         else:
@@ -162,21 +186,6 @@ def ssd_300(image_size,
         n_boxes_conv7_2 = n_boxes
         n_boxes_conv8_2 = n_boxes
         n_boxes_conv9_2 = n_boxes
-
-    # Check/compute the scaling factors for the anchor boxes
-    if (min_scale is None or max_scale is None) and scales is None:
-        raise ValueError("Either `min_scale` and `max_scale` or `scales` need to be specified.")
-    if scales:
-        if len(scales) != n_classifier_layers+1:
-            raise ValueError("It must be either scales is None or len(scales) == {}, but len(scales) == {}.".format(n_classifier_layers+1, len(scales)))
-    else:
-        scales = np.linspace(min_scale, max_scale, n_classifier_layers+1)
-
-    if len(variances) != 4:
-        raise ValueError("4 variance values must be pased, but {} values were received.".format(len(variances)))
-    variances = np.array(variances)
-    if np.any(variances <= 0):
-        raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
 
     # Input image format
     img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
