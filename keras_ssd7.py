@@ -1,5 +1,5 @@
 '''
-A small 7-layer Keras model with SSD architecture. Also serves as a template to build arbitrary base networks.
+A small 7-layer Keras model with SSD architecture. Also serves as a template to build arbitrary network architectures.
 
 Copyright (C) 2017 Pierluigi Ferrari
 
@@ -219,8 +219,10 @@ def build_model(image_size,
     conv7 = BatchNormalization(axis=3, momentum=0.99, name='bn7')(conv7)
     conv7 = ELU(name='elu7')(conv7)
 
-    # The next part is about adding the convolutional predictor layers on top of the base network
-    # that we defined above. In this case we'll have four predictor layers, but of course you could
+    # The next part is to add the convolutional predictor layers on top of the base network
+    # that we defined above. Note that I use the term "base network" differently than the paper does.
+    # To me, the base network is everything that is not convolutional predictor layers or anchor
+    # box layers. In this case we'll have four predictor layers, but of course you could
     # easily rewrite this into an arbitrarily deep base network and add an arbitrary number of
     # predictor layers on top of the base network by simply following the pattern shown here.
 
