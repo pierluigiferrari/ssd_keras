@@ -1,6 +1,7 @@
 ## SSD implementation in Keras
 ---
-### Content
+### Contents
+
 1. [Overview](#overview)
 2. [Examples](#examples)
 3. [How to use it](#how-to-use-it)
