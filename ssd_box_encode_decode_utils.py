@@ -438,7 +438,7 @@ class SSDBoxEncoder:
                  img_height,
                  img_width,
                  n_classes,
-                 classifier_sizes,
+                 predictor_sizes,
                  min_scale=0.1,
                  max_scale=0.9,
                  scales=None,
@@ -456,20 +456,20 @@ class SSDBoxEncoder:
             img_height (int): The height of the input images.
             img_width (int): The width of the input images.
             n_classes (int): The number of classes including the background class.
-            classifier_sizes (list): A list of int-tuples of the format `(height, width)`
-                containing the output heights and widths of the convolutional classifier layers.
+            predictor_sizes (list): A list of int-tuples of the format `(height, width)`
+                containing the output heights and widths of the convolutional predictor layers.
             min_scale (float, optional): The smallest scaling factor for the size of the anchor boxes as a fraction
                 of the shorter side of the input images. Defaults to 0.1.
             max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
                 of the shorter side of the input images. All scaling factors between the smallest and the
                 largest will be linearly interpolated. Note that the second to last of the linearly interpolated
-                scaling factors will actually be the scaling factor for the last classifier layer, while the last
-                scaling factor is used for the second box for aspect ratio 1 in the last classifier layer
+                scaling factors will actually be the scaling factor for the last predictor layer, while the last
+                scaling factor is used for the second box for aspect ratio 1 in the last predictor layer
                 if `two_boxes_for_ar1` is `True`. Defaults to 0.9.
-            scales (list, optional): A list of floats containing scaling factors per convolutional classifier layer.
-                This list must be one element longer than the number of classifier layers. The first `k` elements are the
-                scaling factors for the `k` classifier layers, while the last element is used for the second box
-                for aspect ratio 1 in the last classifier layer if `two_boxes_for_ar1` is `True`. This additional
+            scales (list, optional): A list of floats containing scaling factors per convolutional predictor layer.
+                This list must be one element longer than the number of predictor layers. The first `k` elements are the
+                scaling factors for the `k` predictor layers, while the last element is used for the second box
+                for aspect ratio 1 in the last predictor layer if `two_boxes_for_ar1` is `True`. This additional
                 last scaling factor must be passed either way, even if it is not being used.
                 Defaults to `None`. If a list is passed, this argument overrides `min_scale` and
                 `max_scale`. All scaling factors must be greater than zero.
@@ -500,20 +500,20 @@ class SSDBoxEncoder:
                 This means instead of using absolute tartget coordinates, the encoder will scale all coordinates to be within [0,1].
                 This way learning becomes independent of the input image size. Defaults to `False`.
         '''
-        classifier_sizes = np.array(classifier_sizes)
-        if len(classifier_sizes.shape) == 1:
-            classifier_sizes = np.expand_dims(classifier_sizes, axis=0)
+        predictor_sizes = np.array(predictor_sizes)
+        if len(predictor_sizes.shape) == 1:
+            predictor_sizes = np.expand_dims(predictor_sizes, axis=0)
 
         if (min_scale is None or max_scale is None) and scales is None:
             raise ValueError("Either `min_scale` and `max_scale` or `scales` need to be specified.")
 
         if scales:
-            if (len(scales) != len(classifier_sizes)+1): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
-                raise ValueError("It must be either scales is None or len(scales) == len(classifier_sizes)+1, but len(scales) == {} and len(classifier_sizes)+1 == {}".format(len(scales), len(classifier_sizes)+1))
+            if (len(scales) != len(predictor_sizes)+1): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
+                raise ValueError("It must be either scales is None or len(scales) == len(predictor_sizes)+1, but len(scales) == {} and len(predictor_sizes)+1 == {}".format(len(scales), len(predictor_sizes)+1))
 
         if aspect_ratios_per_layer:
-            if (len(aspect_ratios_per_layer) != len(classifier_sizes)): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
-                raise ValueError("It must be either aspect_ratios_per_layer is None or len(aspect_ratios_per_layer) == len(classifier_sizes), but len(aspect_ratios_per_layer) == {} and len(classifier_sizes) == {}".format(len(aspect_ratios_per_layer), len(classifier_sizes)))
+            if (len(aspect_ratios_per_layer) != len(predictor_sizes)): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
+                raise ValueError("It must be either aspect_ratios_per_layer is None or len(aspect_ratios_per_layer) == len(predictor_sizes), but len(aspect_ratios_per_layer) == {} and len(predictor_sizes) == {}".format(len(aspect_ratios_per_layer), len(predictor_sizes)))
 
         if len(variances) != 4:
             raise ValueError("4 variance values must be pased, but {} values were received.".format(len(variances)))
@@ -530,7 +530,7 @@ class SSDBoxEncoder:
         self.img_height = img_height
         self.img_width = img_width
         self.n_classes = n_classes
-        self.classifier_sizes = classifier_sizes
+        self.predictor_sizes = predictor_sizes
         self.min_scale = min_scale
         self.max_scale = max_scale
         self.scales = scales
@@ -693,7 +693,7 @@ class SSDBoxEncoder:
         Arguments:
             batch_size (int): The batch size.
             diagnostics (bool, optional): See the documnentation for `generate_anchor_boxes()`. The diagnostic output
-                here is similar, just for all classifier conv layers.
+                here is similar, just for all predictor conv layers.
 
         Returns:
             A Numpy array of shape `(batch_size, #boxes, #classes + 8)`, the template into which to encode
@@ -705,18 +705,18 @@ class SSDBoxEncoder:
         # 1: Get the anchor box scaling factors for each conv layer from which we're going to make predictions
         #    If `scales` is given explicitly, we'll use that instead of computing it from `min_scale` and `max_scale`
         if not self.scales:
-            self.scales = np.linspace(self.min_scale, self.max_scale, len(self.classifier_sizes)+1)
+            self.scales = np.linspace(self.min_scale, self.max_scale, len(self.predictor_sizes)+1)
 
-        # 2: For each conv classifier layer (i.e. for each scale factor) get the tensors for
+        # 2: For each conv predictor layer (i.e. for each scale factor) get the tensors for
         #    the anchor box coordinates of shape `(batch, n_boxes_total, 4)`
         boxes_tensor = []
         if diagnostics:
             wh_list = [] # List to hold the box widths and heights
             cell_sizes = [] # List to hold horizontal and vertical distances between any two boxes
             if self.aspect_ratios_per_layer: # If individual aspect ratios are given per layer, we need to pass them to `generate_anchor_boxes()` accordingly
-                for i in range(len(self.classifier_sizes)):
+                for i in range(len(self.predictor_sizes)):
                     boxes, wh, cells = self.generate_anchor_boxes(batch_size=batch_size,
-                                                                  feature_map_size=self.classifier_sizes[i],
+                                                                  feature_map_size=self.predictor_sizes[i],
                                                                   aspect_ratios=self.aspect_ratios_per_layer[i],
                                                                   this_scale=self.scales[i],
                                                                   next_scale=self.scales[i+1],
@@ -725,9 +725,9 @@ class SSDBoxEncoder:
                     wh_list.append(wh)
                     cell_sizes.append(cells)
             else: # Use the same global aspect ratio list for all layers
-                for i in range(len(self.classifier_sizes)):
+                for i in range(len(self.predictor_sizes)):
                     boxes, wh, cells = self.generate_anchor_boxes(batch_size=batch_size,
-                                                                  feature_map_size=self.classifier_sizes[i],
+                                                                  feature_map_size=self.predictor_sizes[i],
                                                                   aspect_ratios=self.aspect_ratios_global,
                                                                   this_scale=self.scales[i],
                                                                   next_scale=self.scales[i+1],
@@ -737,17 +737,17 @@ class SSDBoxEncoder:
                     cell_sizes.append(cells)
         else:
             if self.aspect_ratios_per_layer:
-                for i in range(len(self.classifier_sizes)):
+                for i in range(len(self.predictor_sizes)):
                     boxes_tensor.append(self.generate_anchor_boxes(batch_size=batch_size,
-                                                                   feature_map_size=self.classifier_sizes[i],
+                                                                   feature_map_size=self.predictor_sizes[i],
                                                                    aspect_ratios=self.aspect_ratios_per_layer[i],
                                                                    this_scale=self.scales[i],
                                                                    next_scale=self.scales[i+1],
                                                                    diagnostics=False))
             else:
-                for i in range(len(self.classifier_sizes)):
+                for i in range(len(self.predictor_sizes)):
                     boxes_tensor.append(self.generate_anchor_boxes(batch_size=batch_size,
-                                                                   feature_map_size=self.classifier_sizes[i],
+                                                                   feature_map_size=self.predictor_sizes[i],
                                                                    aspect_ratios=self.aspect_ratios_global,
                                                                    this_scale=self.scales[i],
                                                                    next_scale=self.scales[i+1],

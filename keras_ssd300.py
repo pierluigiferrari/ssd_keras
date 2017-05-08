@@ -67,13 +67,13 @@ def ssd_300(image_size,
         max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
             of the shorter side of the input images. All scaling factors between the smallest and the
             largest will be linearly interpolated. Note that the second to last of the linearly interpolated
-            scaling factors will actually be the scaling factor for the last classifier layer, while the last
-            scaling factor is used for the second box for aspect ratio 1 in the last classifier layer
+            scaling factors will actually be the scaling factor for the last predictor layer, while the last
+            scaling factor is used for the second box for aspect ratio 1 in the last predictor layer
             if `two_boxes_for_ar1` is `True`. Defaults to 0.9.
-        scales (list, optional): A list of floats containing scaling factors per convolutional classifier layer.
-            This list must be one element longer than the number of classifier layers. The first `k` elements are the
-            scaling factors for the `k` classifier layers, while the last element is used for the second box
-            for aspect ratio 1 in the last classifier layer if `two_boxes_for_ar1` is `True`. This additional
+        scales (list, optional): A list of floats containing scaling factors per convolutional predictor layer.
+            This list must be one element longer than the number of predictor layers. The first `k` elements are the
+            scaling factors for the `k` predictor layers, while the last element is used for the second box
+            for aspect ratio 1 in the last predictor layer if `two_boxes_for_ar1` is `True`. This additional
             last scaling factor must be passed either way, even if it is not being used.
             Defaults to `None`. If a list is passed, this argument overrides `min_scale` and
             `max_scale`. All scaling factors must be greater than zero.
@@ -110,8 +110,8 @@ def ssd_300(image_size,
 
     Returns:
         model: The Keras SSD model.
-        classifier_sizes: A Numpy array containing the `(height, width)` portion
-            of the output tensor shape for each convolutional classifier. During
+        predictor_sizes: A Numpy array containing the `(height, width)` portion
+            of the output tensor shape for each convolutional predictor layer. During
             training, the generator function needs this in order to transform
             the ground truth labels into tensors of identical structure as the
             output tensors of the model, which is in turn needed for the cost
@@ -121,22 +121,22 @@ def ssd_300(image_size,
         https://arxiv.org/abs/1512.02325v5
     '''
 
-    n_classifier_layers = 6 # The number of classifier conv layers in the network is 6 for the original SSD300
+    n_predictor_layers = 6 # The number of predictor conv layers in the network is 6 for the original SSD300
 
     # Get a few exceptions out of the way first
     if aspect_ratios_global is None and aspect_ratios_per_layer is None:
         raise ValueError("`aspect_ratios_global` and `aspect_ratios_per_layer` cannot both be None. At least one needs to be specified.")
     if aspect_ratios_per_layer:
-        if len(aspect_ratios_per_layer) != n_classifier_layers:
-            raise ValueError("It must be either aspect_ratios_per_layer is None or len(aspect_ratios_per_layer) == {}, but len(aspect_ratios_per_layer) == {}.".format(n_classifier_layers, len(aspect_ratios_per_layer)))
+        if len(aspect_ratios_per_layer) != n_predictor_layers:
+            raise ValueError("It must be either aspect_ratios_per_layer is None or len(aspect_ratios_per_layer) == {}, but len(aspect_ratios_per_layer) == {}.".format(n_predictor_layers, len(aspect_ratios_per_layer)))
 
     if (min_scale is None or max_scale is None) and scales is None:
         raise ValueError("Either `min_scale` and `max_scale` or `scales` need to be specified.")
     if scales:
-        if len(scales) != n_classifier_layers+1:
-            raise ValueError("It must be either scales is None or len(scales) == {}, but len(scales) == {}.".format(n_classifier_layers+1, len(scales)))
+        if len(scales) != n_predictor_layers+1:
+            raise ValueError("It must be either scales is None or len(scales) == {}, but len(scales) == {}.".format(n_predictor_layers+1, len(scales)))
     else: # If no explicit list of scaling factors was passed, compute the list of scaling factors from `min_scale` and `max_scale`
-        scales = np.linspace(min_scale, max_scale, n_classifier_layers+1)
+        scales = np.linspace(min_scale, max_scale, n_predictor_layers+1)
 
     if len(variances) != 4:
         raise ValueError("4 variance values must be pased, but {} values were received.".format(len(variances)))
@@ -144,7 +144,7 @@ def ssd_300(image_size,
     if np.any(variances <= 0):
         raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
 
-    # Set the aspect ratios for each classifier layer. These are only needed for the anchor box layers.
+    # Set the aspect ratios for each predictor layer. These are only needed for the anchor box layers.
     if aspect_ratios_per_layer:
         aspect_ratios_conv4_3 = aspect_ratios_per_layer[0]
         aspect_ratios_fc7 = aspect_ratios_per_layer[1]
@@ -160,8 +160,8 @@ def ssd_300(image_size,
         aspect_ratios_conv8_2 = aspect_ratios_global
         aspect_ratios_conv9_2 = aspect_ratios_global
 
-    # Compute the number of boxes to be predicted per cell for each classifier layer.
-    # We need this so that we know how many channels the classifier layers need to have.
+    # Compute the number of boxes to be predicted per cell for each predictor layer.
+    # We need this so that we know how many channels the predictor layers need to have.
     if aspect_ratios_per_layer:
         n_boxes = []
         for aspect_ratios in aspect_ratios_per_layer:
@@ -239,9 +239,9 @@ def ssd_300(image_size,
     # Feed conv4_3 into the L2 normalization layer
     conv4_3_norm = L2Normalization(gamma_init=20, name='conv4_3_norm')(conv4_3)
 
-    ### Build the convolutional classifier layers on top of the base network
+    ### Build the convolutional predictor layers on top of the base network
 
-    # We precidt a class for each box, hence the confidence classifiers have depth `n_boxes * n_classes`
+    # We precidt `n_classes` confidence values for each box, hence the confidence predictors have depth `n_boxes * n_classes`
     # Output shape of the confidence layers: `(batch, height, width, n_boxes * n_classes)`
     conv4_3_norm_mbox_conf = Conv2D(n_boxes_conv4_3 * n_classes, (3, 3), padding='same', name='conv4_3_norm_mbox_conf')(conv4_3_norm)
     fc7_mbox_conf = Conv2D(n_boxes_fc7 * n_classes, (3, 3), padding='same', name='fc7_mbox_conf')(fc7)
@@ -249,7 +249,7 @@ def ssd_300(image_size,
     conv7_2_mbox_conf = Conv2D(n_boxes_conv7_2 * n_classes, (3, 3), padding='same', name='conv7_2_mbox_conf')(conv7_2)
     conv8_2_mbox_conf = Conv2D(n_boxes_conv8_2 * n_classes, (3, 3), padding='same', name='conv8_2_mbox_conf')(conv8_2)
     conv9_2_mbox_conf = Conv2D(n_boxes_conv9_2 * n_classes, (3, 3), padding='same', name='conv9_2_mbox_conf')(conv9_2)
-    # We predict 4 box coordinates for each box, hence the localization classifiers have depth `n_boxes * 4`
+    # We predict 4 box coordinates for each box, hence the localization predictors have depth `n_boxes * 4`
     # Output shape of the localization layers: `(batch, height, width, n_boxes * 4)`
     conv4_3_norm_mbox_loc = Conv2D(n_boxes_conv4_3 * 4, (3, 3), padding='same', name='conv4_3_norm_mbox_loc')(conv4_3_norm)
     fc7_mbox_loc = Conv2D(n_boxes_fc7 * 4, (3, 3), padding='same', name='fc7_mbox_loc')(fc7)
@@ -338,16 +338,16 @@ def ssd_300(image_size,
 
     model = Model(inputs=x, outputs=predictions)
 
-    # Get the spatial dimensions (height, width) of the classifier conv layers, we need them to
+    # Get the spatial dimensions (height, width) of the predictor conv layers, we need them to
     # be able to generate the default boxes for the matching process outside of the model during training.
     # Note that the original implementation performs anchor box matching inside the loss function. We don't do that.
     # Instead, we'll do it in the batch generator function.
-    # The spatial dimensions are the same for the confidence and localization classifiers, so we just take those of the conf layers.
-    classifier_sizes = np.array([conv4_3_norm_mbox_conf._keras_shape[1:3],
+    # The spatial dimensions are the same for the confidence and localization predictors, so we just take those of the conf layers.
+    predictor_sizes = np.array([conv4_3_norm_mbox_conf._keras_shape[1:3],
                                  fc7_mbox_conf._keras_shape[1:3],
                                  conv6_2_mbox_conf._keras_shape[1:3],
                                  conv7_2_mbox_conf._keras_shape[1:3],
                                  conv8_2_mbox_conf._keras_shape[1:3],
                                  conv9_2_mbox_conf._keras_shape[1:3]])
 
-    return model, classifier_sizes
+    return model, predictor_sizes
