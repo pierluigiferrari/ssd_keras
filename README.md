@@ -52,7 +52,7 @@ The generator class `BatchGenerator` is in the module `ssd_batch_generator.py` a
 
 The module `ssd_box_encode_decode_utils.py` contains all functions and classes related to encoding and decoding boxes. Encoding boxes means converting ground truth labels into the target format that the loss function needs during training. It is this encoding process in which the matching of ground truth boxes to anchor boxes (the paper calls them default boxes and in the original C++ code they are called priors - all the same thing) happens. Decoding boxes means converting raw model output back to the input label format, which entails various conversion and filtering processes such as non-maximum suppression (NMS).
 
-In order to train the model, you need to create an instance of `SSDBoxEncoder` that needs to be passed to the batch generator. The batch generator does the rest, so you don't usually need to call any of `SSDBoxEncoder`'s methods manually. If you choose to use your own generator, here is very briefly how the `SSDBoxEncoder` class is set up: In order to produce a tensor for training you only need to call `encode_y()`, which calls `generate_encode_template()` to make a template full of anchor boxes, which in turn calls `generate_anchor_boxes()` to compute the anchor box coordinates for each classifier layer. The matching happens in `encode_y()`.
+In order to train the model, you need to create an instance of `SSDBoxEncoder` that needs to be passed to the batch generator. The batch generator does the rest, so you don't usually need to call any of `SSDBoxEncoder`'s methods manually. If you choose to use your own generator, here is very briefly how the `SSDBoxEncoder` class is set up: In order to produce a tensor for training you only need to call `encode_y()`, which calls `generate_encode_template()` to make a template full of anchor boxes, which in turn calls `generate_anchor_boxes()` to compute the anchor box coordinates for each predictor layer. The matching happens in `encode_y()`.
 
 To decode the raw model output, call either `decode_y()` or `decode_y2()`. The former follows the procedure outlined in the paper, which entails doing NMS per object category, the latter is a more efficient alternative that does not distinguish object categories for NMS and I found it also delivers better results. Read the documentation for details about both functions.
 
@@ -60,7 +60,7 @@ A note on the `SSDBoxEncoder` constructor: The `coords` argument lets you choose
 
 #### 3.4 Using a different base network architecture
 
-If you want to build a different base network architecture, you could use `keras_ssd7.py` as a template. Put together the base network you want and create classifier and anchor box layers on top of each network layer from which you would like to make predictions. Create two classifier heads for each, one for localization, one for classification.
+If you want to build a different base network architecture, you could use `keras_ssd7.py` as a template. It provides documentation and comments to help you turn it into a deeper network easily. Put together the base network you want and add create predictor and anchor box layers on top of each network layer from which you would like to make predictions. Create two predictor heads for each, one for localization, one for classification.
 
 ### 4. Dependencies
 
