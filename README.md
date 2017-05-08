@@ -26,7 +26,7 @@ Clone or download this repository, then:
 
 #### 3.1 Training and prediction
 
-The general training setup is layed out and explained in `train_ssd7.ipynb` and in `train_ssd300.ipynb`. The setup and explanations are similar in both notebooks for the most part, so it doesn't matter which one you look at to understand the general training setup, but the parameters in `train_ssd300.ipynb` are preset to copy the setup of the original Caffe implementation for training on Pascal VOC, while the parameters in `train_ssd7.ipynb` are preset to train on the [Udacity traffic datasets](https://github.com/udacity/self-driving-car/tree/master/annotations). If your goal is not to train the original SSD300, then I would recommend reading `train_ssd7.ipynb`, which contains slightly more general explanations.
+The general training setup is layed out and explained in [`train_ssd7.ipynb`](./train_ssd7.ipynb) and in `train_ssd300.ipynb`. The setup and explanations are similar in both notebooks for the most part, so it doesn't matter which one you look at to understand the general training setup, but the parameters in `train_ssd300.ipynb` are preset to copy the setup of the original Caffe implementation for training on Pascal VOC, while the parameters in `train_ssd7.ipynb` are preset to train on the [Udacity traffic datasets](https://github.com/udacity/self-driving-car/tree/master/annotations). If your goal is not to train the original SSD300, then I would recommend reading `train_ssd7.ipynb`, which contains slightly more general explanations.
 
 To train the original SSD300 model on Pascal VOC, download the datasets:
 
