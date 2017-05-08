@@ -79,7 +79,7 @@ If you want to build a different base network architecture, you could use [`kera
 * OpenCV (for data augmentation)
 * Beautiful Soup 4.x (to parse XML files)
 
-Both Tensorflow 1.0 and Keras 2.0 brought major syntax changes, so this code won't work with older versions. The Theano backend is currently not supported.
+Both Tensorflow 1.0 and Keras 2.0 introduced major syntax changes, so this code won't work with older versions. The Theano backend is currently not supported.
 
 ### ToDo
 
