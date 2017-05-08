@@ -1,12 +1,12 @@
 ## SSD implementation in Keras
 ---
 ### Content
-1. [Overview](#1.-overview)
-2. [Examples](#2.-examples)
-3. [How to use it](#3.-how-to-use-it)
-4. [Dependencies](#4.-dependencies)
-5. [ToDo / Contributing](#5.-todo-/-contributing)
-6. [Terminology](#6.-terminology)
+1. [Overview](#overview)
+2. [Examples](#examples)
+3. [How to use it](#how-to-use-it)
+4. [Dependencies](#dependencies)
+5. [ToDo / Contributing](#todo-/-contributing)
+6. [Terminology](#terminology)
 
 ### 1. Overview
 
