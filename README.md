@@ -5,7 +5,7 @@
 2. [Examples](#examples)
 3. [How to use it](#how-to-use-it)
 4. [Dependencies](#dependencies)
-5. [ToDo / Contributing](#todo-/-contributing)
+5. [ToDo](#todo)
 6. [Terminology](#terminology)
 
 ### Overview
@@ -80,7 +80,7 @@ If you want to build a different base network architecture, you could use [`kera
 
 Both Tensorflow 1.0 and Keras 2.0 brought major syntax changes, so this code won't work with older versions. The Theano backend is currently not supported.
 
-### ToDo / Contributing
+### ToDo
 
 The following things are still on the to-do list and contributions are welcome:
 
