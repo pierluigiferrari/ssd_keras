@@ -26,26 +26,25 @@ from ssd_box_encode_decode_utils import convert_coordinates
 
 class AnchorBoxes(Layer):
     '''
-    Create an output tensor containing anchor boxes based on the input tensor and
-    the passed arguments.
+    A Keras layer to create an output tensor containing anchor box coordinates based on the
+    input tensor and the passed arguments.
 
     A set of 2D anchor boxes of different aspect ratios is created for each spatial unit of
     the input tensor. The number of anchor boxes created per unit depends on the arguments
     `aspect_ratios` and `two_boxes_for_ar1`, in the default case it is 4. The boxes
-    are parameterized by `(xmin, xmax, ymin, ymax)`.
+    are parameterized by the coordinate tuple `(xmin, xmax, ymin, ymax)`.
 
     The logic implemented by this layer is identical to the logic in the module
     `ssd_box_encode_decode_utils.py`.
 
     The purpose of having this layer in the network is to make the model self-sufficient
     at inference time. Since the model is predicting offsets to the anchor boxes
-    (rather than predicting box coordinates directly), one needs to know the anchor
-    boxes in order to construct the prediction boxes from the offsets. If the model
-    didn't contain this layer, one would always need to be able to generate the appropriate
-    anchor box tensor externally and ad hoc for inference, which would be impossible for
-    someone who only has the model itself. The reason why it is necessary to predict offsets
-    to the anchor boxes rather than to predict box coordinates directly will be explained
-    elsewhere.
+    (rather than predicting absolute box coordinates directly), one needs to know the anchor
+    box coordinates in order to construct the final prediction boxes from the predicted offsets.
+    If the model's output tensor did not contain the anchor box coordinates, the necessary
+    information to convert the predicted offsets back to absolute coordinates would be missing
+    in the model output. The reason why it is necessary to predict offsets to the anchor boxes
+    rather than to predict absolute box coordinates directly is explained in `README.md`.
 
     Input shape:
         4D tensor of shape `(batch, channels, height, width)` if `dim_ordering = 'th'`
@@ -68,7 +67,7 @@ class AnchorBoxes(Layer):
                  normalize_coords=False,
                  **kwargs):
         '''
-        All arguments need to be set to the same values used to train the model, otherwise the behavior is undefined.
+        All arguments need to be set to the same values as in the box encoding process, otherwise the behavior is undefined.
 
         Arguments:
             img_height (int): The height of the input images.
@@ -131,15 +130,19 @@ class AnchorBoxes(Layer):
 
     def call(self, x, mask=None):
         '''
-        Return an anchor box tensor based on the input tensor.
+        Return an anchor box tensor based on the shape of the input tensor.
 
         The logic implemented here is identical to the logic in the module `ssd_box_encode_decode_utils.py`.
 
         Note that this tensor does not participate in any graph computations at runtime. It is being created
-        as a constant once for each classification conv layer during graph creation and is just being output
-        along with the rest of the model output during runtime. Because of this, all logic is implemented
-        as Numpy array operations and it is sufficient to convert the resulting Numpy array into a Keras tensor
-        at the very end before outputting it.
+        as a constant once during graph creation and is just being output along with the rest of the model output
+        during runtime. Because of this, all logic is implemented as Numpy array operations and it is sufficient
+        to convert the resulting Numpy array into a Keras tensor at the very end before outputting it.
+
+        Arguments:
+            x (tensor): 4D tensor of shape `(batch, channels, height, width)` if `dim_ordering = 'th'`
+                or `(batch, height, width, channels)` if `dim_ordering = 'tf'`. The input for this
+                layer must be the output of the localization predictor layer.
         '''
 
         # Compute box width and height for each aspect ratio
