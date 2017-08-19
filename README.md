@@ -32,12 +32,12 @@ Below are some prediction examples of an SSD7 (i.e. the small 7-layer version) t
 
 * Python 3.x
 * Numpy
-* Tensorflow 1.x
+* TensorFlow 1.x
 * Keras 2.x
 * OpenCV (for data augmentation)
 * Beautiful Soup 4.x (to parse XML files)
 
-Both Tensorflow 1.0 and Keras 2.0 introduced major syntax changes, so this code won't work with older versions. The Theano backend is currently not supported.
+Both TensorFlow 1.0 and Keras 2.0 introduced major syntax changes, so this code won't work with older versions. The Theano backend is currently not supported.
 
 ### How to use it
 
