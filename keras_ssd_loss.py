@@ -30,10 +30,10 @@ class SSDLoss:
                  alpha=1.0):
         '''
         Arguments:
-            neg_pos_ratio (int, optional): The maximum number of negative (i.e. background)
-                ground truth boxes to include in the loss computation. There are no
-                actual background ground truth boxes of course, but `y_true`
-                contains default boxes labeled with the background class. Since
+            neg_pos_ratio (int, optional): The maximum ratio of negative (i.e. background)
+                to positive ground truth boxes to include in the loss computation.
+                There are no actual background ground truth boxes of course, but `y_true`
+                contains anchor boxes labeled with the background class. Since
                 the number of background boxes in `y_true` will ususally exceed
                 the number of positive boxes by far, it is necessary to balance
                 their influence on the loss. Defaults to 3 following the paper.
