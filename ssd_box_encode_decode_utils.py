@@ -716,7 +716,7 @@ class SSDBoxEncoder:
 
         # 1: Get the anchor box scaling factors for each conv layer from which we're going to make predictions
         #    If `scales` is given explicitly, we'll use that instead of computing it from `min_scale` and `max_scale`
-        if not self.scales:
+        if self.scales is None:
             self.scales = np.linspace(self.min_scale, self.max_scale, len(self.predictor_sizes)+1)
 
         # 2: For each conv predictor layer (i.e. for each scale factor) get the tensors for
