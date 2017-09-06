@@ -68,11 +68,12 @@ class AnchorBoxes(Layer):
                  **kwargs):
         '''
         All arguments need to be set to the same values as in the box encoding process, otherwise the behavior is undefined.
+        Some of these arguments are explained in more detail in the documentation of the `SSDBoxEncoder` class.
 
         Arguments:
             img_height (int): The height of the input images.
             img_width (int): The width of the input images.
-            this_scale (float): A float in [0, 1], the scaling factor for the size of the generate default boxes
+            this_scale (float): A float in [0, 1], the scaling factor for the size of the generated anchor boxes
                 as a fraction of the shorter side of the input image.
             next_scale (float): A float in [0, 1], the next larger scaling factor. Only relevant if
                 `self.two_boxes_for_ar1 == True`.

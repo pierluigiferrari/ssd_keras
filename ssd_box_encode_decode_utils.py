@@ -459,24 +459,36 @@ class SSDBoxEncoder:
             predictor_sizes (list): A list of int-tuples of the format `(height, width)`
                 containing the output heights and widths of the convolutional predictor layers.
             min_scale (float, optional): The smallest scaling factor for the size of the anchor boxes as a fraction
-                of the shorter side of the input images. Defaults to 0.1.
+                of the shorter side of the input images. Defaults to 0.1. Note that you should set the scaling factors
+                such that the resulting anchor box sizes correspond to the sizes of the objects you are trying
+                to detect.
             max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
                 of the shorter side of the input images. All scaling factors between the smallest and the
                 largest will be linearly interpolated. Note that the second to last of the linearly interpolated
                 scaling factors will actually be the scaling factor for the last predictor layer, while the last
                 scaling factor is used for the second box for aspect ratio 1 in the last predictor layer
-                if `two_boxes_for_ar1` is `True`. Defaults to 0.9.
+                if `two_boxes_for_ar1` is `True`. Defaults to 0.9. Note that you should set the scaling factors
+                such that the resulting anchor box sizes correspond to the sizes of the objects you are trying
+                to detect.
             scales (list, optional): A list of floats containing scaling factors per convolutional predictor layer.
                 This list must be one element longer than the number of predictor layers. The first `k` elements are the
                 scaling factors for the `k` predictor layers, while the last element is used for the second box
                 for aspect ratio 1 in the last predictor layer if `two_boxes_for_ar1` is `True`. This additional
                 last scaling factor must be passed either way, even if it is not being used.
                 Defaults to `None`. If a list is passed, this argument overrides `min_scale` and
-                `max_scale`. All scaling factors must be greater than zero.
+                `max_scale`. All scaling factors must be greater than zero. Note that you should set the scaling factors
+                such that the resulting anchor box sizes correspond to the sizes of the objects you are trying
+                to detect.
             aspect_ratios_global (list, optional): The list of aspect ratios for which anchor boxes are to be
-                generated. This list is valid for all prediction layers. Defaults to [0.5, 1.0, 2.0].
+                generated. This list is valid for all prediction layers. Defaults to [0.5, 1.0, 2.0]. Note that you should
+                set the aspect ratios such that the resulting anchor box shapes very roughly correspond to the shapes of the
+                objects you are trying to detect. For many standard detection tasks, the default values will yield good
+                results.
             aspect_ratios_per_layer (list, optional): A list containing one aspect ratio list for each prediction layer.
-                If a list is passed, it overrides `aspect_ratios_global`. Defaults to `None`.
+                If a list is passed, it overrides `aspect_ratios_global`. Defaults to `None`. Note that you should
+                set the aspect ratios such that the resulting anchor box shapes very roughly correspond to the shapes of the
+                objects you are trying to detect. For many standard detection tasks, the default values will yield good
+                results.
             two_boxes_for_ar1 (bool, optional): Only relevant for aspect ratios lists that contain 1. Will be ignored otherwise.
                 If `True`, two anchor boxes will be generated for aspect ratio 1. The first will be generated
                 using the scaling factor for the respective layer, the second one will be generated using
@@ -785,7 +797,8 @@ class SSDBoxEncoder:
         will be written to the the specific position of the matched anchor box in the template.
 
         The class for all anchor boxes for which there was no match with any ground truth box will be set to the
-        background class.
+        background class, except for those anchor boxes whose IoU similarity with any ground truth box is higher than
+        the set negative threshold (see the `neg_iou_threshold` argument in `__init__()`).
 
         Arguments:
             ground_truth_labels (list): A python list of length `batch_size` that contains one 2D Numpy array

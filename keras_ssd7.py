@@ -56,6 +56,9 @@ def build_model(image_size,
     In case you're loading trained weights, the parameters passed here must be the same
     as the ones used to produce the trained weights.
 
+    Some of these arguments are explained in more detail in the documentation of the
+    `SSDBoxEncoder` class.
+
     Note: Requires Keras v2.0 or later. Training currently works only with the
     TensorFlow backend (v1.0 or later).
 
