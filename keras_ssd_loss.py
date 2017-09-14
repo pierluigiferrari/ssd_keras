@@ -34,7 +34,7 @@ class SSDLoss:
                 to positive ground truth boxes to include in the loss computation.
                 There are no actual background ground truth boxes of course, but `y_true`
                 contains anchor boxes labeled with the background class. Since
-                the number of background boxes in `y_true` will ususally exceed
+                the number of background boxes in `y_true` will usually exceed
                 the number of positive boxes by far, it is necessary to balance
                 their influence on the loss. Defaults to 3 following the paper.
             n_neg_min (int, optional): The minimum number of negative ground truth boxes to
