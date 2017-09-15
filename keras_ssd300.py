@@ -24,6 +24,9 @@ from keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, Reshap
 from keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layer_L2Normalization import L2Normalization
 
+def get_w(n):
+    return [np.load('/osn/share/vgg/{}_0.npy'.format(n)), np.load('/osn/share/vgg/{}_1.npy'.format(n))]
+
 def ssd_300(image_size,
             n_classes,
             min_scale=0.1,
@@ -200,27 +203,27 @@ def ssd_300(image_size,
                     output_shape=(img_height, img_width, img_channels),
                     name='lambda1')(x)
 
-    conv1_1 = Conv2D(64, (3, 3), activation='relu', padding='same', name='conv1_1')(normed)
-    conv1_2 = Conv2D(64, (3, 3), activation='relu', padding='same', name='conv1_2')(conv1_1)
+    conv1_1 = Conv2D(64, (3, 3), activation='relu', padding='same', name='conv1_1', weights=get_w(1), trainable=False)(normed)
+    conv1_2 = Conv2D(64, (3, 3), activation='relu', padding='same', name='conv1_2', weights=get_w(2), trainable=False)(conv1_1)
     pool1 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid', name='pool1')(conv1_2)
 
-    conv2_1 = Conv2D(128, (3, 3), activation='relu', padding='same', name='conv2_1')(pool1)
-    conv2_2 = Conv2D(128, (3, 3), activation='relu', padding='same', name='conv2_2')(conv2_1)
+    conv2_1 = Conv2D(128, (3, 3), activation='relu', padding='same', name='conv2_1', trainable=False, weights=get_w(4))(pool1)
+    conv2_2 = Conv2D(128, (3, 3), activation='relu', padding='same', name='conv2_2', trainable=False, weights=get_w(5))(conv2_1)
     pool2 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid', name='pool2')(conv2_2)
 
-    conv3_1 = Conv2D(256, (3, 3), activation='relu', padding='same', name='conv3_1')(pool2)
-    conv3_2 = Conv2D(256, (3, 3), activation='relu', padding='same', name='conv3_2')(conv3_1)
-    conv3_3 = Conv2D(256, (3, 3), activation='relu', padding='same', name='conv3_3')(conv3_2)
+    conv3_1 = Conv2D(256, (3, 3), activation='relu', padding='same', name='conv3_1', trainable=False, weights=get_w(7))(pool2)
+    conv3_2 = Conv2D(256, (3, 3), activation='relu', padding='same', name='conv3_2', trainable=False, weights=get_w(8))(conv3_1)
+    conv3_3 = Conv2D(256, (3, 3), activation='relu', padding='same', name='conv3_3', trainable=False, weights=get_w(9))(conv3_2)
     pool3 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid', name='pool3')(conv3_3)
 
-    conv4_1 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv4_1')(pool3)
-    conv4_2 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv4_2')(conv4_1)
-    conv4_3 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv4_3')(conv4_2)
+    conv4_1 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv4_1', weights=get_w(11))(pool3)
+    conv4_2 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv4_2', weights=get_w(12))(conv4_1)
+    conv4_3 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv4_3', weights=get_w(13))(conv4_2)
     pool4 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid', name='pool4')(conv4_3)
 
-    conv5_1 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv5_1')(pool4)
-    conv5_2 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv5_2')(conv5_1)
-    conv5_3 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv5_3')(conv5_2)
+    conv5_1 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv5_1', weights=get_w(15))(pool4)
+    conv5_2 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv5_2', weights=get_w(16))(conv5_1)
+    conv5_3 = Conv2D(512, (3, 3), activation='relu', padding='same', name='conv5_3', weights=get_w(17))(conv5_2)
     pool5 = MaxPooling2D(pool_size=(3, 3), strides=(1, 1), padding='same', name='pool5')(conv5_3)
 
     fc6 = Conv2D(1024, (3, 3), dilation_rate=(6, 6), activation='relu', padding='same', name='fc6')(pool5)
