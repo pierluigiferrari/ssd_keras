@@ -124,9 +124,12 @@ class BatchGenerator:
     '''
     A generator to generate batches of samples and corresponding labels indefinitely.
 
-    The labels are read from a CSV file.
-
     Shuffles the dataset consistently after each complete pass.
+
+    Currently provides two methods to parse annotation data: A general-purpose CSV parser
+    and an XML parser for the Pascal VOC datasets. If the annotations of your dataset are
+    in a format that is not supported by these parsers, you could just add another parser
+    method and still use this generator.
 
     Can perform image transformations for data conversion and data augmentation,
     for details please refer to the documentation of the `generate()` method.
@@ -273,7 +276,7 @@ class BatchGenerator:
                   exclude_difficult=False,
                   ret=False):
         '''
-        This is a parser for the Pascal VOC datasets. It might be used for other datasets with minor changes to
+        This is an XML parser for the Pascal VOC datasets. It might be applicable to other datasets with minor changes to
         the code, but in its current form it expects the data format and XML tags of the Pascal VOC datasets.
 
         Arguments:
@@ -382,7 +385,7 @@ class BatchGenerator:
         Generate batches of samples and corresponding labels indefinitely from
         lists of filenames and labels.
 
-        Returns two numpy arrays, one containing the next `batch_size` samples
+        Returns two Numpy arrays, one containing the next `batch_size` samples
         from `filenames`, the other containing the corresponding labels from
         `labels`.
 
@@ -397,7 +400,7 @@ class BatchGenerator:
         grayscale conversion is performed last.
 
         `prob` works the same way in all arguments in which it appears. It must be a float in [0,1]
-        and determines the probability that the respective transform is applied to any given image.
+        and determines the probability that the respective transform is applied to a given image.
 
         All conversions and transforms default to `False`.
 
@@ -459,7 +462,7 @@ class BatchGenerator:
                 This can be useful for diagnostic purposes. Defaults to `False`. Only works if `train = True`.
 
         Yields:
-            The next batch as a tuple containing a Numpy array that contains the images and a python list
+            The next batch as a tuple containing a Numpy array that contains the images and a Python list
             that contains the corresponding labels for each image as 2D Numpy arrays. The output format
             of the labels is according to the `box_output_format` that was specified in the constructor.
         '''
@@ -796,7 +799,7 @@ class BatchGenerator:
         '''
         Perform offline image processing.
 
-        This function the same image processing capabilities as the generator function above,
+        This function has mostly the same image processing capabilities as the generator function above,
         but it performs the processing on all items in `filenames` starting at index `start`
         until index `stop` and saves the processed images to disk. The labels are adjusted
         accordingly.
