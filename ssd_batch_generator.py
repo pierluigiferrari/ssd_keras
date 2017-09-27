@@ -153,7 +153,7 @@ class BatchGenerator:
         '''
         # These are the variables we always need
         self.images_path = images_path
-        self.class_map = {v:k for k, v in enumerate(include_classes)} if include_classes else None
+        self.class_map = {v: k for k, v in enumerate(include_classes)} if include_classes else None
         self.include_classes = include_classes
         self.box_output_format = box_output_format
 
@@ -232,7 +232,6 @@ class BatchGenerator:
                                 obj.append(self.class_map[val])
                             else:
                                 obj.append(val)
-                            obj.append(int(i[self.input_format.index(item)].strip()))
                             # ...select the respective column in the input format and append it to `obj`
                         data.append(obj)
 
