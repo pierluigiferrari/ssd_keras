@@ -41,8 +41,8 @@ from ssd_batch_generator import BatchGenerator
 img_height = 300 # Height of the input images
 img_width = 300 # Width of the input images
 img_channels = 3 # Number of color channels of the input images
-n_classes = 2 # Number of classes including the background class, e.g. 21 for the Pascal VOC datasets
-scales = [0.2]*7 # The anchor box scaling factors used in the original SSD300 for the Pascal VOC datasets, the factors for the MS COCO dataset are smaller, namely [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05]
+n_classes = 7 # Number of classes including the background class, e.g. 21 for the Pascal VOC datasets
+scales = [0.3]*7 # The anchor box scaling factors used in the original SSD300 for the Pascal VOC datasets, the factors for the MS COCO dataset are smaller, namely [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05]
 aspect_ratios = [[1.0]]*6
 #     [0.5, 1.0, 2.0],
 #                  [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
@@ -101,6 +101,7 @@ model, predictor_sizes = ssd_300(image_size=(img_height, img_width, img_channels
 batch_size = 4
 images_dir = '/osn/SpaceNet-MOD/training/vehicles/rgb-ps-dra/DetectNet/300/images/'
 images_dir = '../18/'
+images_dir = ''
 
 # 3: Instantiate an Adam optimizer and the SSD loss function and compile the model
 
@@ -134,10 +135,10 @@ ssd_box_encoder = SSDBoxEncoder(img_height=img_height,
 classes = ['background', 'car']
 
 train_dataset = BatchGenerator(images_path=images_dir,
-                               include_classes=['33','34','35','36','37','38'],
+                               include_classes=[33,34,35,36,37,38],
                                box_output_format=['class_id', 'xmin', 'xmax', 'ymin', 'ymax'])
 
-train_dataset.parse_csv(labels_path='/home/mlababidi/cars_samp.csv',
+train_dataset.parse_csv(labels_path='/osn/share/rail.csv',
                         input_format=['image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'])
 #                         image_set_path='./Datasets/VOCdevkit/VOC2012/ImageSets/Main/',
 #                         image_set='train.txt',
@@ -164,14 +165,15 @@ train_generator = train_dataset.generate(batch_size=batch_size,
                                          diagnostics=False)
 
 n_train_samples = train_dataset.get_n_samples() # Get the number of samples in the training dataset to compute the epoch length below
+print(n_train_samples)
 
 # 6: Create the validation set batch generator
 
 val_dataset = BatchGenerator(images_path=images_dir,
-                             include_classes='all',
+                             include_classes=[33,34,35,36,37,38],
                              box_output_format=['class_id', 'xmin', 'xmax', 'ymin', 'ymax'])
 
-val_dataset.parse_csv(labels_path='/home/mlababidi/cars_samp.csv',
+val_dataset.parse_csv(labels_path='/osn/share/rail.csv',
                         input_format=['image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'])
 
 
@@ -192,16 +194,9 @@ val_generator = val_dataset.generate(batch_size=batch_size,
                                      diagnostics=False)
 
 n_val_samples = val_dataset.get_n_samples()
+print(n_val_samples)
 
 # 7: Define a simple learning rate schedule
-
-def lr_schedule(epoch):
-    if epoch <= 20: return 0.001
-    else: return 0.001
-
-
-# In[68]:
-
 
 
 def lr_schedule(epoch):
