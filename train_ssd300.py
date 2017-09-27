@@ -41,13 +41,15 @@ from ssd_batch_generator import BatchGenerator
 parser = ArgumentParser()
 parser.add_argument('--model')
 parser.add_argument('--scale', type=float)
+parser.add_argument('--min_scale', type=float, default=.05)
+parser.add_argument('--max_scale', type=float, default=.25)
 args = parser.parse_args()
 
 img_height = 300 # Height of the input images
 img_width = 300 # Width of the input images
 img_channels = 3 # Number of color channels of the input images
 n_classes = 7 # Number of classes including the background class, e.g. 21 for the Pascal VOC datasets
-scales = [args.scale]*7 # The anchor box scaling factors used in the original SSD300 for the Pascal VOC datasets, the factors for the MS COCO dataset are smaller, namely [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05]
+scales = [args.scale]*7 if args.scale else None# The anchor box scaling factors used in the original SSD300 for the Pascal VOC datasets, the factors for the MS COCO dataset are smaller, namely [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05]
 aspect_ratios = [[1.0]]*6
 #     [0.5, 1.0, 2.0],
 #                  [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
@@ -67,8 +69,8 @@ K.clear_session() # Clear previous models from memory.
 # The output `predictor_sizes` is needed below to set up `SSDBoxEncoder`
 model, predictor_sizes = ssd_300(image_size=(img_height, img_width, img_channels),
                                   n_classes=n_classes,
-                                  min_scale=None, # You could pass a min scale and max scale instead of the `scales` list, but we're not doing that here
-                                  max_scale=None,
+                                  min_scale=args.min_scale, # You could pass a min scale and max scale instead of the `scales` list, but we're not doing that here
+                                  max_scale=args.max_scale,
                                   scales=scales,
                                   aspect_ratios_global=None,
                                   aspect_ratios_per_layer=aspect_ratios,
