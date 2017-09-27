@@ -2,7 +2,7 @@
 # coding: utf-8
 
 # In[1]:
-
+from argparse import ArgumentParser
 
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler, EarlyStopping, ReduceLROnPlateau
@@ -38,11 +38,16 @@ from ssd_batch_generator import BatchGenerator
 
 # 1: Set some necessary parameters
 
+parser = ArgumentParser()
+parser.add_argument('--model')
+parser.add_argument('--scale', type=float)
+args = parser.parse_args()
+
 img_height = 300 # Height of the input images
 img_width = 300 # Width of the input images
 img_channels = 3 # Number of color channels of the input images
 n_classes = 7 # Number of classes including the background class, e.g. 21 for the Pascal VOC datasets
-scales = [0.3]*7 # The anchor box scaling factors used in the original SSD300 for the Pascal VOC datasets, the factors for the MS COCO dataset are smaller, namely [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05]
+scales = [args.scale]*7 # The anchor box scaling factors used in the original SSD300 for the Pascal VOC datasets, the factors for the MS COCO dataset are smaller, namely [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05]
 aspect_ratios = [[1.0]]*6
 #     [0.5, 1.0, 2.0],
 #                  [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
@@ -72,7 +77,8 @@ model, predictor_sizes = ssd_300(image_size=(img_height, img_width, img_channels
                                   variances=variances,
                                   coords=coords,
                                   normalize_coords=normalize_coords)
-#model.load_weights('./ssd300_weights.h5', by_name=True) # You should load pre-trained weights for the modified VGG-16 base network here
+if args.model:
+    model.load_weights(args.model, by_name=True) # You should load pre-trained weights for the modified VGG-16 base network here
 
 
 # ### 2. Set up the training
