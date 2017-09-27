@@ -45,6 +45,7 @@ parser.add_argument('--min_scale', type=float, default=.05)
 parser.add_argument('--max_scale', type=float, default=.25)
 args = parser.parse_args()
 
+print(args.min_scale, args.max_scale)
 img_height = 300 # Height of the input images
 img_width = 300 # Width of the input images
 img_channels = 3 # Number of color channels of the input images
