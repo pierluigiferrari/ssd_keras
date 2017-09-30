@@ -461,7 +461,7 @@ class SSDBoxEncoder:
             min_scale (float, optional): The smallest scaling factor for the size of the anchor boxes as a fraction
                 of the shorter side of the input images. Defaults to 0.1. Note that you should set the scaling factors
                 such that the resulting anchor box sizes correspond to the sizes of the objects you are trying
-                to detect.
+                to detect. Must be >0.
             max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
                 of the shorter side of the input images. All scaling factors between the smallest and the
                 largest will be linearly interpolated. Note that the second to last of the linearly interpolated
@@ -469,8 +469,8 @@ class SSDBoxEncoder:
                 scaling factor is used for the second box for aspect ratio 1 in the last predictor layer
                 if `two_boxes_for_ar1` is `True`. Defaults to 0.9. Note that you should set the scaling factors
                 such that the resulting anchor box sizes correspond to the sizes of the objects you are trying
-                to detect.
-            scales (list, optional): A list of floats containing scaling factors per convolutional predictor layer.
+                to detect. Must be greater than or equal to `min_scale`.
+            scales (list, optional): A list of floats >0 containing scaling factors per convolutional predictor layer.
                 This list must be one element longer than the number of predictor layers. The first `k` elements are the
                 scaling factors for the `k` predictor layers, while the last element is used for the second box
                 for aspect ratio 1 in the last predictor layer if `two_boxes_for_ar1` is `True`. This additional
@@ -522,10 +522,26 @@ class SSDBoxEncoder:
         if scales:
             if (len(scales) != len(predictor_sizes)+1): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
                 raise ValueError("It must be either scales is None or len(scales) == len(predictor_sizes)+1, but len(scales) == {} and len(predictor_sizes)+1 == {}".format(len(scales), len(predictor_sizes)+1))
+            scales = np.array(scales)
+            if np.any(scales <= 0):
+                raise ValueError("All values in `scales` must be greater than 0, but the passed list of scales is {}".format(scales))
+        else: # If no list of scales was passed, we need to make sure that `min_scale` and `max_scale` are valid values.
+            if not 0 < min_scale <= max_scale:
+                raise ValueError("It must be 0 < min_scale <= max_scale, but it is min_scale = {} and max_scale = {}".format(min_scale, max_scale))
 
         if aspect_ratios_per_layer:
             if (len(aspect_ratios_per_layer) != len(predictor_sizes)): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
                 raise ValueError("It must be either aspect_ratios_per_layer is None or len(aspect_ratios_per_layer) == len(predictor_sizes), but len(aspect_ratios_per_layer) == {} and len(predictor_sizes) == {}".format(len(aspect_ratios_per_layer), len(predictor_sizes)))
+            for aspect_ratios in aspect_ratios_per_layer:
+                aspect_ratios = np.array(aspect_ratios)
+                if np.any(aspect_ratios <= 0):
+                    raise ValueError("All aspect ratios must be greater than zero.")
+        else:
+            if not aspect_ratios_global:
+                raise ValueError("At least one of `aspect_ratios_global` and `aspect_ratios_per_layer` cannot be `None`.")
+            aspect_ratios_global = np.array(aspect_ratios_global)
+            if np.any(aspect_ratios_global <= 0):
+                raise ValueError("All aspect ratios must be greater than zero.")
 
         if len(variances) != 4:
             raise ValueError("4 variance values must be pased, but {} values were received.".format(len(variances)))
@@ -829,7 +845,7 @@ class SSDBoxEncoder:
             negative_boxes = np.ones((y_encode_template.shape[1])) # 1 for all negative boxes, 0 otherwise
             for true_box in ground_truth_labels[i]: # For each ground truth box belonging to the current batch item...
                 true_box = true_box.astype(np.float)
-                if (true_box[2] - true_box[1] == 0) or (true_box[4] - true_box[3] == 0): continue # Protect ourselves against bad ground truth data: boxes with width or height equal to zero
+                if abs(true_box[2] - true_box[1] < 0.001) or abs(true_box[4] - true_box[3] < 0.001): continue # Protect ourselves against bad ground truth data: boxes with width or height equal to zero
                 if self.normalize_coords:
                     true_box[1:3] /= self.img_width # Normalize xmin and xmax to be within [0,1]
                     true_box[3:5] /= self.img_height # Normalize ymin and ymax to be within [0,1]
