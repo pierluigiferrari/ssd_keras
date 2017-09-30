@@ -110,11 +110,11 @@ def convert_coordinates(tensor, start_index, conversion='minmax2centroids'):
 
 def convert_coordinates2(tensor, start_index, conversion='minmax2centroids'):
     '''
-    A pure matrix multiplication implementation of `convert_coordinates()`.
+    A matrix multiplication implementation of `convert_coordinates()`.
 
-    Although elegant, it turns out to be marginally slower on average than
-    `convert_coordinates()`. Note that the two matrices below are each other's
-    multiplicative inverse.
+    It is marginally slower on average than `convert_coordinates()`, probably
+    because it involves more (unnecessary) arithmetic operations ('unnecessary'
+    because the two matrices are sparse).
 
     For details please refer to the documentation of `convert_coordinates()`.
     '''
@@ -130,7 +130,7 @@ def convert_coordinates2(tensor, start_index, conversion='minmax2centroids'):
         M = np.array([[ 1. , 1. ,  0. , 0. ],
                       [ 0. , 0. ,  1. , 1. ],
                       [-0.5, 0.5,  0. , 0. ],
-                      [ 0. , 0. , -0.5, 0.5]])
+                      [ 0. , 0. , -0.5, 0.5]]) # The multiplicative inverse of the matrix above
         tensor1[..., ind:ind+4] = np.dot(tensor1[..., ind:ind+4], M)
     else:
         raise ValueError("Unexpected conversion value. Supported values are 'minmax2centroids' and 'centroids2minmax'.")
@@ -338,14 +338,14 @@ def decode_y2(y_pred,
     Convert model prediction output back to a format that contains only the positive box predictions
     (i.e. the same format that `enconde_y()` takes as input).
 
-    Optionally performs confidence thresholding and greedy non-maximum suppression afte the decoding stage.
+    Optionally performs confidence thresholding and greedy non-maximum suppression after the decoding stage.
 
     Note that the decoding procedure used here is not the same as the procedure used in the original Caffe implementation.
-    The procedure used here assigns every box its highest confidence as the class and then removes all boxes fro which
-    the highest confidence is the background class. This results in less work for the subsequent non-maximum suppression,
-    because the vast majority of the predictions will be filtered out just by the fact that their highest confidence is
-    for the background class. It is much more efficient than the procedure of the original implementation, but the
-    results may also differ.
+    For each box, the procedure used here assigns the box's highest confidence as its predicted class. Then it removes
+    all boxes for which the highest confidence is the background class. This results in less work for the subsequent
+    non-maximum suppression, because the vast majority of the predictions will be filtered out just by the fact that
+    their highest confidence is for the background class. It is much more efficient than the procedure of the original
+    implementation, but the results may also differ.
 
     Arguments:
         y_pred (array): The prediction output of the SSD model, expected to be a Numpy array
