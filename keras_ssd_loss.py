@@ -191,6 +191,6 @@ class SSDLoss:
 
         # 4: Compute the total loss
 
-        total_loss = (class_loss + self.alpha * loc_loss) / tf.maximum(1.0, n_positive) # In case `n_positive == 0`
+        total_loss = (class_loss + self.alpha * loc_loss) # In case `n_positive == 0`
 
         return total_loss
