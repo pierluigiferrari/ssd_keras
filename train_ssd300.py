@@ -19,13 +19,18 @@ parser = ArgumentParser()
 parser.add_argument('--model')
 parser.add_argument('--name', default='ssd')
 parser.add_argument('--scale', type=float)
-parser.add_argument('--classes', type=lambda ss: [int(s) for s in ss.split()])
+parser.add_argument('--classes', type=lambda ss: [int(s) for s in ss.split(',')])
 parser.add_argument('--min_scale', type=float, default=.05)
 parser.add_argument('--max_scale', type=float, default=.25)
 parser.add_argument('--epochs', type=int, default=1000)
+parser.add_argument('--batch_size', type=int, default=4)
 parser.add_argument('--outcsv', default='ssd_results.csv')
-parser.add_argument('csv', default='/osn/share/rail.csv')
+parser.add_argument('--val_csv')
+parser.add_argument('train_csv', default='/osn/share/rail.csv')
 args = parser.parse_args()
+
+if args.val_csv is None:
+    args.val_csv = args.train_csv
 
 print(args.min_scale, args.max_scale)
 img_height = 300  # Height of the input images
@@ -82,7 +87,7 @@ ssd_box_encoder = SSDBoxEncoder(img_height=img_height,
 
 train_dataset = BatchGenerator(include_classes=args.classes)
 
-train_dataset.parse_csv(labels_path=args.csv,
+train_dataset.parse_csv(labels_path=args.train_csv,
                         input_format=['image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'])
 
 train_generator = train_dataset.generate(batch_size=args.batch_size,
@@ -95,7 +100,7 @@ train_generator = train_dataset.generate(batch_size=args.batch_size,
 
 val_dataset = BatchGenerator(include_classes=args.classes)
 
-val_dataset.parse_csv(labels_path=args.csv,
+val_dataset.parse_csv(labels_path=args.val_csv,
                       input_format=['image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'])
 
 val_generator = val_dataset.generate(batch_size=args.batch_size,
@@ -124,7 +129,7 @@ def lr_schedule(epoch):
 history = model.fit_generator(generator=train_generator,
                               steps_per_epoch=ceil(train_dataset.count / args.batch_size),
                               epochs=args.epochs,
-                              callbacks=[ModelCheckpoint('./{}_epoch{epoch:04d}_loss{loss:.4f}.h5',
+                              callbacks=[ModelCheckpoint('./' + args.name + '_epoch{epoch:04d}_loss{loss:.4f}.h5',
                                                          monitor='val_loss',
                                                          verbose=1,
                                                          save_best_only=False,
