@@ -13,7 +13,7 @@ setup(
     python_requires='>=3',
     entry_points={
         'console_scripts': [
-            'trainssd=trainssd:console',
+            'trainssd=singleshot:trainssd:console',
         ],
     },
 )
