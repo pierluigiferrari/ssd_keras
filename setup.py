@@ -9,7 +9,7 @@ setup(
     author_email='mla@mla.im',
     license='GPL',
     packages=find_packages(exclude=['contrib', 'docs', 'tests*']),
-    install_requires=['keras','sh', 'regex'],
+    install_requires=['keras','sh', 'regex', 'numpy', 'pandas', 'rasterio'],
     python_requires='>=3',
     entry_points={
         'console_scripts': [
