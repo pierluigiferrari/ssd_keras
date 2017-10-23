@@ -18,13 +18,18 @@ def console():
     parser.add_argument('--model')
     parser.add_argument('--name', default='ssd')
     parser.add_argument('--scale', type=float)
-    parser.add_argument('--classes', type=lambda ss: [int(s) for s in ss.split()])
-    parser.add_argument('--min_scale', type=float, default=.05)
-    parser.add_argument('--max_scale', type=float, default=.25)
+    parser.add_argument('--classes', type=lambda ss: [int(s) for s in ss.split(',')])
+    parser.add_argument('--min_scale', type=float)
+    parser.add_argument('--max_scale', type=float)
     parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--outcsv', default='ssd_results.csv')
-    parser.add_argument('csv', default='/osn/share/rail.csv')
+    parser.add_argument('--val_csv')
+    parser.add_argument('train_csv', default='/osn/share/rail.csv')
     args = parser.parse_args()
+
+    if args.val_csv is None:
+        args.val_csv = args.train_csv
 
     print(args.min_scale, args.max_scale)
     img_height = 300  # Height of the input images
@@ -81,7 +86,7 @@ def console():
 
     train_dataset = BatchGenerator(include_classes=args.classes)
 
-    train_dataset.parse_csv(labels_path=args.csv,
+    train_dataset.parse_csv(labels_path=args.train_csv,
                             input_format=['image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'])
 
     train_generator = train_dataset.generate(batch_size=args.batch_size,
@@ -94,7 +99,7 @@ def console():
 
     val_dataset = BatchGenerator(include_classes=args.classes)
 
-    val_dataset.parse_csv(labels_path=args.csv,
+    val_dataset.parse_csv(labels_path=args.val_csv,
                           input_format=['image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'])
 
     val_generator = val_dataset.generate(batch_size=args.batch_size,
@@ -119,11 +124,13 @@ def console():
         else:
             return 0.0001
 
+    if not os.path.exists(args.name):
+        os.mkdir(args.name)
 
     history = model.fit_generator(generator=train_generator,
                                   steps_per_epoch=ceil(train_dataset.count / args.batch_size),
                                   epochs=args.epochs,
-                                  callbacks=[ModelCheckpoint('./{}_epoch{epoch:04d}_loss{loss:.4f}.h5',
+                                  callbacks=[ModelCheckpoint('./' + args.name + '/epoch{epoch:04d}_loss{loss:.4f}.h5',
                                                              monitor='val_loss',
                                                              verbose=1,
                                                              save_best_only=False,
@@ -135,8 +142,8 @@ def console():
                                   validation_data=val_generator,
                                   validation_steps=ceil(val_dataset.count / args.batch_size))
 
-    model.save('./{}.h5'.format(args.name))
-    model.save_weights('./{}_weights.h5'.format(args.name))
+    model.save('./' + args.name + '/{}.h5'.format(args.name))
+    model.save_weights('./' + args.name + '/{}_weights.h5'.format(args.name))
 
     print("Model and weights saved as {}[_weights].h5".format(args.name))
 
@@ -178,5 +185,5 @@ def console():
                     except ValueError as e:
                         pass
     df = pandas.DataFrame(results, columns=['file_name', 'class_id', 'conf', 'xmin', 'xmax', 'ymin', 'ymax'])
-    df['class_id'] = df['class_id'].apply(lambda xx: train_dataset.class_map[xx])
-    df.to_csv(args.outcsv)
+    df['class_id'] = df['class_id'].apply(lambda xx: train_dataset.class_map_inv[xx])
+    df.to_csv('./' + args.name + '/' + args.outcsv)

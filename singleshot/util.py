@@ -158,7 +158,8 @@ class BatchGenerator:
         # These are the variables we always need
         if box_output_format is None:
             box_output_format = ['class_id', 'xmin', 'xmax', 'ymin', 'ymax']
-        self.class_map = {v: k for k, v in enumerate(include_classes)} if include_classes else None
+        self.class_map = {v: k+1 for k, v in enumerate(include_classes)} if include_classes else None
+        self.class_map_inv = {k+1:v for k, v in enumerate(include_classes)} if include_classes else None
         self.include_classes = include_classes
         self.box_output_format = box_output_format
 
