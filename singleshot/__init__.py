@@ -27,7 +27,8 @@ def SSD(image_size,
         limit_boxes=False,
         variances=[0.1, 0.1, 0.2, 0.2],
         coords='centroids',
-        normalize_coords=False):
+        normalize_coords=False,
+        shift=True):
     '''
     Build a Keras model with SSD_300 architecture, see references.
 
@@ -90,13 +91,14 @@ def SSD(image_size,
         variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
             to be precise) for the encoded predicted box coordinates. A variance value of 1.0 would apply
             no scaling at all to the predictions, while values in (0,1) upscale the encoded predictions and values greater
-            than 1.0 downscale the encoded predictions. Defaults to `[0.1, 0.1, 0.2, 0.2]`, following the original implementation.
-            The coordinate format must be 'centroids'.
+            than 1.0 downscale the encoded predictions. Defaults to `[0.1, 0.1, 0.2, 0.2]`, 
+            following the original implementation. The coordinate format must be 'centroids'.
         coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
             `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
             `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids', following the original implementation.
         normalize_coords (bool, optional): Set to `True` if the model is supposed to use relative instead of absolute coordinates,
             i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates. Defaults to `False`.
+        shift (bool, optional): Set to true to have img pixel values range from -1 to 1 else, [0,1]
 
     Returns:
         model: The Keras SSD model.
@@ -155,10 +157,10 @@ def SSD(image_size,
     if aspect_ratios_per_layer:
         n_boxes = []
         for aspect_ratios in aspect_ratios_per_layer:
-            if (1 in aspect_ratios) & two_boxes_for_ar1:
-                n_boxes.append(len(aspect_ratios) + 1) # +1 for the second box for aspect ratio 1
-            else:
-                n_boxes.append(len(aspect_ratios))
+            # +1 for the second box for aspect ratio 1
+            second_box = (1 in aspect_ratios) and two_boxes_for_ar1
+            n_boxes.append(len(aspect_ratios) + second_box)
+
         n_boxes_conv4_3 = n_boxes[0] # 4 boxes per cell for the original implementation
         n_boxes_fc7 = n_boxes[1] # 6 boxes per cell for the original implementation
         n_boxes_conv6_2 = n_boxes[2] # 6 boxes per cell for the original implementation
@@ -166,10 +168,7 @@ def SSD(image_size,
         n_boxes_conv8_2 = n_boxes[4] # 4 boxes per cell for the original implementation
         n_boxes_conv9_2 = n_boxes[5] # 4 boxes per cell for the original implementation
     else: # If only a global aspect ratio list was passed, then the number of boxes is the same for each predictor layer
-        if (1 in aspect_ratios_global) & two_boxes_for_ar1:
-            n_boxes = len(aspect_ratios_global) + 1
-        else:
-            n_boxes = len(aspect_ratios_global)
+        n_boxes = len(aspect_ratios_global) + ((1 in aspect_ratios_global) and two_boxes_for_ar1)
         n_boxes_conv4_3 = n_boxes
         n_boxes_fc7 = n_boxes
         n_boxes_conv6_2 = n_boxes
@@ -180,10 +179,10 @@ def SSD(image_size,
     # Input image format
     img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
 
-    ### Design the actual network
-
+    shift = 2 if shift else 1
+    # Design the actual network
     x = Input(shape=(img_height, img_width, img_channels))
-    normed = Lambda(lambda z: z/127.5 - 1.0, # Convert input feature range to [-1,1]
+    normed = Lambda(lambda z: shift * z/255.0 - shift + 1.0, # Convert input feature range to [-1,1]
                     output_shape=(img_height, img_width, img_channels),
                     name='lambda1')(x)
 
@@ -229,102 +228,104 @@ def SSD(image_size,
     # Feed conv4_3 into the L2 normalization layer
     conv4_3_norm = L2Normalization(gamma_init=20, name='conv4_3_norm')(conv4_3)
 
-    ### Build the convolutional predictor layers on top of the base network
+    # Build the convolutional predictor layers on top of the base network
 
-    # We precidt `n_classes` confidence values for each box, hence the confidence predictors have depth `n_boxes * n_classes`
+    # We predict `n_classes` confidence values for each box,
+    # hence the confidence predictors have depth `n_boxes * n_classes`
     # Output shape of the confidence layers: `(batch, height, width, n_boxes * n_classes)`
-    conv4_3_norm_mbox_conf = Conv2D(n_boxes_conv4_3 * n_classes, (3, 3), padding='same', name='conv4_3_norm_mbox_conf')(conv4_3_norm)
-    fc7_mbox_conf = Conv2D(n_boxes_fc7 * n_classes, (3, 3), padding='same', name='fc7_mbox_conf')(fc7)
-    conv6_2_mbox_conf = Conv2D(n_boxes_conv6_2 * n_classes, (3, 3), padding='same', name='conv6_2_mbox_conf')(conv6_2)
-    conv7_2_mbox_conf = Conv2D(n_boxes_conv7_2 * n_classes, (3, 3), padding='same', name='conv7_2_mbox_conf')(conv7_2)
-    conv8_2_mbox_conf = Conv2D(n_boxes_conv8_2 * n_classes, (3, 3), padding='same', name='conv8_2_mbox_conf')(conv8_2)
-    conv9_2_mbox_conf = Conv2D(n_boxes_conv9_2 * n_classes, (3, 3), padding='same', name='conv9_2_mbox_conf')(conv9_2)
+    conv4_3_norm_class_conf = Conv2D(n_boxes_conv4_3 * n_classes, (3, 3), padding='same', name='conv4_3_norm_class_conf')(conv4_3_norm)
+    fc7_class_conf = Conv2D(n_boxes_fc7 * n_classes, (3, 3), padding='same', name='fc7_class_conf')(fc7)
+    conv6_2_class_conf = Conv2D(n_boxes_conv6_2 * n_classes, (3, 3), padding='same', name='conv6_2_class_conf')(conv6_2)
+    conv7_2_class_conf = Conv2D(n_boxes_conv7_2 * n_classes, (3, 3), padding='same', name='conv7_2_class_conf')(conv7_2)
+    conv8_2_class_conf = Conv2D(n_boxes_conv8_2 * n_classes, (3, 3), padding='same', name='conv8_2_class_conf')(conv8_2)
+    conv9_2_class_conf = Conv2D(n_boxes_conv9_2 * n_classes, (3, 3), padding='same', name='conv9_2_class_conf')(conv9_2)
+
     # We predict 4 box coordinates for each box, hence the localization predictors have depth `n_boxes * 4`
     # Output shape of the localization layers: `(batch, height, width, n_boxes * 4)`
-    conv4_3_norm_mbox_loc = Conv2D(n_boxes_conv4_3 * 4, (3, 3), padding='same', name='conv4_3_norm_mbox_loc')(conv4_3_norm)
-    fc7_mbox_loc = Conv2D(n_boxes_fc7 * 4, (3, 3), padding='same', name='fc7_mbox_loc')(fc7)
-    conv6_2_mbox_loc = Conv2D(n_boxes_conv6_2 * 4, (3, 3), padding='same', name='conv6_2_mbox_loc')(conv6_2)
-    conv7_2_mbox_loc = Conv2D(n_boxes_conv7_2 * 4, (3, 3), padding='same', name='conv7_2_mbox_loc')(conv7_2)
-    conv8_2_mbox_loc = Conv2D(n_boxes_conv8_2 * 4, (3, 3), padding='same', name='conv8_2_mbox_loc')(conv8_2)
-    conv9_2_mbox_loc = Conv2D(n_boxes_conv9_2 * 4, (3, 3), padding='same', name='conv9_2_mbox_loc')(conv9_2)
+    conv4_3_norm_loc = Conv2D(n_boxes_conv4_3 * 4, (3, 3), padding='same', name='conv4_3_norm_loc')(conv4_3_norm)
+    fc7_loc = Conv2D(n_boxes_fc7 * 4, (3, 3), padding='same', name='fc7_loc')(fc7)
+    conv6_2_loc = Conv2D(n_boxes_conv6_2 * 4, (3, 3), padding='same', name='conv6_2_loc')(conv6_2)
+    conv7_2_loc = Conv2D(n_boxes_conv7_2 * 4, (3, 3), padding='same', name='conv7_2_loc')(conv7_2)
+    conv8_2_loc = Conv2D(n_boxes_conv8_2 * 4, (3, 3), padding='same', name='conv8_2_loc')(conv8_2)
+    conv9_2_loc = Conv2D(n_boxes_conv9_2 * 4, (3, 3), padding='same', name='conv9_2_loc')(conv9_2)
 
-    ### Generate the anchor boxes (called "priors" in the original Caffe/C++ implementation, so I'll keep their layer names)
+    # Generate the anchor boxes (called "priors" in the original Caffe/C++ implementation, so keep layer names)
 
     # Output shape of anchors: `(batch, height, width, n_boxes, 8)`
-    conv4_3_norm_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios_conv4_3,
-                                             two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv4_3_norm_mbox_priorbox')(conv4_3_norm_mbox_loc)
-    fc7_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios_fc7,
-                                    two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='fc7_mbox_priorbox')(fc7_mbox_loc)
-    conv6_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6_2,
-                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv6_2_mbox_priorbox')(conv6_2_mbox_loc)
-    conv7_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios_conv7_2,
-                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv7_2_mbox_priorbox')(conv7_2_mbox_loc)
-    conv8_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[4], next_scale=scales[5], aspect_ratios=aspect_ratios_conv8_2,
-                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv8_2_mbox_priorbox')(conv8_2_mbox_loc)
-    conv9_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[5], next_scale=scales[6], aspect_ratios=aspect_ratios_conv9_2,
-                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv9_2_mbox_priorbox')(conv9_2_mbox_loc)
+    conv4_3_norm_anchorbox = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios_conv4_3,
+                                             two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv4_3_norm_anchorbox')(conv4_3_norm_loc)
+    fc7_anchorbox = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios_fc7,
+                                    two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='fc7_anchorbox')(fc7_loc)
+    conv6_2_anchorbox = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6_2,
+                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv6_2_anchorbox')(conv6_2_loc)
+    conv7_2_anchorbox = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios_conv7_2,
+                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv7_2_anchorbox')(conv7_2_loc)
+    conv8_2_anchorbox = AnchorBoxes(img_height, img_width, this_scale=scales[4], next_scale=scales[5], aspect_ratios=aspect_ratios_conv8_2,
+                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv8_2_anchorbox')(conv8_2_loc)
+    conv9_2_anchorbox = AnchorBoxes(img_height, img_width, this_scale=scales[5], next_scale=scales[6], aspect_ratios=aspect_ratios_conv9_2,
+                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv9_2_anchorbox')(conv9_2_loc)
 
-    ### Reshape
+    # Reshape
 
     # Reshape the class predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, n_classes)`
     # We want the classes isolated in the last axis to perform softmax on them
-    conv4_3_norm_mbox_conf_reshape = Reshape((-1, n_classes), name='conv4_3_norm_mbox_conf_reshape')(conv4_3_norm_mbox_conf)
-    fc7_mbox_conf_reshape = Reshape((-1, n_classes), name='fc7_mbox_conf_reshape')(fc7_mbox_conf)
-    conv6_2_mbox_conf_reshape = Reshape((-1, n_classes), name='conv6_2_mbox_conf_reshape')(conv6_2_mbox_conf)
-    conv7_2_mbox_conf_reshape = Reshape((-1, n_classes), name='conv7_2_mbox_conf_reshape')(conv7_2_mbox_conf)
-    conv8_2_mbox_conf_reshape = Reshape((-1, n_classes), name='conv8_2_mbox_conf_reshape')(conv8_2_mbox_conf)
-    conv9_2_mbox_conf_reshape = Reshape((-1, n_classes), name='conv9_2_mbox_conf_reshape')(conv9_2_mbox_conf)
+    conv4_3_norm_class_conf_reshape = Reshape((-1, n_classes), name='conv4_3_norm_class_conf_reshape')(conv4_3_norm_class_conf)
+    fc7_class_conf_reshape = Reshape((-1, n_classes), name='fc7_class_conf_reshape')(fc7_class_conf)
+    conv6_2_class_conf_reshape = Reshape((-1, n_classes), name='conv6_2_class_conf_reshape')(conv6_2_class_conf)
+    conv7_2_class_conf_reshape = Reshape((-1, n_classes), name='conv7_2_class_conf_reshape')(conv7_2_class_conf)
+    conv8_2_class_conf_reshape = Reshape((-1, n_classes), name='conv8_2_class_conf_reshape')(conv8_2_class_conf)
+    conv9_2_class_conf_reshape = Reshape((-1, n_classes), name='conv9_2_class_conf_reshape')(conv9_2_class_conf)
     # Reshape the box predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, 4)`
     # We want the four box coordinates isolated in the last axis to compute the smooth L1 loss
-    conv4_3_norm_mbox_loc_reshape = Reshape((-1, 4), name='conv4_3_norm_mbox_loc_reshape')(conv4_3_norm_mbox_loc)
-    fc7_mbox_loc_reshape = Reshape((-1, 4), name='fc7_mbox_loc_reshape')(fc7_mbox_loc)
-    conv6_2_mbox_loc_reshape = Reshape((-1, 4), name='conv6_2_mbox_loc_reshape')(conv6_2_mbox_loc)
-    conv7_2_mbox_loc_reshape = Reshape((-1, 4), name='conv7_2_mbox_loc_reshape')(conv7_2_mbox_loc)
-    conv8_2_mbox_loc_reshape = Reshape((-1, 4), name='conv8_2_mbox_loc_reshape')(conv8_2_mbox_loc)
-    conv9_2_mbox_loc_reshape = Reshape((-1, 4), name='conv9_2_mbox_loc_reshape')(conv9_2_mbox_loc)
+    conv4_3_norm_loc_reshape = Reshape((-1, 4), name='conv4_3_norm_loc_reshape')(conv4_3_norm_loc)
+    fc7_loc_reshape = Reshape((-1, 4), name='fc7_loc_reshape')(fc7_loc)
+    conv6_2_loc_reshape = Reshape((-1, 4), name='conv6_2_loc_reshape')(conv6_2_loc)
+    conv7_2_loc_reshape = Reshape((-1, 4), name='conv7_2_loc_reshape')(conv7_2_loc)
+    conv8_2_loc_reshape = Reshape((-1, 4), name='conv8_2_loc_reshape')(conv8_2_loc)
+    conv9_2_loc_reshape = Reshape((-1, 4), name='conv9_2_loc_reshape')(conv9_2_loc)
     # Reshape the anchor box tensors, yielding 3D tensors of shape `(batch, height * width * n_boxes, 8)`
-    conv4_3_norm_mbox_priorbox_reshape = Reshape((-1, 8), name='conv4_3_norm_mbox_priorbox_reshape')(conv4_3_norm_mbox_priorbox)
-    fc7_mbox_priorbox_reshape = Reshape((-1, 8), name='fc7_mbox_priorbox_reshape')(fc7_mbox_priorbox)
-    conv6_2_mbox_priorbox_reshape = Reshape((-1, 8), name='conv6_2_mbox_priorbox_reshape')(conv6_2_mbox_priorbox)
-    conv7_2_mbox_priorbox_reshape = Reshape((-1, 8), name='conv7_2_mbox_priorbox_reshape')(conv7_2_mbox_priorbox)
-    conv8_2_mbox_priorbox_reshape = Reshape((-1, 8), name='conv8_2_mbox_priorbox_reshape')(conv8_2_mbox_priorbox)
-    conv9_2_mbox_priorbox_reshape = Reshape((-1, 8), name='conv9_2_mbox_priorbox_reshape')(conv9_2_mbox_priorbox)
+    conv4_3_norm_anchorbox_reshape = Reshape((-1, 8), name='conv4_3_norm_anchorbox_reshape')(conv4_3_norm_anchorbox)
+    fc7_anchorbox_reshape = Reshape((-1, 8), name='fc7_anchorbox_reshape')(fc7_anchorbox)
+    conv6_2_anchorbox_reshape = Reshape((-1, 8), name='conv6_2_anchorbox_reshape')(conv6_2_anchorbox)
+    conv7_2_anchorbox_reshape = Reshape((-1, 8), name='conv7_2_anchorbox_reshape')(conv7_2_anchorbox)
+    conv8_2_anchorbox_reshape = Reshape((-1, 8), name='conv8_2_anchorbox_reshape')(conv8_2_anchorbox)
+    conv9_2_anchorbox_reshape = Reshape((-1, 8), name='conv9_2_anchorbox_reshape')(conv9_2_anchorbox)
 
-    ### Concatenate the predictions from the different layers
+    # Concatenate the predictions from the different layers
 
     # Axis 0 (batch) and axis 2 (n_classes or 4, respectively) are identical for all layer predictions,
     # so we want to concatenate along axis 1, the number of boxes per layer
-    # Output shape of `mbox_conf`: (batch, n_boxes_total, n_classes)
-    mbox_conf = Concatenate(axis=1, name='mbox_conf')([conv4_3_norm_mbox_conf_reshape,
-                                                       fc7_mbox_conf_reshape,
-                                                       conv6_2_mbox_conf_reshape,
-                                                       conv7_2_mbox_conf_reshape,
-                                                       conv8_2_mbox_conf_reshape,
-                                                       conv9_2_mbox_conf_reshape])
+    # Output shape of `class_conf`: (batch, n_boxes_total, n_classes)
+    class_conf = Concatenate(axis=1, name='class_conf')([conv4_3_norm_class_conf_reshape,
+                                                       fc7_class_conf_reshape,
+                                                       conv6_2_class_conf_reshape,
+                                                       conv7_2_class_conf_reshape,
+                                                       conv8_2_class_conf_reshape,
+                                                       conv9_2_class_conf_reshape])
 
-    # Output shape of `mbox_loc`: (batch, n_boxes_total, 4)
-    mbox_loc = Concatenate(axis=1, name='mbox_loc')([conv4_3_norm_mbox_loc_reshape,
-                                                     fc7_mbox_loc_reshape,
-                                                     conv6_2_mbox_loc_reshape,
-                                                     conv7_2_mbox_loc_reshape,
-                                                     conv8_2_mbox_loc_reshape,
-                                                     conv9_2_mbox_loc_reshape])
+    # Output shape of `loc`: (batch, n_boxes_total, 4)
+    loc = Concatenate(axis=1, name='loc')([conv4_3_norm_loc_reshape,
+                                                     fc7_loc_reshape,
+                                                     conv6_2_loc_reshape,
+                                                     conv7_2_loc_reshape,
+                                                     conv8_2_loc_reshape,
+                                                     conv9_2_loc_reshape])
 
-    # Output shape of `mbox_priorbox`: (batch, n_boxes_total, 8)
-    mbox_priorbox = Concatenate(axis=1, name='mbox_priorbox')([conv4_3_norm_mbox_priorbox_reshape,
-                                                               fc7_mbox_priorbox_reshape,
-                                                               conv6_2_mbox_priorbox_reshape,
-                                                               conv7_2_mbox_priorbox_reshape,
-                                                               conv8_2_mbox_priorbox_reshape,
-                                                               conv9_2_mbox_priorbox_reshape])
+    # Output shape of `anchorbox`: (batch, n_boxes_total, 8)
+    anchorbox = Concatenate(axis=1, name='anchorbox')([conv4_3_norm_anchorbox_reshape,
+                                                               fc7_anchorbox_reshape,
+                                                               conv6_2_anchorbox_reshape,
+                                                               conv7_2_anchorbox_reshape,
+                                                               conv8_2_anchorbox_reshape,
+                                                               conv9_2_anchorbox_reshape])
 
     # The box coordinate predictions will go into the loss function just the way they are,
     # but for the class predictions, we'll apply a softmax activation layer first
-    mbox_conf_softmax = Activation('softmax', name='mbox_conf_softmax')(mbox_conf)
+    class_conf_softmax = Activation('softmax', name='class_conf_softmax')(class_conf)
 
     # Concatenate the class and box predictions and the anchors to one large predictions vector
     # Output shape of `predictions`: (batch, n_boxes_total, n_classes + 4 + 8)
-    predictions = Concatenate(axis=2, name='predictions')([mbox_conf_softmax, mbox_loc, mbox_priorbox])
+    predictions = Concatenate(axis=2, name='predictions')([class_conf_softmax, loc, anchorbox])
 
     model = Model(inputs=x, outputs=predictions)
 
@@ -333,26 +334,26 @@ def SSD(image_size,
     # Note that the original implementation performs anchor box matching inside the loss function. We don't do that.
     # Instead, we'll do it in the batch generator function.
     # The spatial dimensions are the same for the confidence and localization predictors, so we just take those of the conf layers.
-    predictor_sizes = np.array([conv4_3_norm_mbox_conf._keras_shape[1:3],
-                                 fc7_mbox_conf._keras_shape[1:3],
-                                 conv6_2_mbox_conf._keras_shape[1:3],
-                                 conv7_2_mbox_conf._keras_shape[1:3],
-                                 conv8_2_mbox_conf._keras_shape[1:3],
-                                 conv9_2_mbox_conf._keras_shape[1:3]])
+    predictor_sizes = np.array([conv4_3_norm_class_conf._keras_shape[1:3],
+                                 fc7_class_conf._keras_shape[1:3],
+                                 conv6_2_class_conf._keras_shape[1:3],
+                                 conv7_2_class_conf._keras_shape[1:3],
+                                 conv8_2_class_conf._keras_shape[1:3],
+                                 conv9_2_class_conf._keras_shape[1:3]])
 
     return model, predictor_sizes
 
 
 class SSDLoss:
-    '''
+    """
     The SSD loss, see https://arxiv.org/abs/1512.02325.
-    '''
+    """
 
     def __init__(self,
                  neg_pos_ratio=3,
                  n_neg_min=0,
                  alpha=1.0):
-        '''
+        """
         Arguments:
             neg_pos_ratio (int, optional): The maximum ratio of negative (i.e. background)
                 to positive ground truth boxes to include in the loss computation.
@@ -369,13 +370,13 @@ class SSDLoss:
                 stands in reasonable proportion to the batch size used for training.
             alpha (float, optional): A factor to weight the localization loss in the
                 computation of the total loss. Defaults to 1.0 following the paper.
-        '''
+        """
         self.neg_pos_ratio = tf.constant(neg_pos_ratio)
         self.n_neg_min = tf.constant(n_neg_min)
         self.alpha = tf.constant(alpha)
 
     def smooth_L1_loss(self, y_true, y_pred):
-        '''
+        """
         Compute smooth L1 loss, see references.
 
         Arguments:
@@ -392,14 +393,14 @@ class SSDLoss:
 
         References:
             https://arxiv.org/abs/1504.08083
-        '''
+        """
         absolute_loss = tf.abs(y_true - y_pred)
         square_loss = 0.5 * (y_true - y_pred)**2
         l1_loss = tf.where(tf.less(absolute_loss, 1.0), square_loss, absolute_loss - 0.5)
         return tf.reduce_sum(l1_loss, axis=-1)
 
     def log_loss(self, y_true, y_pred):
-        '''
+        """
         Compute the softmax log loss.
 
         Arguments:
@@ -412,7 +413,7 @@ class SSDLoss:
         Returns:
             The softmax log loss, a nD-1 Tensorflow tensor. In this context a 2D tensor
             of shape (batch, n_boxes_total).
-        '''
+        """
         # Make sure that `y_pred` doesn't contain any zeros (which would break the log function)
         y_pred = tf.maximum(y_pred, 1e-15)
         # Compute the log loss
@@ -420,7 +421,7 @@ class SSDLoss:
         return log_loss
 
     def compute_loss(self, y_true, y_pred):
-        '''
+        """
         Compute the loss of the SSD model prediction against the ground truth.
 
         Arguments:
@@ -442,14 +443,16 @@ class SSDLoss:
 
         Returns:
             A scalar, the total multitask loss for classification and localization.
-        '''
+        """
         batch_size = tf.shape(y_pred)[0] # Output dtype: tf.int32
         n_boxes = tf.shape(y_pred)[1] # Output dtype: tf.int32, note that `n_boxes` in this context denotes the total number of boxes per image, not the number of boxes per cell
 
         # 1: Compute the losses for class and box predictions for every box
 
-        classification_loss = tf.to_float(self.log_loss(y_true[:,:,:-12], y_pred[:,:,:-12])) # Output shape: (batch_size, n_boxes)
-        localization_loss = tf.to_float(self.smooth_L1_loss(y_true[:,:,-12:-8], y_pred[:,:,-12:-8])) # Output shape: (batch_size, n_boxes)
+        classification_loss = tf.to_float(self.log_loss(y_true[:,:,:-12], y_pred[:,:,:-12]))
+        # Output shape: (batch_size, n_boxes)
+        localization_loss = tf.to_float(self.smooth_L1_loss(y_true[:,:,-12:-8], y_pred[:,:,-12:-8]))
+        # Output shape: (batch_size, n_boxes)
 
         # 2: Compute the classification losses for the positive and negative targets
 
@@ -487,6 +490,7 @@ class SSDLoss:
         # or (2) the classification loss for all negative boxes is zero, return zero as the `neg_class_loss`
         def f1():
             return tf.zeros([batch_size])
+
         # Otherwise compute the negative loss
         def f2():
             # Now we'll identify the top-k (where k == `n_negative_keep`) boxes with the highest confidence loss that
@@ -509,7 +513,8 @@ class SSDLoss:
         class_loss = pos_class_loss + neg_class_loss # Tensor of shape (batch_size,)
 
         # 3: Compute the localization loss for the positive targets
-        #    We don't penalize localization loss for negative predicted boxes (obviously: there are no ground truth boxes they would correspond to)
+        #    We don't penalize localization loss for negative predicted boxes
+        # (obviously: there are no ground truth boxes they would correspond to)
 
         loc_loss = tf.reduce_sum(localization_loss * positives, axis=-1) # Tensor of shape (batch_size,)
 
@@ -563,14 +568,14 @@ class L2Normalization(Layer):
 
 
 class AnchorBoxes(Layer):
-    '''
+    """
     A Keras layer to create an output tensor containing anchor box coordinates based on the
     input tensor and the passed arguments.
 
     A set of 2D anchor boxes of different aspect ratios is created for each spatial unit of
     the input tensor. The number of anchor boxes created per unit depends on the arguments
     `aspect_ratios` and `two_boxes_for_ar1`, in the default case it is 4. The boxes
-    are parameterized by the coordinate tuple `(xmin, xmax, ymin, ymax)`.
+    are parametrized by the coordinate tuple `(xmin, xmax, ymin, ymax)`.
 
     The logic implemented by this layer is identical to the logic in the module
     `ssd_box_encode_decode_utils.py`.
@@ -590,7 +595,7 @@ class AnchorBoxes(Layer):
 
     Output shape:
         5D tensor of shape `(batch, height, width, n_boxes, 4)`.
-    '''
+    """
 
     def __init__(self,
                  img_height,
@@ -604,7 +609,7 @@ class AnchorBoxes(Layer):
                  coords='centroids',
                  normalize_coords=False,
                  **kwargs):
-        '''
+        """
         All arguments need to be set to the same values as in the box encoding process, otherwise the behavior is undefined.
         Some of these arguments are explained in more detail in the documentation of the `SSDBoxEncoder` class.
 
@@ -633,7 +638,7 @@ class AnchorBoxes(Layer):
                 `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
             normalize_coords (bool, optional): Set to `True` if the model uses relative instead of absolute coordinates,
                 i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates. Defaults to `False`.
-        '''
+        """
         if K.backend() != 'tensorflow':
             raise TypeError("This layer only supports TensorFlow at the moment, but you are using the {} backend.".format(K.backend()))
 
@@ -668,7 +673,7 @@ class AnchorBoxes(Layer):
         super(AnchorBoxes, self).build(input_shape)
 
     def call(self, x, mask=None):
-        '''
+        """
         Return an anchor box tensor based on the shape of the input tensor.
 
         The logic implemented here is identical to the logic in the module `ssd_box_encode_decode_utils.py`.
@@ -682,7 +687,7 @@ class AnchorBoxes(Layer):
             x (tensor): 4D tensor of shape `(batch, channels, height, width)` if `dim_ordering = 'th'`
                 or `(batch, height, width, channels)` if `dim_ordering = 'tf'`. The input for this
                 layer must be the output of the localization predictor layer.
-        '''
+        """
 
         # Compute box width and height for each aspect ratio
         # The shorter side of the image will be used to compute `w` and `h` using `scale` and `aspect_ratios`.
