@@ -37,7 +37,7 @@ Below are some prediction examples of an SSD7 (i.e. the small 7-layer version) t
 * OpenCV (for data augmentation)
 * Beautiful Soup 4.x (to parse XML files)
 
-Both TensorFlow 1.0 and Keras 2.0 introduced major syntax changes, so this code won't work with older versions. The Theano backend is currently not supported.
+The Theano and CNTK backends are currently not supported.
 
 ### How to use it
 
@@ -89,7 +89,7 @@ The following things are still on the to-do list and contributions are welcome:
 
 * Port weights from the original Caffe implementation, both for the reduced VGG-16 base network and for the fully trained networks in all configurations (SSD300, SSD512, trained on Pascal VOC, MS COCO etc.)
 * Write an mAP evaluation module
-* Support the Theano backend
+* Support the Theano and CNTK backends
 
 ### Terminology
 
