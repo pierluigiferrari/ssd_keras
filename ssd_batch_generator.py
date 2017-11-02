@@ -114,9 +114,11 @@ def histogram_eq(image):
 
     image1 = np.copy(image)
 
-    image1[:,:,0] = cv2.equalizeHist(image1[:,:,0])
-    image1[:,:,1] = cv2.equalizeHist(image1[:,:,1])
+    image1 = cv2.cvtColor(image1, cv2.COLOR_RGB2HSV)
+
     image1[:,:,2] = cv2.equalizeHist(image1[:,:,2])
+
+    image1 = cv2.cvtColor(image1, cv2.COLOR_HSV2RGB)
 
     return image1
 
@@ -420,8 +422,8 @@ class BatchGenerator:
                 The respective box coordinates are adjusted accordingly.
             translate (tuple, optional): `False` or a tuple, with the first two elements tuples containing
                 two integers each, and the third element a float: `((min, max), (min, max), prob)`.
-                The first tuple provides the range in pixels for horizontal shift of the image,
-                the second tuple for vertical shift. The number of pixels to shift the image
+                The first tuple provides the range in pixels for the horizontal shift of the image,
+                the second tuple for the vertical shift. The number of pixels to shift the image
                 by is uniformly distributed within the boundaries of `[min, max]`, i.e. `min` is the number
                 of pixels by which the image is translated at least. Both `min` and `max` must be >=0.
                 The respective box coordinates are adjusted accordingly.
@@ -444,7 +446,8 @@ class BatchGenerator:
             resize (tuple, optional): `False` or a tuple of 2 integers for the desired output
                 size of the images in pixels. The expected format is `(width, height)`.
                 The box coordinates are adjusted accordingly. Note: Resizing happens after cropping.
-            gray (bool, optional): If `True`, converts the images to grayscale.
+            gray (bool, optional): If `True`, converts the images to grayscale. Note that the resulting grayscale
+                images have shape `(height, width, 1)`.
             limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries
                 post any transformation. This should always be set to `True`, even if you set `include_thresh`
                 to 0. I don't even know why I made this an option. If this is set to `False`, you could
@@ -745,7 +748,7 @@ class BatchGenerator:
                     img_width, img_height = resize # Updating these at this point is unnecessary, but it's one fewer source of error if this method gets expanded in the future
 
                 if gray:
-                    batch_X[i] = np.expand_dims(cv2.cvtColor(batch_X[i], cv2.COLOR_RGB2GRAY), 3)
+                    batch_X[i] = np.expand_dims(cv2.cvtColor(batch_X[i], cv2.COLOR_RGB2GRAY), axis=2)
 
             # If any batch items need to be removed because of failed random cropping, remove them now.
             for j in sorted(batch_items_to_remove, reverse=True):
