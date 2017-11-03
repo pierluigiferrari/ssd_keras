@@ -6,18 +6,21 @@
 2. [Examples](#examples)
 3. [Dependencies](#dependencies)
 4. [How to use it](#how-to-use-it)
-5. [ToDo](#todo)
-6. [Terminology](#terminology)
+5. [Download VGG-16](#download-vgg-16)
+6. [ToDo](#todo)
+7. [Terminology](#terminology)
 
 ### Overview
 
 This is a Keras implementation of the SSD model architecture introduced by Wei Liu at al. in the paper [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325).
 
-The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments. That being said, the goal of this project is not to provide a fully trained model, at least not until I get around to porting the trained weights from the original Caffe implementation. At the moment, you will have to either train the model yourself or port some trained weights from elsewhere.
+The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
+
+Fully trained, convolutionalized, atrous VGG-16 weights are provided below, but fully trained SSD models are not.
 
 There are currently two base network architectures in this repository. The first one, [`keras_ssd300.py`](./keras_ssd300.py), is a port of the original SSD300 architecture that is based on a reduced atrous VGG-16 as described in the paper. The network architecture and all default parameter settings were taken directly from the `.prototxt` files of the original Caffe implementation. The other, [`keras_ssd7.py`](./keras_ssd7.py), is a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough to do an OK job on Pascal VOC and a surprisingly good job on datasets with only a few object categories. Of course you're not going to get state-of-the-art results with that one.
 
-If you want to build an arbitrary SSD model architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you turn it into a deeper network easily.
+If you want to build an arbitrary SSD model architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you turn it into a deeper network relatively easily.
 
 ### Examples
 
@@ -55,16 +58,20 @@ wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar
 wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar
 ```
 
-Set the file paths to the data accordingly in [`train_ssd300.ipynb`](./train_ssd300.ipynb) and execute the cells. I would also recommend loading pre-trained weights at least for the reduced VGG-16 base network, although I haven't gotten around to porting weights from the Caffe implementation myself yet. Training and prediction are covered in the notebook, but mAP evaluation is not.
+Set the file paths to the data accordingly in [`train_ssd300.ipynb`](./train_ssd300.ipynb) and execute the cells.
+
+It is also strongly recommended that you load the pre-trained VGG-16 weights linked below when attempting to train SSD300, otherwise your training will almost certainly be unsuccessful. Note that the original VGG-16 was trained layer-wise, so trying to train the even deeper SSD300 all at once from scratch will very likely not work. Also note that even with the pre-trained VGG-16 weights it will take at least 20,000 training steps to get a half-decent performance out of SSD300.
+
+Training and prediction are covered in the notebook, but mAP evaluation is not.
 
 #### Working with the generator
 
-If you'd like to train a model on arbitrary datasets, a brief introduction to the design of the data generator may be useful:
+If you'd like to train a model on arbitrary datasets, a brief introduction to the design of the data generator might be useful:
 
 The generator class `BatchGenerator` is in the module [`ssd_batch_generator.py`](./ssd_batch_generator.py) and using it consists of three steps:
 
-1. Create an instance using the constructor. The constructor simply sets the file path to the images, a list of object classes to be included (you may not want to include all object classes that are annotated in the dataset), and the desired order in which the generator yields the ground truth box coordinates and class ID. Even though different box coordinate orders are theoretically possible, `SSDBoxEncoder` currently requires the generator to pass ground truth box coordinates to it in the format `[class_id, xmin, xmax, ymin, ymax]`, which is also the constructor's default setting for this parameter.
-2. Next, lists of image names and annotations (labels, targets, call them whatever you like) need to be parsed from one or multiple source files such as CSV or XML files by calling one of the parser methods that `BatchGenerator` provides. The generator object stores the data that is later used to generate the batches in two Python lists: `filenames` and `labels`. The former contains just the names of the images to be included, e.g. "001934375.jpg". The latter contains for each image a Numpy array with the bounding box coordinates and object class ID of each labeled object in the image. The job of the parse methods that the generator provides is to create these two lists. `parse_xml()` does this for the Pascal VOC data format and `parse_csv()` does it for any CSV file in which the image names, category IDs and box coordinates make up the first six columns of the file. If you have a dataset that stores its annotations in a format that is not compatible with the two existing parser methods, you can just write an additional parser method that can parse whatever format your annotations are in. As long as that parser method sets the two lists `filenames` and `labels` as described in the documentation, you can use this generator with any arbitrary dataset without having to change anything else.
+1. Create an instance using the constructor. The constructor just sets the desired order in which the generator yields the ground truth box coordinates and class ID. Even though different box coordinate orders are theoretically possible, `SSDBoxEncoder` currently requires the generator to pass ground truth box coordinates to it in the format `[class_id, xmin, xmax, ymin, ymax]`, which is also the constructor's default setting for this parameter.
+2. Next, lists of image names and annotations (labels, targets, call them whatever you like) need to be parsed from one or multiple source files such as CSV or XML files by calling one of the parser methods that `BatchGenerator` provides. The generator object stores the data that is later used to generate the batches in two Python lists: `filenames` and `labels`. The former contains just the file paths of the images to be included, e.g. "some_dataset/001934375.png". The latter contains for each image a Numpy array with the bounding box coordinates and object class ID of each labeled object in the image. The job of the parse methods that the generator provides is to create these two lists. `parse_xml()` does this for the Pascal VOC data format and `parse_csv()` does it for any CSV file in which the image names, category IDs and box coordinates make up the first six columns of the file. If you have a dataset that stores its annotations in a format that is not compatible with the two existing parser methods, you can just write an additional parser method that can parse whatever format your annotations are in. As long as that parser method sets the two lists `filenames` and `labels` as described in the documentation, you can use this generator with an arbitrary dataset without having to change anything else.
 3. Finally, in order to actually generate a batch, call the `generate()` method. You have to set the desired batch size and whether or not to generate batches in training mode. If batches are generated in training mode, `generate()` calls the `encode_y()` method of `SSDBoxEncoder` from the module [`ssd_box_encode_decode_utils.py`](./ssd_box_encode_decode_utils.py) to convert the ground truth labels into the big tensor that the cost function needs. This is why you need to pass an `SSDBoxEncoder` instance to `generate()` in training mode. Inside `encode_y()` is where the anchor box matching and box coordinate conversion happens. If batches are not generated in training mode, then the ground truth labels are just returned in their regular format along with the images. The remaining arguments of `generate()` are mainly image manipulation features for online data augmentation and to get the images into the size you need. The documentation describes them in detail.
 
 #### Encoding and decoding boxes
@@ -83,11 +90,15 @@ A note on the relative box coordinates used internally by the model: This may or
 
 If you want to build a different base network architecture, you could use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you turn it into a deeper network easily. Put together the base network you want and add a predictor layer on top of each network layer from which you would like to make predictions. Create two predictor heads for each, one for localization, one for classification. Create an anchor box layer for each predictor layer and set the respective localization head's output as the input for the anchor box layer. All tensor reshaping and concatenation operations remain the same, you just have to make sure to include all of your predictor and anchor box layers of course.
 
+### Download VGG-16
+
+You can download the weights of the fully convolutionalized, atrous VGG-16 model trained to convergence on ImageNet classification [here](https://drive.google.com/open?id=0B0WbA4IemlxlbFZZaURkMTl2NVU). This is a modified version of the VGG-16 model from `keras.applications.vgg16`. In particular, the `fc6` and `fc7` layers were convolutionalized and sub-sampled from depth 4096 to 1024, following the paper.
+
 ### ToDo
 
 The following things are still on the to-do list and contributions are welcome:
 
-* Port weights from the original Caffe implementation, both for the reduced VGG-16 base network and for the fully trained networks in all configurations (SSD300, SSD512, trained on Pascal VOC, MS COCO etc.)
+* Port weights from the original Caffe implementation for the fully trained networks in all configurations (SSD300, SSD512, trained on Pascal VOC, MS COCO etc.)
 * Write an mAP evaluation module
 * Support the Theano and CNTK backends
 
