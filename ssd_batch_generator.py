@@ -137,16 +137,9 @@ class BatchGenerator:
     for details please refer to the documentation of the `generate()` method.
     '''
 
-    def __init__(self,
-                 images_path,
-                 include_classes='all',
-                 box_output_format=['class_id', 'xmin', 'xmax', 'ymin', 'ymax']):
+    def __init__(self, box_output_format=['class_id', 'xmin', 'xmax', 'ymin', 'ymax']):
         '''
         Arguments:
-            images_path (str): The filepath to the image samples.
-            include_classes (list, optional): Either 'all' or a list of integers containing the class IDs that
-                are to be included in the dataset. Defaults to 'all', in which case all boxes will be included
-                in the dataset.
             box_output_format (list, optional): A list of five strings representing the desired order of the five
                 items class ID, xmin, xmax, ymin, ymax in the generated data. The expected strings are
                 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'. If you want to train the model, this
@@ -157,15 +150,16 @@ class BatchGenerator:
                 that are relevant as training targets, a list of filenames is generated separately.
         '''
         # These are the variables we always need
-        self.images_path = images_path
-        self.include_classes = include_classes
+        self.include_classes = None
         self.box_output_format = box_output_format
 
         # These are the variables that we only need if we want to use parse_csv()
+        self.image_path = None
         self.labels_path = None
         self.input_format = None
 
         # These are the variables that we only need if we want to use parse_xml()
+        self.images_paths = None
         self.annotations_path = None
         self.image_set_path = None
         self.image_set = None
@@ -179,11 +173,14 @@ class BatchGenerator:
         self.labels = [] # Each entry here will contain a 2D Numpy array with all the ground truth boxes for a given image
 
     def parse_csv(self,
+                  images_path=None,
                   labels_path=None,
                   input_format=None,
+                  include_classes='all',
                   ret=False):
         '''
         Arguments:
+            images_path (str): The filepath to the image samples.
             labels_path (str, optional): The filepath to a CSV file that contains one ground truth bounding box per line
                 and each line contains the following six items: image file name, class ID, xmin, xmax, ymin, ymax.
                 The six items do not have to be in a specific order, but they must be the first six columns of
@@ -196,6 +193,9 @@ class BatchGenerator:
             input_format (list, optional): A list of six strings representing the order of the six items
                 image file name, class ID, xmin, xmax, ymin, ymax in the input CSV file. The expected strings
                 are 'image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'. Defaults to `None`.
+            include_classes (list, optional): Either 'all' or a list of integers containing the class IDs that
+                are to be included in the dataset. Defaults to 'all', in which case all boxes will be included
+                in the dataset.
             ret (bool, optional): Whether or not the image filenames and labels are to be returned.
                 Defaults to `False`.
 
@@ -206,6 +206,8 @@ class BatchGenerator:
         # If we get arguments in this call, set them
         if not labels_path is None: self.labels_path = labels_path
         if not input_format is None: self.input_format = input_format
+        if not include_classes is None: self.include_classes = include_classes
+        if not images_path is None: self.images_path = images_path
 
         # Before we begin, make sure that we have a labels_path and an input_format
         if self.labels_path is None or self.input_format is None:
@@ -247,16 +249,16 @@ class BatchGenerator:
                 current_labels.append(i[1:])
                 if len(data) == 1: # If there is only one box in the CVS file
                     self.labels.append(np.stack(current_labels, axis=0))
-                    self.filenames.append(current_file)
+                    self.filenames.append(os.path.join(self.images_path, current_file))
             else:
                 if i[0] == current_file: # If this box (i.e. this line of the CSV file) belongs to the current image file
                     current_labels.append(i[1:])
                     if idx == len(data)-1: # If this is the last line of the CSV file
                         self.labels.append(np.stack(current_labels, axis=0))
-                        self.filenames.append(current_file)
+                        self.filenames.append(os.path.join(self.images_path, current_file))
                 else: # If this box belongs to a new image file
                     self.labels.append(np.stack(current_labels, axis=0))
-                    self.filenames.append(current_file)
+                    self.filenames.append(os.path.join(self.images_path, current_file))
                     current_labels = []
                     current_file = i[0]
                     current_labels.append(i[1:])
@@ -265,15 +267,16 @@ class BatchGenerator:
             return self.filenames, self.labels
 
     def parse_xml(self,
-                  annotations_path=None,
-                  image_set_path=None,
-                  image_set=None,
+                  images_paths=None,
+                  annotations_paths=None,
+                  image_set_paths=None,
                   classes=['background',
                            'aeroplane', 'bicycle', 'bird', 'boat',
                            'bottle', 'bus', 'car', 'cat',
                            'chair', 'cow', 'diningtable', 'dog',
                            'horse', 'motorbike', 'person', 'pottedplant',
                            'sheep', 'sofa', 'train', 'tvmonitor'],
+                  include_classes = 'all',
                   exclude_truncated=False,
                   exclude_difficult=False,
                   ret=False):
@@ -282,16 +285,18 @@ class BatchGenerator:
         the code, but in its current form it expects the data format and XML tags of the Pascal VOC datasets.
 
         Arguments:
-            annotations_path (str, optional): The path to the directory that contains the annotation XML files for
+            images_paths (str, optional):
+            annotations_paths (str, optional): The path to the directory that contains the annotation XML files for
                 the images. The directory must contain one XML file per image and name of the XML file must be the
                 image ID. The content of the XML files must be in the Pascal VOC format. Defaults to `None`.
-            image_set_path (str, optional): The path to the directory that contains a text file with the image
-                set to be loaded. Defaults to `None`.
-            image_set (str, optional): The name of the image set text file to be loaded, ending in '.txt'.
-                This text file simply contains one image ID per line and nothing else. Defaults to `None`.
+            image_set_paths (str, optional): The path to the text file with the image
+                set to be loaded. This text file simply contains one image ID per line and nothing else. Defaults to `None`.
             classes (list, optional): A list containing the names of the object classes as found in the
                 `name` XML tags. Must include the class `background` as the first list item. The order of this list
                 defines the class IDs. Defaults to the list of Pascal VOC classes in alphabetical order.
+            include_classes (list, optional): Either 'all' or a list of integers containing the class IDs that
+                are to be included in the dataset. Defaults to 'all', in which case all boxes will be included
+                in the dataset.
             exclude_truncated (bool, optional): If `True`, excludes boxes that are labeled as 'truncated'.
                 Defaults to `False`.
             exclude_difficult (bool, optional): If `True`, excludes boxes that are labeled as 'difficult'.
@@ -303,69 +308,70 @@ class BatchGenerator:
             None by default, optionally the image filenames and labels.
         '''
 
-        if not annotations_path is None: self.annotations_path = annotations_path
-        if not image_set_path is None: self.image_set_path = image_set_path
-        if not image_set is None: self.image_set = image_set
+        if not images_paths is None: self.images_paths = images_paths
+        if not annotations_paths is None: self.annotations_paths = annotations_paths
+        if not image_set_paths is None: self.image_set_paths = image_set_paths
         if not classes is None: self.classes = classes
+        if not include_classes is None: self.include_classes = include_classes
 
         # Erase data that might have been parsed before
         self.filenames = []
         self.labels = []
 
-        # Parse the image set that so that we know all the IDs of all the images to be included in the dataset
-        with open(os.path.join(self.image_set_path, self.image_set)) as f:
-            image_ids = [line.strip() for line in f]
+        for image_path, image_set_path, annotations_path in zip(self.images_paths, self.image_set_paths, self.annotations_paths):
+            # Parse the image set that so that we know all the IDs of all the images to be included in the dataset
+            with open(image_set_path) as f:
+                image_ids = [line.strip() for line in f]
 
-        # Parse the labels for each image ID from its respective XML file
-        for image_id in image_ids:
-            # Open the XML file for this image
-            with open(os.path.join(self.annotations_path, image_id+'.xml')) as f:
-                soup = BeautifulSoup(f, 'xml')
+            # Parse the labels for each image ID from its respective XML file
+            for image_id in image_ids:
+                # Open the XML file for this image
+                with open(os.path.join(annotations_path, image_id+'.xml')) as f:
+                    soup = BeautifulSoup(f, 'xml')
 
-            folder = soup.folder.text # In case we want to return the folder in addition to the image file name. Relevant for determining which dataset an image belongs to.
-            filename = soup.filename.text
-            self.filenames.append(filename)
+                folder = soup.folder.text # In case we want to return the folder in addition to the image file name. Relevant for determining which dataset an image belongs to.
+                filename = soup.filename.text
+                self.filenames.append(os.path.join(image_path, filename))
 
-            boxes = [] # We'll store all boxes for this image here
-            objects = soup.find_all('object') # Get a list of all objects in this image
+                boxes = [] # We'll store all boxes for this image here
+                objects = soup.find_all('object') # Get a list of all objects in this image
 
-            # Parse the data for each object
-            for obj in objects:
-                class_name = obj.find('name').text
-                class_id = self.classes.index(class_name)
-                # Check if this class is supposed to be included in the dataset
-                if (not self.include_classes == 'all') and (not class_id in self.include_classes): continue
-                pose = obj.pose.text
-                truncated = int(obj.truncated.text)
-                if exclude_truncated and (truncated ==1): continue
-                difficult = int(obj.difficult.text)
-                if exclude_difficult and (difficult == 1): continue
-                xmin = int(obj.bndbox.xmin.text)
-                ymin = int(obj.bndbox.ymin.text)
-                xmax = int(obj.bndbox.xmax.text)
-                ymax = int(obj.bndbox.ymax.text)
-                item_dict = {'folder': folder,
-                             'image_name': filename,
-                             'image_id': image_id,
-                             'class_name': class_name,
-                             'class_id': class_id,
-                             'pose': pose,
-                             'truncated': truncated,
-                             'difficult': difficult,
-                             'xmin': xmin,
-                             'ymin': ymin,
-                             'xmax': xmax,
-                             'ymax': ymax}
-                box = []
-                for item in self.box_output_format:
-                    box.append(item_dict[item])
-                boxes.append(box)
+                # Parse the data for each object
+                for obj in objects:
+                    class_name = obj.find('name').text
+                    class_id = self.classes.index(class_name)
+                    # Check if this class is supposed to be included in the dataset
+                    if (not self.include_classes == 'all') and (not class_id in self.include_classes): continue
+                    pose = obj.pose.text
+                    truncated = int(obj.truncated.text)
+                    if exclude_truncated and (truncated ==1): continue
+                    difficult = int(obj.difficult.text)
+                    if exclude_difficult and (difficult == 1): continue
+                    xmin = int(obj.bndbox.xmin.text)
+                    ymin = int(obj.bndbox.ymin.text)
+                    xmax = int(obj.bndbox.xmax.text)
+                    ymax = int(obj.bndbox.ymax.text)
+                    item_dict = {'folder': folder,
+                                 'image_name': filename,
+                                 'image_id': image_id,
+                                 'class_name': class_name,
+                                 'class_id': class_id,
+                                 'pose': pose,
+                                 'truncated': truncated,
+                                 'difficult': difficult,
+                                 'xmin': xmin,
+                                 'ymin': ymin,
+                                 'xmax': xmax,
+                                 'ymax': ymax}
+                    box = []
+                    for item in self.box_output_format:
+                        box.append(item_dict[item])
+                    boxes.append(box)
 
-            self.labels.append(boxes)
+                self.labels.append(boxes)
 
         if ret:
             return self.filenames, self.labels
-
 
     def generate(self,
                  batch_size=32,
@@ -507,7 +513,7 @@ class BatchGenerator:
                 current = 0
 
             for filename in self.filenames[current:current+batch_size]:
-                with Image.open('{}'.format(os.path.join(self.images_path, filename))) as img:
+                with Image.open(filename) as img:
                     batch_X.append(np.array(img))
             batch_y = deepcopy(self.labels[current:current+batch_size])
 
