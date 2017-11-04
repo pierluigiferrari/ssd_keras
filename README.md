@@ -16,7 +16,7 @@ This is a Keras implementation of the SSD model architecture introduced by Wei L
 
 The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
 
-Fully trained, convolutionalized, atrous VGG-16 weights are provided below, but fully trained SSD models are not.
+Fully trained, convolutionalized VGG-16 weights are provided below, but fully trained SSD models are not.
 
 There are currently two base network architectures in this repository. The first one, [`keras_ssd300.py`](./keras_ssd300.py), is a port of the original SSD300 architecture that is based on a reduced atrous VGG-16 as described in the paper. The network architecture and all default parameter settings were taken directly from the `.prototxt` files of the original Caffe implementation. The other, [`keras_ssd7.py`](./keras_ssd7.py), is a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough to do an OK job on Pascal VOC and a surprisingly good job on datasets with only a few object categories. Of course you're not going to get state-of-the-art results with that one.
 
@@ -92,7 +92,7 @@ If you want to build a different base network architecture, you could use [`kera
 
 ### Download VGG-16
 
-You can download the weights of the fully convolutionalized, atrous VGG-16 model trained to convergence on ImageNet classification [here](https://drive.google.com/open?id=0B0WbA4IemlxlbFZZaURkMTl2NVU). This is a modified version of the VGG-16 model from `keras.applications.vgg16`. In particular, the `fc6` and `fc7` layers were convolutionalized and sub-sampled from depth 4096 to 1024, following the paper.
+You can download the weights of the fully convolutionalized VGG-16 model trained to convergence on ImageNet classification [here](https://drive.google.com/open?id=0B0WbA4IemlxlbFZZaURkMTl2NVU). This is a modified version of the VGG-16 model from `keras.applications.vgg16`. In particular, the `fc6` and `fc7` layers were convolutionalized and sub-sampled from depth 4096 to 1024, following the paper.
 
 ### ToDo
 
