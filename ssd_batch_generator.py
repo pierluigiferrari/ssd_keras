@@ -28,6 +28,7 @@ from PIL import Image
 import csv
 import os
 from bs4 import BeautifulSoup
+import pickle
 
 # Image processing functions used by the generator to perform the following image manipulations:
 # - Translation
@@ -137,7 +138,7 @@ class BatchGenerator:
     for details please refer to the documentation of the `generate()` method.
     '''
 
-    def __init__(self, box_output_format=['class_id', 'xmin', 'xmax', 'ymin', 'ymax']):
+    def __init__(self, box_output_format=['class_id', 'xmin', 'xmax', 'ymin', 'ymax'], filenames=None, labels=None):
         '''
         Arguments:
             box_output_format (list, optional): A list of five strings representing the desired order of the five
@@ -148,6 +149,12 @@ class BatchGenerator:
                 able to produce different output formats, the SSDBoxEncoder currently requires the format
                 `['class_id', 'xmin', 'xmax', 'ymin', 'ymax']`. This list only specifies the five box parameters
                 that are relevant as training targets, a list of filenames is generated separately.
+            filenames (string or list, optional): `None` or either a Python list/tuple or a string representing
+                the path to a pickled file containing a list/tuple. The list/tuple must contain the file names
+                (full paths) of the images of the dataset.
+            labels (string or list, optional): `None` or either a Python list/tuple or a string representing
+                the path to a pickled file containing a list/tuple. The list/tuple must contain Numpy arrays
+                that represent the labels of the dataset.
         '''
         # These are the variables we always need
         self.include_classes = None
@@ -165,12 +172,32 @@ class BatchGenerator:
         self.image_set = None
         self.classes = None
 
-        # The two variables below store the output from the parsers. This is the input for the generate() method
+        # The two variables below store the output from the parsers. This is the input for the generate() method.
         # `self.filenames` is a list containing all file names of the image samples. Note that it does not contain the actual image files themselves.
-        self.filenames = [] # All unique image filenames will go here
         # `self.labels` is a list containing one 2D Numpy array per image. For an image with `k` ground truth bounding boxes,
         # the respective 2D array has `k` rows, each row containing `(xmin, xmax, ymin, ymax, class_id)` for the respective bounding box.
-        self.labels = [] # Each entry here will contain a 2D Numpy array with all the ground truth boxes for a given image
+
+        if not filenames is None:
+            if isinstance(filenames, str):
+                with open(filenames, 'rb') as f:
+                    self.filenames = pickle.load(f)
+            elif isinstance(filenames, (list, tuple)):
+                self.filenames = filenames
+            else:
+                raise ValueError("`filenames` must be either a Python list/tuple or a string representing the path to a pickled file containing a list/tuple. The value you passed is neither of the two.")
+        else:
+            self.filenames = [] # All unique image filenames will go here
+
+        if not labels is None:
+            if isinstance(labels, str):
+                with open(labels, 'rb') as f:
+                    self.labels = pickle.load(f)
+            elif isinstance(labels, (list, tuple)):
+                self.labels = labels
+            else:
+                raise ValueError("`labels` must be either a Python list/tuple or a string representing the path to a pickled file containing a list/tuple. The value you passed is neither of the two.")
+        else:
+            self.labels = [] # Each entry here will contain a 2D Numpy array with all the ground truth boxes for a given image
 
     def parse_csv(self,
                   images_path=None,
@@ -372,6 +399,23 @@ class BatchGenerator:
 
         if ret:
             return self.filenames, self.labels
+
+    def save_filenames_and_labels(self, filenames_path='filenames.pkl', labels_path='labels.pkl'):
+        '''
+        Writes the current `filenames` and `labels` lists to the specified files.
+        This is particularly useful for large datasets with annotations that are
+        parsed from XML files, which can take quite long. If you'll be using the
+        same dataset repeatedly, you don't want to have to parse the XML label
+        files every time.
+
+        Arguments:
+            filenames_path (str): The path under which to save the filenames pickle.
+            labels_path (str): The path under which to save the labels pickle.
+        '''
+        with open(filenames_path, 'wb') as f:
+            pickle.dump(self.filenames, f)
+        with open(labels_path, 'wb') as f:
+            pickle.dump(self.labels, f)
 
     def generate(self,
                  batch_size=32,
