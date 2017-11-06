@@ -236,3 +236,20 @@ class AnchorBoxes(Layer):
         else: # Not yet relevant since TensorFlow is the only supported backend right now, but it can't harm to have this in here for the future
             batch_size, feature_map_channels, feature_map_height, feature_map_width = input_shape
         return (batch_size, feature_map_height, feature_map_width, self.n_boxes, 8)
+
+    def get_config(self):
+        config = {
+            'img_height': self.img_height,
+            'img_width': self.img_width,
+            'this_scale': self.this_scale,
+            'next_scale': self.next_scale,
+            'aspect_ratios': self.aspect_ratios,
+            'two_boxes_for_ar1': self.two_boxes_for_ar1,
+            'limit_boxes': self.limit_boxes,
+            'variances': self.variances,
+            'coords': self.coords,
+            'normalize_coords': self.normalize_coords,
+            'n_boxes': self.n_boxes
+        }
+        base_config = super(AnchorBoxes, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))

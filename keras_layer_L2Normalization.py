@@ -62,3 +62,10 @@ class L2Normalization(Layer):
         output = K.l2_normalize(x, self.axis)
         output *= self.gamma
         return output
+
+    def get_config(self):
+        config = {
+            'gamma_init': self.gamma_init
+        }
+        base_config = super(L2Normalization, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
