@@ -23,7 +23,7 @@ There are currently two base network architectures in this repository. The first
 If you want to build an arbitrary SSD model architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you turn it into a deeper network relatively easily.
 
 ### Examples
-`
+
 Below are some prediction examples of an SSD300 partially trained (20,000 steps at batch size 32) on Pascal VOC2007 `trainval`, VOC2007 `test`, and VOC2012 `train`. The predictions were made on VOC2012 `val`. The purpose of these examples is just to demonstrate that the code works and the model learns. Predictions are shown in blue, ground truth boxes in green.
 
 | | |
