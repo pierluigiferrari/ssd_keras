@@ -23,13 +23,20 @@ There are currently two base network architectures in this repository. The first
 If you want to build an arbitrary SSD model architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you turn it into a deeper network relatively easily.
 
 ### Examples
-
-Below are some prediction examples of an SSD7 (i.e. the small 7-layer version) trained on two street traffic datasets released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations) with roughly 20,000 images in total and 5 object categories (more info in [`train_ssd7.ipynb`](./train_ssd7.ipynb)). The predictions you see below were made after only 7000 training steps at batch size 32. Admittedly, cars are comparatively easy objects to detect and the model's performance on detecting pedestrians after this small number of training steps is still bad (which is also owed to there being relatively few pedestrians in the dataset), but it is nonetheless remarkable what such a small model can do after 7000 training iterations. Predictions are shown as blue boxes with labels and ground truth boxes are shown in green for comparison (without labels for better clarity).
+`
+Below are some prediction examples of an SSD300 partially trained (20,000 steps at batch size 32) on Pascal VOC2007 `trainval`, VOC2007 `test`, and VOC2012 `train`. The predictions were made on VOC2012 `val`. The purpose of these examples is just to demonstrate that the code works and the model learns. Predictions are shown in blue, ground truth boxes in green.
 
 | | |
 |---|---|
-| ![img01](./examples/pred_01.png) | ![img01](./examples/pred_02.png) |
-| ![img01](./examples/pred_03.png) | ![img01](./examples/pred_04.png) |
+| ![img01](./examples/ssd300_pascalVOC_pred_01.png) | ![img01](./examples/ssd300_pascalVOC_pred_02.png) |
+| ![img01](./examples/ssd300_pascalVOC_pred_03.png) | ![img01](./examples/ssd300_pascalVOC_pred_04.png) |
+
+Below are some prediction examples of an SSD7 (i.e. the small 7-layer version) partially trained on two street traffic datasets released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations) with roughly 20,000 images in total and 5 object categories (more info in [`train_ssd7.ipynb`](./train_ssd7.ipynb)). The predictions you see below were made after only 7000 training steps at batch size 32. Admittedly, cars are comparatively easy objects to detect, but it is nonetheless remarkable what such a small model can do after 7000 training iterations.
+
+| | |
+|---|---|
+| ![img01](./examples/ssd7_udacity_traffic_pred_01.png) | ![img01](./examples/ssd7_udacity_traffic_pred_02.png) |
+| ![img01](./examples/ssd7_udacity_traffic_pred_03.png) | ![img01](./examples/ssd7_udacity_traffic_pred_04.png) |
 
 ### Dependencies
 
