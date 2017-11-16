@@ -533,9 +533,17 @@ class BatchGenerator:
                 This can be useful for diagnostic purposes. Defaults to `False`. Only works if `train = True`.
 
         Yields:
-            The next batch as a tuple containing a Numpy array that contains the images and a Python list
-            that contains the corresponding labels for each image as 2D Numpy arrays. The output format
-            of the labels is according to the `box_output_format` that was specified in the constructor.
+            The next batch as either of
+            (1) a 3-tuple containing a Numpy array that contains the images, a Python list
+            that contains the corresponding labels for each image as 2D Numpy arrays, and another Python list
+            that contains the file names of the images in the batch. This is the case if `train==False`.
+            (2) a 2-tuple containing a Numpy array that contains the images and another Numpy array with the
+            labels in the format that `SSDBoxEncoder.encode_y()` returns, namely an array with shape
+            `(batch_size, #boxes, #classes + 4 + 4 + 4)`, where `#boxes` is the total number of
+            boxes predicted by the model per image and the last axis contains
+            `[one-hot vector for the classes, 4 ground truth coordinate offsets, 4 anchor box coordinates, 4 variances]`.
+            The format and order of the box coordinates is according to the `box_output_format` that was specified
+            in the `BachtGenerator` constructor.
         '''
 
         self.filenames, self.labels = shuffle(self.filenames, self.labels) # Shuffle the data before we begin

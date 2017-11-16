@@ -724,10 +724,10 @@ class SSDBoxEncoder:
                 here is similar, just for all predictor conv layers.
 
         Returns:
-            A Numpy array of shape `(batch_size, #boxes, #classes + 8)`, the template into which to encode
-            the ground truth labels for training. The last axis has length `#classes + 8` because the model
+            A Numpy array of shape `(batch_size, #boxes, #classes + 12)`, the template into which to encode
+            the ground truth labels for training. The last axis has length `#classes + 12` because the model
             output contains not only the 4 predicted box coordinate offsets, but also the 4 coordinates for
-            the anchor boxes.
+            the anchor boxes and the 4 variance values.
         '''
 
         # 1: Get the anchor box scaling factors for each conv layer from which we're going to make predictions
@@ -824,10 +824,11 @@ class SSDBoxEncoder:
                 as class_id 0 is reserved for the background class.
 
         Returns:
-            `y_encoded`, a 3D numpy array of shape `(batch_size, #boxes, #classes + 4 + 4)` that serves as the
+            `y_encoded`, a 3D numpy array of shape `(batch_size, #boxes, #classes + 4 + 4 + 4)` that serves as the
             ground truth label tensor for training, where `#boxes` is the total number of boxes predicted by the
             model per image, and the classes are one-hot-encoded. The four elements after the class vecotrs in
-            the last axis are the box coordinates, and the last four elements are just dummy elements.
+            the last axis are the box coordinates, the next four elements after that are just dummy elements, and
+            the last four elements are the variances.
         '''
 
         # 1: Generate the template for y_encoded

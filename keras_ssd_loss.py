@@ -100,13 +100,13 @@ class SSDLoss:
         Compute the loss of the SSD model prediction against the ground truth.
 
         Arguments:
-            y_true (array): A Numpy array of shape `(batch_size, #boxes, #classes + 8)`,
+            y_true (array): A Numpy array of shape `(batch_size, #boxes, #classes + 12)`,
                 where `#boxes` is the total number of boxes that the model predicts
                 per image. Be careful to make sure that the index of each given
                 box in `y_true` is the same as the index for the corresponding
-                box in `y_pred`. The last axis must have length `#classes + 8` and contain
-                `[classes one-hot encoded, 4 ground truth box coordinates, 4 arbitrary entries]`
-                in this order, including the background class. The last four entries of the
+                box in `y_pred`. The last axis must have length `#classes + 12` and contain
+                `[classes one-hot encoded, 4 ground truth box coordinate offsets, 8 arbitrary entries]`
+                in this order, including the background class. The last eight entries of the
                 last axis are not used by this function and therefore their contents are
                 irrelevant, they only exist so that `y_true` has the same shape as `y_pred`,
                 where the last four entries of the last axis contain the anchor box
@@ -114,7 +114,9 @@ class SSDLoss:
                 you want the cost function to ignore need to have a one-hot
                 class vector of all zeros.
             y_pred (Keras tensor): The model prediction. The shape is identical
-                to that of `y_true`.
+                to that of `y_true`, i.e. `(batch_size, #boxes, #classes + 12)`.
+                The last axis must contain entries in the format
+                `[classes one-hot encoded, 4 predicted box coordinate offsets, 8 arbitrary entries]`.
 
         Returns:
             A scalar, the total multitask loss for classification and localization.
