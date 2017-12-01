@@ -243,13 +243,12 @@ class AnchorBoxes(Layer):
             'img_width': self.img_width,
             'this_scale': self.this_scale,
             'next_scale': self.next_scale,
-            'aspect_ratios': self.aspect_ratios,
+            'aspect_ratios': list(self.aspect_ratios),
             'two_boxes_for_ar1': self.two_boxes_for_ar1,
             'limit_boxes': self.limit_boxes,
-            'variances': self.variances,
+            'variances': list(self.variances),
             'coords': self.coords,
-            'normalize_coords': self.normalize_coords,
-            'n_boxes': self.n_boxes
+            'normalize_coords': self.normalize_coords
         }
         base_config = super(AnchorBoxes, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
