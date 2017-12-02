@@ -6,7 +6,7 @@
 2. [Examples](#examples)
 3. [Dependencies](#dependencies)
 4. [How to use it](#how-to-use-it)
-5. [Download VGG-16](#download-vgg-16)
+5. [Download VGG-16 weights](#download-vgg-16-weights)
 6. [ToDo](#todo)
 7. [Terminology](#terminology)
 
@@ -18,7 +18,7 @@ The main goal of this project is to create an SSD implementation that is well do
 
 Fully trained, convolutionalized VGG-16 weights are provided below, but fully trained SSD models are not.
 
-There are currently two base network architectures in this repository. The first one, [`keras_ssd300.py`](./keras_ssd300.py), is a port of the original SSD300 architecture that is based on a reduced atrous VGG-16 as described in the paper. The network architecture and all default parameter settings were taken directly from the `.prototxt` files of the original Caffe implementation. The other, [`keras_ssd7.py`](./keras_ssd7.py), is a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough to do an OK job on Pascal VOC and a surprisingly good job on datasets with only a few object categories. Of course you're not going to get state-of-the-art results with that one.
+There are currently two base network architectures in this repository. The first one, [`keras_ssd300.py`](./keras_ssd300.py), is a port of the original SSD300 architecture that is based on a convolutionalized, subsampled VGG-16 as described in the paper. The network architecture and all default parameter settings were taken directly from the `.prototxt` files of the original Caffe implementation. The other, [`keras_ssd7.py`](./keras_ssd7.py), is a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough to do an OK job on Pascal VOC and a surprisingly good job on datasets with only a few object categories. Of course you're not going to get state-of-the-art results with that one.
 
 If you want to build an arbitrary SSD model architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you turn it into a deeper network relatively easily.
 
@@ -31,7 +31,7 @@ Below are some prediction examples of an SSD300 partially trained (20,000 steps 
 | ![img01](./examples/ssd300_pascalVOC_pred_01.png) | ![img01](./examples/ssd300_pascalVOC_pred_02.png) |
 | ![img01](./examples/ssd300_pascalVOC_pred_03.png) | ![img01](./examples/ssd300_pascalVOC_pred_04.png) |
 
-Below are some prediction examples of an SSD7 (i.e. the small 7-layer version) partially trained on two street traffic datasets released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations) with roughly 20,000 images in total and 5 object categories (more info in [`train_ssd7.ipynb`](./train_ssd7.ipynb)). The predictions you see below were made after only 7000 training steps at batch size 32. Admittedly, cars are comparatively easy objects to detect, but it is nonetheless remarkable what such a small model can do after 7000 training iterations.
+Below are some prediction examples of an SSD7 (i.e. the small 7-layer version) partially trained on two street traffic datasets released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations) with roughly 20,000 images in total and 5 object categories (more info in [`train_ssd7.ipynb`](./train_ssd7.ipynb)). The predictions you see below were made after only 10,000 training steps at batch size 32. Admittedly, cars are comparatively easy objects to detect, but it is nonetheless remarkable what such a small model can do after 10,000 training iterations.
 
 | | |
 |---|---|
@@ -97,7 +97,7 @@ A note on the relative box coordinates used internally by the model: This may or
 
 If you want to build a different base network architecture, you could use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you turn it into a deeper network easily. Put together the base network you want and add a predictor layer on top of each network layer from which you would like to make predictions. Create two predictor heads for each, one for localization, one for classification. Create an anchor box layer for each predictor layer and set the respective localization head's output as the input for the anchor box layer. All tensor reshaping and concatenation operations remain the same, you just have to make sure to include all of your predictor and anchor box layers of course.
 
-### Download VGG-16
+### Download VGG-16 weights
 
 You can download the weights of the fully convolutionalized VGG-16 model trained to convergence on ImageNet classification [here](https://drive.google.com/open?id=0B0WbA4IemlxlbFZZaURkMTl2NVU). This is a modified version of the VGG-16 model from `keras.applications.vgg16`. In particular, the `fc6` and `fc7` layers were convolutionalized and sub-sampled from depth 4096 to 1024, following the paper.
 
