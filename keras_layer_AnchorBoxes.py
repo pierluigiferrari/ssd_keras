@@ -26,8 +26,8 @@ from ssd_box_encode_decode_utils import convert_coordinates
 
 class AnchorBoxes(Layer):
     '''
-    A Keras layer to create an output tensor containing anchor box coordinates based on the
-    input tensor and the passed arguments.
+    A Keras layer to create an output tensor containing anchor box coordinates
+    and variances based on the input tensor and the passed arguments.
 
     A set of 2D anchor boxes of different aspect ratios is created for each spatial unit of
     the input tensor. The number of anchor boxes created per unit depends on the arguments
@@ -51,7 +51,8 @@ class AnchorBoxes(Layer):
         or `(batch, height, width, channels)` if `dim_ordering = 'tf'`.
 
     Output shape:
-        5D tensor of shape `(batch, height, width, n_boxes, 4)`.
+        5D tensor of shape `(batch, height, width, n_boxes, 8)`. The last axis contains
+        the four anchor box coordinates and the four variance values for each box.
     '''
 
     def __init__(self,
