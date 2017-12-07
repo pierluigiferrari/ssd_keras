@@ -6,13 +6,13 @@
 2. [Examples](#examples)
 3. [Dependencies](#dependencies)
 4. [How to use it](#how-to-use-it)
-5. [Download VGG-16 weights](#download-vgg-16-weights)
+5. [Download convolutionalized VGG-16 weights](#download-convolutionalized-vgg-16-weights)
 6. [ToDo](#todo)
 7. [Terminology](#terminology)
 
 ### Overview
 
-This is a Keras implementation of the SSD model architecture introduced by Wei Liu at al. in the paper [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325).
+This is a Keras implementation of the SSD model architecture introduced by Wei Liu et al. in the paper [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325).
 
 The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
 
@@ -97,7 +97,7 @@ A note on the relative box coordinates used internally by the model: This may or
 
 If you want to build a different base network architecture, you could use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you turn it into a deeper network easily. Put together the base network you want and add a predictor layer on top of each network layer from which you would like to make predictions. Create two predictor heads for each, one for localization, one for classification. Create an anchor box layer for each predictor layer and set the respective localization head's output as the input for the anchor box layer. All tensor reshaping and concatenation operations remain the same, you just have to make sure to include all of your predictor and anchor box layers of course.
 
-### Download VGG-16 weights
+### Download convolutionalized VGG-16 weights
 
 You can download the weights of the fully convolutionalized VGG-16 model trained to convergence on ImageNet classification [here](https://drive.google.com/open?id=0B0WbA4IemlxlbFZZaURkMTl2NVU). This is a modified version of the VGG-16 model from `keras.applications.vgg16`. In particular, the `fc6` and `fc7` layers were convolutionalized and sub-sampled from depth 4096 to 1024, following the paper.
 
