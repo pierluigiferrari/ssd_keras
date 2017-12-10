@@ -286,9 +286,12 @@ class BatchGenerator:
                 else: # If this box belongs to a new image file
                     self.labels.append(np.stack(current_labels, axis=0))
                     self.filenames.append(os.path.join(self.images_path, current_file))
-                    current_labels = []
+                    current_labels = [] # Reset the labels list because this is a new file.
                     current_file = i[0]
                     current_labels.append(i[1:])
+                    if idx == len(data)-1: # If this is the last line of the CSV file
+                        self.labels.append(np.stack(current_labels, axis=0))
+                        self.filenames.append(os.path.join(self.images_path, current_file))
 
         if ret: # In case we want to return these
             return self.filenames, self.labels
