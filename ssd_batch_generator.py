@@ -250,48 +250,37 @@ class BatchGenerator:
 
         with open(self.labels_path, newline='') as csvfile:
             csvread = csv.reader(csvfile, delimiter=',')
-            k = 0
-            for i in csvread: # For every line (i.e for every bounding box) in the CSV file...
-                if k == 0: # Skip the header row
-                    k += 1
-                    continue
-                else:
-                    if self.include_classes == 'all' or int(i[self.input_format.index('class_id')].strip()) in self.include_classes: # If the class_id is among the classes that are to be included in the dataset...
-                        obj = [] # Store the box class and coordinates here
-                        obj.append(i[self.input_format.index('image_name')].strip()) # Select the image name column in the input format and append its content to `obj`
-                        for item in self.box_output_format: # For each item in the output format...
-                            obj.append(int(i[self.input_format.index(item)].strip())) # ...select the respective column in the input format and append it to `obj`
-                        data.append(obj)
+            next(csvread) # Skip the header row.
+            for row in csvread: # For every line (i.e for every bounding box) in the CSV file...
+                if self.include_classes == 'all' or int(row[self.input_format.index('class_id')].strip()) in self.include_classes: # If the class_id is among the classes that are to be included in the dataset...
+                    box = [] # Store the box class and coordinates here
+                    box.append(row[self.input_format.index('image_name')].strip()) # Select the image name column in the input format and append its content to `box`
+                    for element in self.box_output_format: # For each element in the output format (where the elements are the class ID and the four box coordinates)...
+                        box.append(int(row[self.input_format.index(element)].strip())) # ...select the respective column in the input format and append it to `box`.
+                    data.append(box)
 
         data = sorted(data) # The data needs to be sorted, otherwise the next step won't give the correct result
 
         # Now that we've made sure that the data is sorted by file names,
         # we can compile the actual samples and labels lists
 
-        current_file = '' # The current image for which we're collecting the ground truth boxes
+        current_file = data[0][0] # The current image for which we're collecting the ground truth boxes
         current_labels = [] # The list where we collect all ground truth boxes for a given image
-        for idx, i in enumerate(data):
-            if current_file == '': # If this is the first image file
-                current_file = i[0]
-                current_labels.append(i[1:])
-                if len(data) == 1: # If there is only one box in the CVS file
+        for i, box in enumerate(data):
+            if box[0] == current_file: # If this box (i.e. this line of the CSV file) belongs to the current image file
+                current_labels.append(box[1:])
+                if i == len(data)-1: # If this is the last line of the CSV file
                     self.labels.append(np.stack(current_labels, axis=0))
                     self.filenames.append(os.path.join(self.images_path, current_file))
-            else:
-                if i[0] == current_file: # If this box (i.e. this line of the CSV file) belongs to the current image file
-                    current_labels.append(i[1:])
-                    if idx == len(data)-1: # If this is the last line of the CSV file
-                        self.labels.append(np.stack(current_labels, axis=0))
-                        self.filenames.append(os.path.join(self.images_path, current_file))
-                else: # If this box belongs to a new image file
+            else: # If this box belongs to a new image file
+                self.labels.append(np.stack(current_labels, axis=0))
+                self.filenames.append(os.path.join(self.images_path, current_file))
+                current_labels = [] # Reset the labels list because this is a new file.
+                current_file = box[0]
+                current_labels.append(box[1:])
+                if i == len(data)-1: # If this is the last line of the CSV file
                     self.labels.append(np.stack(current_labels, axis=0))
                     self.filenames.append(os.path.join(self.images_path, current_file))
-                    current_labels = [] # Reset the labels list because this is a new file.
-                    current_file = i[0]
-                    current_labels.append(i[1:])
-                    if idx == len(data)-1: # If this is the last line of the CSV file
-                        self.labels.append(np.stack(current_labels, axis=0))
-                        self.filenames.append(os.path.join(self.images_path, current_file))
 
         if ret: # In case we want to return these
             return self.filenames, self.labels
