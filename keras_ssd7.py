@@ -188,37 +188,37 @@ def build_model(image_size,
                     output_shape=(img_height, img_width, img_channels),
                     name='lambda1')(x)
 
-    conv1 = Conv2D(32, (5, 5), name='conv1', strides=(1, 1), padding="same")(normed)
+    conv1 = Conv2D(32, (5, 5), name='conv1', strides=(1, 1), padding="same", kernel_initializer='he_normal')(normed)
     conv1 = BatchNormalization(axis=3, momentum=0.99, name='bn1')(conv1) # Tensorflow uses filter format [filter_height, filter_width, in_channels, out_channels], hence axis = 3
     conv1 = ELU(name='elu1')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2), name='pool1')(conv1)
 
-    conv2 = Conv2D(48, (3, 3), name='conv2', strides=(1, 1), padding="same")(pool1)
+    conv2 = Conv2D(48, (3, 3), name='conv2', strides=(1, 1), padding="same", kernel_initializer='he_normal')(pool1)
     conv2 = BatchNormalization(axis=3, momentum=0.99, name='bn2')(conv2)
     conv2 = ELU(name='elu2')(conv2)
     pool2 = MaxPooling2D(pool_size=(2, 2), name='pool2')(conv2)
 
-    conv3 = Conv2D(64, (3, 3), name='conv3', strides=(1, 1), padding="same")(pool2)
+    conv3 = Conv2D(64, (3, 3), name='conv3', strides=(1, 1), padding="same", kernel_initializer='he_normal')(pool2)
     conv3 = BatchNormalization(axis=3, momentum=0.99, name='bn3')(conv3)
     conv3 = ELU(name='elu3')(conv3)
     pool3 = MaxPooling2D(pool_size=(2, 2), name='pool3')(conv3)
 
-    conv4 = Conv2D(64, (3, 3), name='conv4', strides=(1, 1), padding="same")(pool3)
+    conv4 = Conv2D(64, (3, 3), name='conv4', strides=(1, 1), padding="same", kernel_initializer='he_normal')(pool3)
     conv4 = BatchNormalization(axis=3, momentum=0.99, name='bn4')(conv4)
     conv4 = ELU(name='elu4')(conv4)
     pool4 = MaxPooling2D(pool_size=(2, 2), name='pool4')(conv4)
 
-    conv5 = Conv2D(48, (3, 3), name='conv5', strides=(1, 1), padding="same")(pool4)
+    conv5 = Conv2D(48, (3, 3), name='conv5', strides=(1, 1), padding="same", kernel_initializer='he_normal')(pool4)
     conv5 = BatchNormalization(axis=3, momentum=0.99, name='bn5')(conv5)
     conv5 = ELU(name='elu5')(conv5)
     pool5 = MaxPooling2D(pool_size=(2, 2), name='pool5')(conv5)
 
-    conv6 = Conv2D(48, (3, 3), name='conv6', strides=(1, 1), padding="same")(pool5)
+    conv6 = Conv2D(48, (3, 3), name='conv6', strides=(1, 1), padding="same", kernel_initializer='he_normal')(pool5)
     conv6 = BatchNormalization(axis=3, momentum=0.99, name='bn6')(conv6)
     conv6 = ELU(name='elu6')(conv6)
     pool6 = MaxPooling2D(pool_size=(2, 2), name='pool6')(conv6)
 
-    conv7 = Conv2D(32, (3, 3), name='conv7', strides=(1, 1), padding="same")(pool6)
+    conv7 = Conv2D(32, (3, 3), name='conv7', strides=(1, 1), padding="same", kernel_initializer='he_normal')(pool6)
     conv7 = BatchNormalization(axis=3, momentum=0.99, name='bn7')(conv7)
     conv7 = ELU(name='elu7')(conv7)
 
@@ -234,15 +234,15 @@ def build_model(image_size,
     # We precidt `n_classes` confidence values for each box, hence the `classes` predictors have depth `n_boxes * n_classes`
     # We predict 4 box coordinates for each box, hence the `boxes` predictors have depth `n_boxes * 4`
     # Output shape of `classes`: `(batch, height, width, n_boxes * n_classes)`
-    classes4 = Conv2D(n_boxes_conv4 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes4')(conv4)
-    classes5 = Conv2D(n_boxes_conv5 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes5')(conv5)
-    classes6 = Conv2D(n_boxes_conv6 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes6')(conv6)
-    classes7 = Conv2D(n_boxes_conv7 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes7')(conv7)
+    classes4 = Conv2D(n_boxes_conv4 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes4', kernel_initializer='he_normal')(conv4)
+    classes5 = Conv2D(n_boxes_conv5 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes5', kernel_initializer='he_normal')(conv5)
+    classes6 = Conv2D(n_boxes_conv6 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes6', kernel_initializer='he_normal')(conv6)
+    classes7 = Conv2D(n_boxes_conv7 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes7', kernel_initializer='he_normal')(conv7)
     # Output shape of `boxes`: `(batch, height, width, n_boxes * 4)`
-    boxes4 = Conv2D(n_boxes_conv4 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes4')(conv4)
-    boxes5 = Conv2D(n_boxes_conv5 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes5')(conv5)
-    boxes6 = Conv2D(n_boxes_conv6 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes6')(conv6)
-    boxes7 = Conv2D(n_boxes_conv7 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes7')(conv7)
+    boxes4 = Conv2D(n_boxes_conv4 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes4', kernel_initializer='he_normal')(conv4)
+    boxes5 = Conv2D(n_boxes_conv5 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes5', kernel_initializer='he_normal')(conv5)
+    boxes6 = Conv2D(n_boxes_conv6 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes6', kernel_initializer='he_normal')(conv6)
+    boxes7 = Conv2D(n_boxes_conv7 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes7', kernel_initializer='he_normal')(conv7)
 
     # Generate the anchor boxes
     # Output shape of `anchors`: `(batch, height, width, n_boxes, 8)`
