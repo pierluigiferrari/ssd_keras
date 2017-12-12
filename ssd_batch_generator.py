@@ -208,7 +208,7 @@ class BatchGenerator:
             if isinstance(filenames, (list, tuple)):
                 self.filenames = filenames
             elif isinstance(filenames, str):
-                with open(filenames) as f:
+                with open(filenames, 'rb') as f:
                     if filenames_type == 'pickle':
                         self.filenames = pickle.load(f)
                     elif filenames_type == 'text':
@@ -906,10 +906,10 @@ class BatchGenerator:
 
                 if resize:
                     batch_X[i] = cv2.resize(batch_X[i], dsize=(resize[1], resize[0]))
-                    img_width, img_height = resize # Updating these at this point is unnecessary, but it's one fewer source of error if this method gets expanded in the future.
                     if not batch_y is None:
                         batch_y[i][:,[xmin,xmax]] = (batch_y[i][:,[xmin,xmax]] * (resize[1] / img_width)).astype(np.int)
                         batch_y[i][:,[ymin,ymax]] = (batch_y[i][:,[ymin,ymax]] * (resize[0] / img_height)).astype(np.int)
+                    img_width, img_height = resize # Updating these at this point is unnecessary, but it's one fewer source of error if this method gets expanded in the future.
 
                 if gray:
                     batch_X[i] = np.expand_dims(cv2.cvtColor(batch_X[i], cv2.COLOR_RGB2GRAY), axis=2)
@@ -933,7 +933,10 @@ class BatchGenerator:
                     yield (np.array(batch_X), y_true)
             else:
                 if not batch_y is None:
-                    yield (np.array(batch_X), batch_y, this_filenames)
+                    if diagnostics:
+                        yield (np.array(batch_X), batch_y, this_filenames, original_images, original_labels)
+                    else:
+                        yield (np.array(batch_X), batch_y, this_filenames)
                 else:
                     yield (np.array(batch_X), this_filenames)
 
