@@ -162,10 +162,11 @@ class BatchGenerator:
                 `['class_id', 'xmin', 'xmax', 'ymin', 'ymax']`. This list only specifies the five box parameters
                 that are relevant as training targets, a list of filenames is generated separately.
             filenames (string or list, optional): `None` or either a Python list/tuple or a string representing
-                a filepath. If a filepath string is passed, it must point either to
-                (1) a pickled file containing a list/tuple. The list/tuple must contain the file names
-                (full paths) of the images of the dataset. In this case the `filenames_type` argument must be
-                set to `pickle`.
+                a filepath. If a list/tuple is passed, it must contain the file names (full paths) of the
+                images to be used. Note that the list/tuple must contain the paths to the images,
+                not the images themselves. If a filepath string is passed, it must point either to
+                (1) a pickled file containing a list/tuple as described above. In this case the `filenames_type`
+                argument must be set to `pickle`.
                 Or
                 (2) a text file. Each line of the text file contains the file name (basename of the file only,
                 not the full directory path) to one image and nothing else. In this case the `filenames_type`
