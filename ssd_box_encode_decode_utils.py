@@ -803,7 +803,7 @@ class SSDBoxEncoder:
         else:
             return y_encode_template
 
-    def encode_y(self, ground_truth_labels):
+    def encode_y(self, ground_truth_labels, diagnostics=False):
         '''
         Convert ground truth bounding box data into a suitable format to train an SSD model.
 
@@ -822,6 +822,10 @@ class SSDBoxEncoder:
                 to the respective image, and the data for each ground truth bounding box has the format
                 `(class_id, xmin, xmax, ymin, ymax)`, and `class_id` must be an integer greater than 0 for all boxes
                 as class_id 0 is reserved for the background class.
+            diagnostics (bool, optional): If `True`, not only the encoded ground truth tensor will be returned,
+                but also a copy of it with anchor box coordinates in place of the ground truth coordinates.
+                This can be very useful if you want to visualize which anchor boxes got matched to which ground truth
+                boxes.
 
         Returns:
             `y_encoded`, a 3D numpy array of shape `(batch_size, #boxes, #classes + 4 + 4 + 4)` that serves as the
@@ -882,4 +886,10 @@ class SSDBoxEncoder:
             y_encoded[:,:,[-10,-9]] /= np.expand_dims(y_encode_template[:,:,-9] - y_encode_template[:,:,-10], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
             y_encoded[:,:,-12:-8] /= y_encode_template[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
 
-        return y_encoded
+        if diagnostics:
+            # Here we'll save the matched anchor boxes (i.e. anchor boxes that were matched to a ground truth box, but keeping the anchor box coordinates).
+            y_matched_anchors = np.copy(y_encoded)
+            y_matched_anchors[:,:,-12:-8] = 0 # Keeping the anchor box coordinates means setting the offsets to zero.
+            return y_encoded, y_matched_anchors
+        else:
+            return y_encoded
