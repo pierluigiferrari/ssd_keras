@@ -237,6 +237,7 @@ class BatchGenerator:
                   labels_path=None,
                   input_format=None,
                   include_classes='all',
+                  random_sample=False,
                   ret=False):
         '''
         Arguments:
@@ -256,6 +257,13 @@ class BatchGenerator:
             include_classes (list, optional): Either 'all' or a list of integers containing the class IDs that
                 are to be included in the dataset. Defaults to 'all', in which case all boxes will be included
                 in the dataset.
+            random_sample (float, optional): Either `False` or a float in `[0,1]`. If this is `False`, the
+                full dataset will be used by the generator. If this is a float in `[0,1]`, a randomly sampled
+                fraction of the dataset will be used, where `random_sample` is the fraction of the dataset
+                to be used. For example, if `random_sample = 0.2`, 20 precent of the dataset will be randomly selected,
+                the rest will be ommitted. The fraction refers to the number of images, not to the number
+                of boxes, i.e. each image that will be added to the dataset will always be added with all
+                of its boxes. Defaults to `False`.
             ret (bool, optional): Whether or not the image filenames and labels are to be returned.
                 Defaults to `False`.
 
@@ -299,21 +307,41 @@ class BatchGenerator:
 
         current_file = data[0][0] # The current image for which we're collecting the ground truth boxes
         current_labels = [] # The list where we collect all ground truth boxes for a given image
+        add_to_dataset = False
         for i, box in enumerate(data):
+
             if box[0] == current_file: # If this box (i.e. this line of the CSV file) belongs to the current image file
                 current_labels.append(box[1:])
                 if i == len(data)-1: # If this is the last line of the CSV file
+                    if random_sample: # In case we're not using the full dataset, but a random sample of it.
+                        p = np.random.uniform(0,1)
+                        if p >= (1-random_sample):
+                            self.labels.append(np.stack(current_labels, axis=0))
+                            self.filenames.append(os.path.join(self.images_path, current_file))
+                    else:
+                        self.labels.append(np.stack(current_labels, axis=0))
+                        self.filenames.append(os.path.join(self.images_path, current_file))
+            else: # If this box belongs to a new image file
+                if random_sample: # In case we're not using the full dataset, but a random sample of it.
+                    p = np.random.uniform(0,1)
+                    if p >= (1-random_sample):
+                        self.labels.append(np.stack(current_labels, axis=0))
+                        self.filenames.append(os.path.join(self.images_path, current_file))
+                else:
                     self.labels.append(np.stack(current_labels, axis=0))
                     self.filenames.append(os.path.join(self.images_path, current_file))
-            else: # If this box belongs to a new image file
-                self.labels.append(np.stack(current_labels, axis=0))
-                self.filenames.append(os.path.join(self.images_path, current_file))
                 current_labels = [] # Reset the labels list because this is a new file.
                 current_file = box[0]
                 current_labels.append(box[1:])
                 if i == len(data)-1: # If this is the last line of the CSV file
-                    self.labels.append(np.stack(current_labels, axis=0))
-                    self.filenames.append(os.path.join(self.images_path, current_file))
+                    if random_sample: # In case we're not using the full dataset, but a random sample of it.
+                        p = np.random.uniform(0,1)
+                        if p >= (1-random_sample):
+                            self.labels.append(np.stack(current_labels, axis=0))
+                            self.filenames.append(os.path.join(self.images_path, current_file))
+                    else:
+                        self.labels.append(np.stack(current_labels, axis=0))
+                        self.filenames.append(os.path.join(self.images_path, current_file))
 
         if ret: # In case we want to return these
             return self.filenames, self.labels
@@ -923,13 +951,16 @@ class BatchGenerator:
             if train: # During training we need the encoded labels instead of the format that `batch_y` has
                 if ssd_box_encoder is None:
                     raise ValueError("`ssd_box_encoder` cannot be `None` in training mode.")
-                y_true = ssd_box_encoder.encode_y(batch_y) # Encode the labels into the `y_true` tensor that the cost function needs
+                if diagnostics:
+                    y_true, matched_anchors = ssd_box_encoder.encode_y(batch_y, diagnostics)
+                else:
+                    y_true = ssd_box_encoder.encode_y(batch_y, diagnostics) # Encode the labels into the `y_true` tensor that the cost function needs
 
             # CAUTION: Converting `batch_X` into an array will result in an empty batch if the images have varying sizes.
             #          At this point, all images have to have the same size, otherwise you will get an error during training.
             if train:
                 if diagnostics:
-                    yield (np.array(batch_X), y_true, batch_y, this_filenames, original_images, original_labels)
+                    yield (np.array(batch_X), y_true, matched_anchors, batch_y, this_filenames, original_images, original_labels)
                 else:
                     yield (np.array(batch_X), y_true)
             else:
