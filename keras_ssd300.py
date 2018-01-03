@@ -19,15 +19,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import numpy as np
 from keras.models import Model
-from keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, Reshape, Concatenate
+from keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, ZeroPadding2D, Reshape, Concatenate
 
 from keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layer_L2Normalization import L2Normalization
 
 def ssd_300(image_size,
             n_classes,
-            min_scale=0.1,
-            max_scale=0.9,
+            min_scale=None,
+            max_scale=None,
             scales=None,
             aspect_ratios_global=None,
             aspect_ratios_per_layer=[[0.5, 1.0, 2.0],
@@ -37,10 +37,14 @@ def ssd_300(image_size,
                                      [0.5, 1.0, 2.0],
                                      [0.5, 1.0, 2.0]],
             two_boxes_for_ar1=True,
+            steps=None,
+            offsets=None,
             limit_boxes=False,
             variances=[0.1, 0.1, 0.2, 0.2],
             coords='centroids',
-            normalize_coords=False):
+            normalize_coords=False,
+            subtract_mean=None,
+            divide_by_stddev=None):
     '''
     Build a Keras model with SSD_300 architecture, see references.
 
@@ -97,6 +101,21 @@ def ssd_300(image_size,
             using the scaling factor for the respective layer, the second one will be generated using
             geometric mean of said scaling factor and next bigger scaling factor. Defaults to `True`, following the original
             implementation.
+        steps (list, optional): `None` or a list with as many elements as there are predictor layers. The elements can be
+            either ints/floats or tuples of two ints/floats. These numbers represent for each predictor layer how many
+            pixels apart the anchor box center points should be vertically and horizontally along the spatial grid over
+            the image. If the list contains ints/floats, then that value will be used for both spatial dimensions.
+            If the list contains tuples of two ints/floats, then they represent `(step_height, step_width)`.
+            If no steps are provided, then they will be computed such that the anchor box center points will form an
+            equidistant grid within the image dimensions. Defaults to `None`.
+        offsets (list, optional): `None` or a list with as many elements as there are predictor layers. The elements can be
+            either floats or tuples of two floats. These numbers represent for each predictor layer how many
+            pixels from the top and left boarders of the image the top-most and left-most anchor box center points should be
+            as a fraction of `steps`. The last bit is important: The offsets are not absolute pixel values, but fractions
+            of the step size specified in the `steps` argument. If the list contains floats, then that value will
+            be used for both spatial dimensions. If the list contains tuples of two floats, then they represent
+            `(vertical_offset, horizontal_offset)`. If no offsets are provided, then they will default to 0.5 of the step size.
+            Defaults to `None`.
         limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
             This would normally be set to `True`, but here it defaults to `False`, following the original
             implementation.
@@ -110,6 +129,15 @@ def ssd_300(image_size,
             `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids', following the original implementation.
         normalize_coords (bool, optional): Set to `True` if the model is supposed to use relative instead of absolute coordinates,
             i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates. Defaults to `False`.
+        subtract_mean (array-like, optional): `None` or an array-like object of integers or floating point values
+            of any shape that is broadcast-compatible with the image shape. The elements of this array will be
+            subtracted from the image pixel intensity values. For example, pass a list of three integers
+            to perform per-channel mean normalization for color images. Defaults to `None`.
+        divide_by_stddev (array-like, optional): `None` or an array-like object of non-zero integers or
+            floating point values of any shape that is broadcast-compatible with the image shape. The image pixel
+            intensity values will be divided by the elements of this array. For example, pass a list
+            of three integers to perform per-channel standard deviation normalization for color images.
+            Defaults to `None`.
 
     Returns:
         model: The Keras SSD model.
@@ -146,6 +174,12 @@ def ssd_300(image_size,
     variances = np.array(variances)
     if np.any(variances <= 0):
         raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
+
+    if (not (steps is None)) and (len(steps) != n_predictor_layers):
+        raise ValueError("You must provide at least one step value per predictor layer.")
+
+    if (not (offsets is None)) and (len(offsets) != n_predictor_layers):
+        raise ValueError("You must provide at least one offset value per predictor layer.")
 
     # Set the aspect ratios for each predictor layer. These are only needed for the anchor box layers.
     if aspect_ratios_per_layer:
@@ -190,17 +224,32 @@ def ssd_300(image_size,
         n_boxes_conv8_2 = n_boxes
         n_boxes_conv9_2 = n_boxes
 
+    if steps is None:
+        steps = [None] * n_predictor_layers
+    if offsets is None:
+        offsets = [None] * n_predictor_layers
+
     # Input image format
     img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
 
-    ### Design the actual network
+    ### Build the actual network.
 
     x = Input(shape=(img_height, img_width, img_channels))
-    normed = Lambda(lambda z: z/127.5 - 1.0, # Convert input feature range to [-1,1]
-                    output_shape=(img_height, img_width, img_channels),
-                    name='lambda1')(x)
 
-    conv1_1 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', name='conv1_1')(normed)
+    # The following identity layer is only needed so that subsequent two lambda layers can be optional.
+    x1 = Lambda(lambda z: z,
+                output_shape=(img_height, img_width, img_channels),
+                name='idendity_layer')(x)
+    if not (subtract_mean is None):
+        x1 = Lambda(lambda z: z - np.array(subtract_mean),
+                   output_shape=(img_height, img_width, img_channels),
+                   name='input_mean_normalization')(x1)
+    if not (divide_by_stddev is None):
+        x1 = Lambda(lambda z: z / np.array(divide_by_stddev),
+                   output_shape=(img_height, img_width, img_channels),
+                   name='input_stddev_normalization')(x1)
+
+    conv1_1 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', name='conv1_1')(x1)
     conv1_2 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', name='conv1_2')(conv1_1)
     pool1 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid', name='pool1')(conv1_2)
 
@@ -211,6 +260,7 @@ def ssd_300(image_size,
     conv3_1 = Conv2D(256, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', name='conv3_1')(pool2)
     conv3_2 = Conv2D(256, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', name='conv3_2')(conv3_1)
     conv3_3 = Conv2D(256, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', name='conv3_3')(conv3_2)
+    conv3_3 = ZeroPadding2D(padding=((0, 1), (0, 1)), name='conv3_padding')(conv3_3) # We need this to keep the output sizes the same as in the Caffe model.
     pool3 = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid', name='pool3')(conv3_3)
 
     conv4_1 = Conv2D(512, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', name='conv4_1')(pool3)
@@ -265,17 +315,23 @@ def ssd_300(image_size,
 
     # Output shape of anchors: `(batch, height, width, n_boxes, 8)`
     conv4_3_norm_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios_conv4_3,
-                                             two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv4_3_norm_mbox_priorbox')(conv4_3_norm_mbox_loc)
+                                             two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[0], this_offsets=offsets[0], limit_boxes=limit_boxes,
+                                             variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv4_3_norm_mbox_priorbox')(conv4_3_norm_mbox_loc)
     fc7_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios_fc7,
-                                    two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='fc7_mbox_priorbox')(fc7_mbox_loc)
+                                    two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[1], this_offsets=offsets[1], limit_boxes=limit_boxes,
+                                    variances=variances, coords=coords, normalize_coords=normalize_coords, name='fc7_mbox_priorbox')(fc7_mbox_loc)
     conv6_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6_2,
-                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv6_2_mbox_priorbox')(conv6_2_mbox_loc)
+                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[2], this_offsets=offsets[2], limit_boxes=limit_boxes,
+                                        variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv6_2_mbox_priorbox')(conv6_2_mbox_loc)
     conv7_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios_conv7_2,
-                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv7_2_mbox_priorbox')(conv7_2_mbox_loc)
+                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[3], this_offsets=offsets[3], limit_boxes=limit_boxes,
+                                        variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv7_2_mbox_priorbox')(conv7_2_mbox_loc)
     conv8_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[4], next_scale=scales[5], aspect_ratios=aspect_ratios_conv8_2,
-                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv8_2_mbox_priorbox')(conv8_2_mbox_loc)
+                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[4], this_offsets=offsets[4], limit_boxes=limit_boxes,
+                                        variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv8_2_mbox_priorbox')(conv8_2_mbox_loc)
     conv9_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[5], next_scale=scales[6], aspect_ratios=aspect_ratios_conv9_2,
-                                        two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv9_2_mbox_priorbox')(conv9_2_mbox_loc)
+                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[5], this_offsets=offsets[5], limit_boxes=limit_boxes,
+                                        variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv9_2_mbox_priorbox')(conv9_2_mbox_loc)
 
     ### Reshape
 
