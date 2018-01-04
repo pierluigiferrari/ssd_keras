@@ -245,6 +245,25 @@ def _greedy_nms2(predictions, iou_threshold=0.45, coords='corners'):
         boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
     return np.array(maxima)
 
+def _greedy_nms_debug(predictions, iou_threshold=0.45, coords='corners'):
+    '''
+    The same greedy non-maximum suppression algorithm as above, but slightly modified for use as an internal
+    function for per-class NMS in `decode_y_debug()`. The difference is that it keeps the indices of all left-over boxes
+    for each batch item, which allows you to know which predictor layer predicted a given output box and is thus
+    useful for debugging.
+    '''
+    boxes_left = np.copy(predictions)
+    maxima = [] # This is where we store the boxes that make it through the non-maximum suppression
+    while boxes_left.shape[0] > 0: # While there are still boxes left to compare...
+        maximum_index = np.argmax(boxes_left[:,1]) # ...get the index of the next box with the highest confidence...
+        maximum_box = np.copy(boxes_left[maximum_index]) # ...copy that box and...
+        maxima.append(maximum_box) # ...append it to `maxima` because we'll definitely keep it
+        boxes_left = np.delete(boxes_left, maximum_index, axis=0) # Now remove the maximum box from `boxes_left`
+        if boxes_left.shape[0] == 0: break # If there are no boxes left after this step, break. Otherwise...
+        similarities = iou(boxes_left[:,2:], maximum_box[2:], coords=coords) # ...compare (IoU) the other left over boxes to the maximum box...
+        boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
+    return np.array(maxima)
+
 def decode_y(y_pred,
              confidence_thresh=0.01,
              iou_threshold=0.45,
@@ -455,15 +474,15 @@ def decode_y2(y_pred,
 
     return y_pred_decoded
 
-def decode_y3(y_pred,
-              confidence_thresh=0.01,
-              iou_threshold=0.45,
-              top_k=200,
-              input_coords='centroids',
-              normalize_coords=False,
-              img_height=None,
-              img_width=None,
-              variance_encoded_in_target=False):
+def decode_y_debug(y_pred,
+                   confidence_thresh=0.01,
+                   iou_threshold=0.45,
+                   top_k=200,
+                   input_coords='centroids',
+                   normalize_coords=False,
+                   img_height=None,
+                   img_width=None,
+                   variance_encoded_in_target=False):
     '''
     Convert model prediction output back to a format that contains only the positive box predictions
     (i.e. the same format that `enconde_y()` takes as input).
@@ -545,26 +564,33 @@ def decode_y3(y_pred,
         y_pred_decoded_raw[:,:,[-4,-2]] *= img_width # Convert xmin, xmax back to absolute coordinates
         y_pred_decoded_raw[:,:,[-3,-1]] *= img_height # Convert ymin, ymax back to absolute coordinates
 
+    # Diagnostic step: For each batch item, prepend a box's index to its coordinates.
+    y_pred_decoded_raw2 = np.zeros((y_pred_decoded_raw.shape[0], y_pred_decoded_raw.shape[1], y_pred_decoded_raw.shape[2] + 1))
+    y_pred_decoded_raw2[:,:,1:] = y_pred_decoded_raw
+    y_pred_decoded_raw2[:,:,0] = np.arange(y_pred_decoded_raw.shape[1]) # Broadcasting
+    y_pred_decoded_raw = y_pred_decoded_raw2
+
     # 3: Apply confidence thresholding and non-maximum suppression per class
 
-    n_classes = y_pred_decoded_raw.shape[-1] - 4 # The number of classes is the length of the last axis minus the four box coordinates
+    n_classes = y_pred_decoded_raw.shape[-1] - 5 # The number of classes is the length of the last axis minus the four box coordinates and minus the index
 
     y_pred_decoded = [] # Store the final predictions in this list
     for batch_item in y_pred_decoded_raw: # `batch_item` has shape `[n_boxes, n_classes + 4 coords]`
         pred = [] # Store the final predictions for this batch item here
         for class_id in range(1, n_classes): # For each class except the background class (which has class ID 0)...
-            single_class = batch_item[:,[class_id, -4, -3, -2, -1]] # ...keep only the confidences for that class, making this an array of shape `[n_boxes, 5]` and...
-            threshold_met = single_class[single_class[:,0] > confidence_thresh] # ...keep only those boxes with a confidence above the set threshold.
+            single_class = batch_item[:,[0, class_id + 1, -4, -3, -2, -1]] # ...keep only the confidences for that class, making this an array of shape `[n_boxes, 6]` and...
+            threshold_met = single_class[single_class[:,1] > confidence_thresh] # ...keep only those boxes with a confidence above the set threshold.
             if threshold_met.shape[0] > 0: # If any boxes made the threshold...
-                maxima = _greedy_nms(threshold_met, iou_threshold=iou_threshold, coords='corners') # ...perform NMS on them.
+                maxima = _greedy_nms_debug(threshold_met, iou_threshold=iou_threshold, coords='corners') # ...perform NMS on them.
                 maxima_output = np.zeros((maxima.shape[0], maxima.shape[1] + 1)) # Expand the last dimension by one element to have room for the class ID. This is now an arrray of shape `[n_boxes, 6]`
-                maxima_output[:,0] = class_id # Write the class ID to the first column...
-                maxima_output[:,1:] = maxima # ...and write the maxima to the other columns...
+                maxima_output[:,0] = maxima[:,0] # Write the box index to the first column...
+                maxima_output[:,1] = class_id # ...and write the class ID to the second column...
+                maxima_output[:,2:] = maxima[:,1:] # ...and write the rest of the maxima data to the other columns...
                 pred.append(maxima_output) # ...and append the maxima for this class to the list of maxima for this batch item.
         # Once we're through with all classes, keep only the `top_k` maxima with the highest scores
         pred = np.concatenate(pred, axis=0)
         if pred.shape[0] > top_k: # If we have more than `top_k` results left at this point, otherwise there is nothing to filter,...
-            top_k_indices = np.argpartition(pred[:,1], kth=pred.shape[0]-top_k, axis=0)[pred.shape[0]-top_k:] # ...get the indices of the `top_k` highest-score maxima...
+            top_k_indices = np.argpartition(pred[:,2], kth=pred.shape[0]-top_k, axis=0)[pred.shape[0]-top_k:] # ...get the indices of the `top_k` highest-score maxima...
             pred = pred[top_k_indices] # ...and keep only those entries of `pred`...
         y_pred_decoded.append(pred) # ...and now that we're done, append the array of final predictions for this batch item to the output list
 
