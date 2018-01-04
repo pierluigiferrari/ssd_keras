@@ -44,7 +44,8 @@ def ssd_300(image_size,
             coords='centroids',
             normalize_coords=False,
             subtract_mean=None,
-            divide_by_stddev=None):
+            divide_by_stddev=None,
+            swap_channels=True):
     '''
     Build a Keras model with SSD_300 architecture, see references.
 
@@ -138,6 +139,9 @@ def ssd_300(image_size,
             intensity values will be divided by the elements of this array. For example, pass a list
             of three integers to perform per-channel standard deviation normalization for color images.
             Defaults to `None`.
+        swap_channels (bool, optional): If `True` the color channel order of the input images will be reversed,
+            i.e. if the input color channel order is RGB, the color channels will be swapped to BGR. Note that the
+            original Caffe implementation assumes BGR input. Defaults to `True`.
 
     Returns:
         model: The Keras SSD model.
@@ -248,6 +252,10 @@ def ssd_300(image_size,
         x1 = Lambda(lambda z: z / np.array(divide_by_stddev),
                    output_shape=(img_height, img_width, img_channels),
                    name='input_stddev_normalization')(x1)
+    if swap_channels and (img_channels == 3):
+        x1 = Lambda(lambda z: z[...,::-1],
+                   output_shape=(img_height, img_width, img_channels),
+                   name='input_channel_swap')(x1)
 
     conv1_1 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', name='conv1_1')(x1)
     conv1_2 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', name='conv1_2')(conv1_1)

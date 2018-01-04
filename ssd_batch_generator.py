@@ -424,7 +424,7 @@ class BatchGenerator:
                     if (not self.include_classes == 'all') and (not class_id in self.include_classes): continue
                     pose = obj.pose.text
                     truncated = int(obj.truncated.text)
-                    if exclude_truncated and (truncated ==1): continue
+                    if exclude_truncated and (truncated == 1): continue
                     difficult = int(obj.difficult.text)
                     if exclude_difficult and (difficult == 1): continue
                     xmin = int(obj.bndbox.xmin.text)
@@ -490,6 +490,7 @@ class BatchGenerator:
                  include_thresh=0.3,
                  subtract_mean=None,
                  divide_by_stddev=None,
+                 swap_channels=False,
                  diagnostics=False):
         '''
         Generate batches of samples and corresponding labels indefinitely from
@@ -594,6 +595,9 @@ class BatchGenerator:
                 intensity values will be divided by the elements of this array. For example, pass a list
                 of three integers to perform per-channel standard deviation normalization for color images.
                 Defaults to `None`.
+            swap_channels (bool, optional): If `True` the color channel order of the input images will be reversed,
+                i.e. if the input color channel order is RGB, the color channels will be swapped to BGR.
+                Defaults to `False`.
             diagnostics (bool, optional): If `True`, yields three additional output items:
                 1) A list of the image file names in the batch.
                 2) An array with the original, unaltered images.
@@ -963,11 +967,13 @@ class BatchGenerator:
             #          At this point, all images must have the same size, otherwise you will get an error during training.
             batch_X = np.array(batch_X)
 
-            # Do mean and variance normalization of the pixel intensity values.
+            # Perform image transformations that can be bulk-applied to the whole batch.
             if not (subtract_mean is None):
                 batch_X = batch_X.astype(np.int16) - np.array(subtract_mean)
             if not (divide_by_stddev is None):
                 batch_X = batch_X.astype(np.int16) / np.array(divide_by_stddev)
+            if swap_channels:
+                batch_X = batch_X[:,:,:,[2, 1, 0]]
 
             if train: # During training we need the encoded labels instead of the format that `batch_y` has
                 if ssd_box_encoder is None:
