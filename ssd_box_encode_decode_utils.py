@@ -40,7 +40,8 @@ def iou(boxes1, boxes2, coords='centroids'):
             format specified by `coords` or a 2D Numpy array of shape `(n, 4)` containing the coordinates for `n` boxes.
             Shape must be broadcast-compatible to `boxes1`.
         coords (str, optional): The coordinate format in the input arrays. Can be either 'centroids' for the format
-            `(cx, cy, w, h)` or 'minmax' for the format `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
+            `(cx, cy, w, h)`, 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format
+            `(xmin, ymin, xmax, ymax)`. Defaults to 'centroids'.
 
     Returns:
         A 1D Numpy array of dtype float containing values in [0,1], the Jaccard similarity of the boxes in `boxes1` and `boxes2`.
@@ -59,21 +60,26 @@ def iou(boxes1, boxes2, coords='centroids'):
         # TODO: Implement a version that uses fewer computation steps (that doesn't need conversion)
         boxes1 = convert_coordinates(boxes1, start_index=0, conversion='centroids2minmax')
         boxes2 = convert_coordinates(boxes2, start_index=0, conversion='centroids2minmax')
-    elif coords != 'minmax':
-        raise ValueError("Unexpected value for `coords`. Supported values are 'minmax' and 'centroids'.")
+    elif not (coords == 'minmax' or coords == 'corners'):
+        raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
 
-    intersection = np.maximum(0, np.minimum(boxes1[:,1], boxes2[:,1]) - np.maximum(boxes1[:,0], boxes2[:,0])) * np.maximum(0, np.minimum(boxes1[:,3], boxes2[:,3]) - np.maximum(boxes1[:,2], boxes2[:,2]))
-    union = (boxes1[:,1] - boxes1[:,0]) * (boxes1[:,3] - boxes1[:,2]) + (boxes2[:,1] - boxes2[:,0]) * (boxes2[:,3] - boxes2[:,2]) - intersection
+    if coords == 'minmax':
+        intersection = np.maximum(0, np.minimum(boxes1[:,1], boxes2[:,1]) - np.maximum(boxes1[:,0], boxes2[:,0])) * np.maximum(0, np.minimum(boxes1[:,3], boxes2[:,3]) - np.maximum(boxes1[:,2], boxes2[:,2]))
+        union = (boxes1[:,1] - boxes1[:,0]) * (boxes1[:,3] - boxes1[:,2]) + (boxes2[:,1] - boxes2[:,0]) * (boxes2[:,3] - boxes2[:,2]) - intersection
+    elif coords == 'corners':
+        intersection = np.maximum(0, np.minimum(boxes1[:,2], boxes2[:,2]) - np.maximum(boxes1[:,0], boxes2[:,0])) * np.maximum(0, np.minimum(boxes1[:,3], boxes2[:,3]) - np.maximum(boxes1[:,1], boxes2[:,1]))
+        union = (boxes1[:,2] - boxes1[:,0]) * (boxes1[:,3] - boxes1[:,1]) + (boxes2[:,2] - boxes2[:,0]) * (boxes2[:,3] - boxes2[:,1]) - intersection
 
     return intersection / union
 
-def convert_coordinates(tensor, start_index, conversion='minmax2centroids'):
+def convert_coordinates(tensor, start_index, conversion):
     '''
     Convert coordinates for axis-aligned 2D boxes between two coordinate formats.
 
     Creates a copy of `tensor`, i.e. does not operate in place. Currently there are
-    two supported coordinate formats that can be converted from and to each other:
+    three supported coordinate formats that can be converted from and to each other:
         1) (xmin, xmax, ymin, ymax) - the 'minmax' format
+        2) (xmin, ymin, xmax, ymax) - the 'corners' format
         2) (cx, cy, w, h) - the 'centroids' format
 
     Note that converting from one of the supported formats to another and back is
@@ -83,8 +89,9 @@ def convert_coordinates(tensor, start_index, conversion='minmax2centroids'):
         tensor (array): A Numpy nD array containing the four consecutive coordinates
             to be converted somewhere in the last axis.
         start_index (int): The index of the first coordinate in the last axis of `tensor`.
-        conversion (str, optional): The conversion direction. Can be 'minmax2centroids'
-            or 'centroids2minmax'. Defaults to 'minmax2centroids'.
+        conversion (str, optional): The conversion direction. Can be 'minmax2centroids',
+            'centroids2minmax', 'corners2centroids', 'centroids2corners', 'minmax2corners',
+            or 'corners2minmax'.
 
     Returns:
         A Numpy nD array, a copy of the input tensor with the converted coordinates
@@ -103,17 +110,31 @@ def convert_coordinates(tensor, start_index, conversion='minmax2centroids'):
         tensor1[..., ind+1] = tensor[..., ind] + tensor[..., ind+2] / 2.0 # Set xmax
         tensor1[..., ind+2] = tensor[..., ind+1] - tensor[..., ind+3] / 2.0 # Set ymin
         tensor1[..., ind+3] = tensor[..., ind+1] + tensor[..., ind+3] / 2.0 # Set ymax
+    elif conversion == 'corners2centroids':
+        tensor1[..., ind] = (tensor[..., ind] + tensor[..., ind+2]) / 2.0 # Set cx
+        tensor1[..., ind+1] = (tensor[..., ind+1] + tensor[..., ind+3]) / 2.0 # Set cy
+        tensor1[..., ind+2] = tensor[..., ind+2] - tensor[..., ind] # Set w
+        tensor1[..., ind+3] = tensor[..., ind+3] - tensor[..., ind+1] # Set h
+    elif conversion == 'centroids2corners':
+        tensor1[..., ind] = tensor[..., ind] - tensor[..., ind+2] / 2.0 # Set xmin
+        tensor1[..., ind+1] = tensor[..., ind+1] - tensor[..., ind+3] / 2.0 # Set ymin
+        tensor1[..., ind+2] = tensor[..., ind] + tensor[..., ind+2] / 2.0 # Set xmax
+        tensor1[..., ind+3] = tensor[..., ind+1] + tensor[..., ind+3] / 2.0 # Set ymax
+    elif (conversion == 'minmax2corners') or (conversion == 'corners2minmax'):
+        tensor1[..., ind+1] = tensor[..., ind+2]
+        tensor1[..., ind+2] = tensor[..., ind+1]
     else:
-        raise ValueError("Unexpected conversion value. Supported values are 'minmax2centroids' and 'centroids2minmax'.")
+        raise ValueError("Unexpected conversion value. Supported values are 'minmax2centroids', 'centroids2minmax', 'corners2centroids', 'centroids2corners', 'minmax2corners', and 'corners2minmax'.")
 
     return tensor1
 
-def convert_coordinates2(tensor, start_index, conversion='minmax2centroids'):
+def convert_coordinates2(tensor, start_index, conversion):
     '''
     A matrix multiplication implementation of `convert_coordinates()`.
+    Supports only conversion between the 'centroids' and 'minmax' formats.
 
-    It is marginally slower on average than `convert_coordinates()`, probably
-    because it involves more (unnecessary) arithmetic operations ('unnecessary'
+    This function is marginally slower on average than `convert_coordinates()`,
+    probably because it involves more (unnecessary) arithmetic operations (unnecessary
     because the two matrices are sparse).
 
     For details please refer to the documentation of `convert_coordinates()`.
@@ -137,7 +158,7 @@ def convert_coordinates2(tensor, start_index, conversion='minmax2centroids'):
 
     return tensor1
 
-def greedy_nms(y_pred_decoded, iou_threshold=0.45, coords='minmax'):
+def greedy_nms(y_pred_decoded, iou_threshold=0.45, coords='corners'):
     '''
     Perform greedy non-maximum suppression on the input boxes.
 
@@ -169,7 +190,7 @@ def greedy_nms(y_pred_decoded, iou_threshold=0.45, coords='minmax'):
             from the set of predictions, where 'maximal' refers to the box score.
             Defaults to 0.45 following the paper.
         coords (str, optional): The coordinate format of `y_pred_decoded`.
-            Can be one of the formats supported by `iou()`. Defaults to 'minmax'.
+            Can be one of the formats supported by `iou()`. Defaults to 'corners'.
 
     Returns:
         The predictions after removing non-maxima. The format is the same as the input format.
@@ -190,7 +211,7 @@ def greedy_nms(y_pred_decoded, iou_threshold=0.45, coords='minmax'):
 
     return y_pred_decoded_nms
 
-def _greedy_nms(predictions, iou_threshold=0.45, coords='minmax'):
+def _greedy_nms(predictions, iou_threshold=0.45, coords='corners'):
     '''
     The same greedy non-maximum suppression algorithm as above, but slightly modified for use as an internal
     function for per-class NMS in `decode_y()`.
@@ -207,10 +228,29 @@ def _greedy_nms(predictions, iou_threshold=0.45, coords='minmax'):
         boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
     return np.array(maxima)
 
-def _greedy_nms2(predictions, iou_threshold=0.45, coords='minmax'):
+def _greedy_nms2(predictions, iou_threshold=0.45, coords='corners'):
     '''
     The same greedy non-maximum suppression algorithm as above, but slightly modified for use as an internal
     function in `decode_y2()`.
+    '''
+    boxes_left = np.copy(predictions)
+    maxima = [] # This is where we store the boxes that make it through the non-maximum suppression
+    while boxes_left.shape[0] > 0: # While there are still boxes left to compare...
+        maximum_index = np.argmax(boxes_left[:,1]) # ...get the index of the next box with the highest confidence...
+        maximum_box = np.copy(boxes_left[maximum_index]) # ...copy that box and...
+        maxima.append(maximum_box) # ...append it to `maxima` because we'll definitely keep it
+        boxes_left = np.delete(boxes_left, maximum_index, axis=0) # Now remove the maximum box from `boxes_left`
+        if boxes_left.shape[0] == 0: break # If there are no boxes left after this step, break. Otherwise...
+        similarities = iou(boxes_left[:,2:], maximum_box[2:], coords=coords) # ...compare (IoU) the other left over boxes to the maximum box...
+        boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
+    return np.array(maxima)
+
+def _greedy_nms_debug(predictions, iou_threshold=0.45, coords='corners'):
+    '''
+    The same greedy non-maximum suppression algorithm as above, but slightly modified for use as an internal
+    function for per-class NMS in `decode_y_debug()`. The difference is that it keeps the indices of all left-over boxes
+    for each batch item, which allows you to know which predictor layer predicted a given output box and is thus
+    useful for debugging.
     '''
     boxes_left = np.copy(predictions)
     maxima = [] # This is where we store the boxes that make it through the non-maximum suppression
@@ -259,8 +299,8 @@ def decode_y(y_pred,
         top_k (int, optional): The number of highest scoring predictions to be kept for each batch item after the
             non-maximum suppression stage. Defaults to 200, following the paper.
         input_coords (str, optional): The box coordinate format that the model outputs. Can be either 'centroids'
-            for the format `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax'
-            for the format `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
+            for the format `(cx, cy, w, h)` (box center coordinates, width, and height), 'minmax' for the format
+            `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`. Defaults to 'centroids'.
         normalize_coords (bool, optional): Set to `True` if the model outputs relative coordinates (i.e. coordinates in [0,1])
             and you wish to transform these relative coordinates back to absolute coordinates. If the model outputs
             relative coordinates, but you do not want to convert them back to absolute coordinates, set this to `False`.
@@ -272,7 +312,7 @@ def decode_y(y_pred,
     Returns:
         A python list of length `batch_size` where each list element represents the predicted boxes
         for one image and contains a Numpy array of shape `(boxes, 6)` where each row is a box prediction for
-        a non-background class for the respective image in the format `[class_id, confidence, xmin, xmax, ymin, ymax]`.
+        a non-background class for the respective image in the format `[class_id, confidence, xmin, ymin, xmax, ymax]`.
     '''
     if normalize_coords and ((img_height is None) or (img_width is None)):
         raise ValueError("If relative box coordinates are supposed to be converted to absolute coordinates, the decoder needs the image size in order to decode the predictions, but `img_height == {}` and `img_width == {}`".format(img_height, img_width))
@@ -286,20 +326,26 @@ def decode_y(y_pred,
         y_pred_decoded_raw[:,:,[-2,-1]] *= y_pred[:,:,[-6,-5]] # (w(pred) / w(anchor)) * w(anchor) == w(pred), (h(pred) / h(anchor)) * h(anchor) == h(pred)
         y_pred_decoded_raw[:,:,[-4,-3]] *= y_pred[:,:,[-4,-3]] * y_pred[:,:,[-6,-5]] # (delta_cx(pred) / w(anchor) / cx_variance) * cx_variance * w(anchor) == delta_cx(pred), (delta_cy(pred) / h(anchor) / cy_variance) * cy_variance * h(anchor) == delta_cy(pred)
         y_pred_decoded_raw[:,:,[-4,-3]] += y_pred[:,:,[-8,-7]] # delta_cx(pred) + cx(anchor) == cx(pred), delta_cy(pred) + cy(anchor) == cy(pred)
-        y_pred_decoded_raw = convert_coordinates(y_pred_decoded_raw, start_index=-4, conversion='centroids2minmax')
+        y_pred_decoded_raw = convert_coordinates(y_pred_decoded_raw, start_index=-4, conversion='centroids2corners')
     elif input_coords == 'minmax':
         y_pred_decoded_raw[:,:,-4:] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
         y_pred_decoded_raw[:,:,[-4,-3]] *= np.expand_dims(y_pred[:,:,-7] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
         y_pred_decoded_raw[:,:,[-2,-1]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-6], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
         y_pred_decoded_raw[:,:,-4:] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
+        y_pred_decoded_raw = convert_coordinates(y_pred_decoded_raw, start_index=-4, conversion='minmax2corners')
+    elif input_coords == 'corners':
+        y_pred_decoded_raw[:,:,-4:] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
+        y_pred_decoded_raw[:,:,[-4,-2]] *= np.expand_dims(y_pred[:,:,-6] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
+        y_pred_decoded_raw[:,:,[-3,-1]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-7], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
+        y_pred_decoded_raw[:,:,-4:] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
     else:
-        raise ValueError("Unexpected value for `input_coords`. Supported input coordinate formats are 'minmax' and 'centroids'.")
+        raise ValueError("Unexpected value for `input_coords`. Supported input coordinate formats are 'minmax', 'corners' and 'centroids'.")
 
     # 2: If the model predicts normalized box coordinates and they are supposed to be converted back to absolute coordinates, do that
 
     if normalize_coords:
-        y_pred_decoded_raw[:,:,-4:-2] *= img_width # Convert xmin, xmax back to absolute coordinates
-        y_pred_decoded_raw[:,:,-2:] *= img_height # Convert ymin, ymax back to absolute coordinates
+        y_pred_decoded_raw[:,:,[-4,-2]] *= img_width # Convert xmin, xmax back to absolute coordinates
+        y_pred_decoded_raw[:,:,[-3,-1]] *= img_height # Convert ymin, ymax back to absolute coordinates
 
     # 3: Apply confidence thresholding and non-maximum suppression per class
 
@@ -312,7 +358,7 @@ def decode_y(y_pred,
             single_class = batch_item[:,[class_id, -4, -3, -2, -1]] # ...keep only the confidences for that class, making this an array of shape `[n_boxes, 5]` and...
             threshold_met = single_class[single_class[:,0] > confidence_thresh] # ...keep only those boxes with a confidence above the set threshold.
             if threshold_met.shape[0] > 0: # If any boxes made the threshold...
-                maxima = _greedy_nms(threshold_met, iou_threshold=iou_threshold, coords='minmax') # ...perform NMS on them.
+                maxima = _greedy_nms(threshold_met, iou_threshold=iou_threshold, coords='corners') # ...perform NMS on them.
                 maxima_output = np.zeros((maxima.shape[0], maxima.shape[1] + 1)) # Expand the last dimension by one element to have room for the class ID. This is now an arrray of shape `[n_boxes, 6]`
                 maxima_output[:,0] = class_id # Write the class ID to the first column...
                 maxima_output[:,1:] = maxima # ...and write the maxima to the other columns...
@@ -365,8 +411,8 @@ def decode_y2(y_pred,
             after the non-maximum suppression stage. Defaults to 'all', in which case all predictions left after the NMS stage
             will be kept.
         input_coords (str, optional): The box coordinate format that the model outputs. Can be either 'centroids'
-            for the format `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax'
-            for the format `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
+            for the format `(cx, cy, w, h)` (box center coordinates, width, and height), 'minmax' for the format
+            `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`. Defaults to 'centroids'.
         normalize_coords (bool, optional): Set to `True` if the model outputs relative coordinates (i.e. coordinates in [0,1])
             and you wish to transform these relative coordinates back to absolute coordinates. If the model outputs
             relative coordinates, but you do not want to convert them back to absolute coordinates, set this to `False`.
@@ -394,19 +440,25 @@ def decode_y2(y_pred,
         y_pred_converted[:,:,[4,5]] *= y_pred[:,:,[-6,-5]] # (w(pred) / w(anchor)) * w(anchor) == w(pred), (h(pred) / h(anchor)) * h(anchor) == h(pred)
         y_pred_converted[:,:,[2,3]] *= y_pred[:,:,[-4,-3]] * y_pred[:,:,[-6,-5]] # (delta_cx(pred) / w(anchor) / cx_variance) * cx_variance * w(anchor) == delta_cx(pred), (delta_cy(pred) / h(anchor) / cy_variance) * cy_variance * h(anchor) == delta_cy(pred)
         y_pred_converted[:,:,[2,3]] += y_pred[:,:,[-8,-7]] # delta_cx(pred) + cx(anchor) == cx(pred), delta_cy(pred) + cy(anchor) == cy(pred)
-        y_pred_converted = convert_coordinates(y_pred_converted, start_index=-4, conversion='centroids2minmax')
+        y_pred_converted = convert_coordinates(y_pred_converted, start_index=-4, conversion='centroids2corners')
     elif input_coords == 'minmax':
         y_pred_converted[:,:,2:] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
         y_pred_converted[:,:,[2,3]] *= np.expand_dims(y_pred[:,:,-7] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
         y_pred_converted[:,:,[4,5]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-6], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
         y_pred_converted[:,:,2:] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
+        y_pred_converted = convert_coordinates(y_pred_converted, start_index=-4, conversion='minmax2corners')
+    elif input_coords == 'corners':
+        y_pred_converted[:,:,2:] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
+        y_pred_converted[:,:,[2,4]] *= np.expand_dims(y_pred[:,:,-6] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
+        y_pred_converted[:,:,[3,5]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-7], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
+        y_pred_converted[:,:,2:] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
     else:
-        raise ValueError("Unexpected value for `coords`. Supported values are 'minmax' and 'centroids'.")
+        raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
 
     # 3: If the model predicts normalized box coordinates and they are supposed to be converted back to absolute coordinates, do that
     if normalize_coords:
-        y_pred_converted[:,:,2:4] *= img_width # Convert xmin, xmax back to absolute coordinates
-        y_pred_converted[:,:,4:] *= img_height # Convert ymin, ymax back to absolute coordinates
+        y_pred_converted[:,:,[2,4]] *= img_width # Convert xmin, xmax back to absolute coordinates
+        y_pred_converted[:,:,[3,5]] *= img_height # Convert ymin, ymax back to absolute coordinates
 
     # 4: Decode our huge `(batch, #boxes, 6)` tensor into a list of length `batch` where each list entry is an array containing only the positive predictions
     y_pred_decoded = []
@@ -414,11 +466,133 @@ def decode_y2(y_pred,
         boxes = batch_item[np.nonzero(batch_item[:,0])] # ...get all boxes that don't belong to the background class,...
         boxes = boxes[boxes[:,1] >= confidence_thresh] # ...then filter out those positive boxes for which the prediction confidence is too low and after that...
         if iou_threshold: # ...if an IoU threshold is set...
-            boxes = _greedy_nms2(boxes, iou_threshold=iou_threshold, coords='minmax') # ...perform NMS on the remaining boxes.
+            boxes = _greedy_nms2(boxes, iou_threshold=iou_threshold, coords='corners') # ...perform NMS on the remaining boxes.
         if top_k != 'all' and boxes.shape[0] > top_k: # If we have more than `top_k` results left at this point...
             top_k_indices = np.argpartition(boxes[:,1], kth=boxes.shape[0]-top_k, axis=0)[boxes.shape[0]-top_k:] # ...get the indices of the `top_k` highest-scoring boxes...
             boxes = boxes[top_k_indices] # ...and keep only those boxes...
         y_pred_decoded.append(boxes) # ...and now that we're done, append the array of final predictions for this batch item to the output list
+
+    return y_pred_decoded
+
+def decode_y_debug(y_pred,
+                   confidence_thresh=0.01,
+                   iou_threshold=0.45,
+                   top_k=200,
+                   input_coords='centroids',
+                   normalize_coords=False,
+                   img_height=None,
+                   img_width=None,
+                   variance_encoded_in_target=False):
+    '''
+    Convert model prediction output back to a format that contains only the positive box predictions
+    (i.e. the same format that `enconde_y()` takes as input).
+
+    After the decoding, two stages of prediction filtering are performed for each class individually:
+    First confidence thresholding, then greedy non-maximum suppression. The filtering results for all
+    classes are concatenated and the `top_k` overall highest confidence results constitute the final
+    predictions for a given batch item. This procedure follows the original Caffe implementation.
+    For a slightly different and more efficient alternative to decode raw model output that performs
+    non-maximum suppresion globally instead of per class, see `decode_y2()` below.
+
+    Arguments:
+        y_pred (array): The prediction output of the SSD model, expected to be a Numpy array
+            of shape `(batch_size, #boxes, #classes + 4 + 4 + 4)`, where `#boxes` is the total number of
+            boxes predicted by the model per image and the last axis contains
+            `[one-hot vector for the classes, 4 predicted coordinate offsets, 4 anchor box coordinates, 4 variances]`.
+        confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence in a specific
+            positive class in order to be considered for the non-maximum suppression stage for the respective class.
+            A lower value will result in a larger part of the selection process being done by the non-maximum suppression
+            stage, while a larger value will result in a larger part of the selection process happening in the confidence
+            thresholding stage. Defaults to 0.01, following the paper.
+        iou_threshold (float, optional): A float in [0,1]. All boxes with a Jaccard similarity of greater than `iou_threshold`
+            with a locally maximal box will be removed from the set of predictions for a given class, where 'maximal' refers
+            to the box score. Defaults to 0.45 following the paper.
+        top_k (int, optional): The number of highest scoring predictions to be kept for each batch item after the
+            non-maximum suppression stage. Defaults to 200, following the paper.
+        input_coords (str, optional): The box coordinate format that the model outputs. Can be either 'centroids'
+            for the format `(cx, cy, w, h)` (box center coordinates, width, and height), 'minmax' for the format
+            `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`. Defaults to 'centroids'.
+        normalize_coords (bool, optional): Set to `True` if the model outputs relative coordinates (i.e. coordinates in [0,1])
+            and you wish to transform these relative coordinates back to absolute coordinates. If the model outputs
+            relative coordinates, but you do not want to convert them back to absolute coordinates, set this to `False`.
+            Do not set this to `True` if the model already outputs absolute coordinates, as that would result in incorrect
+            coordinates. Requires `img_height` and `img_width` if set to `True`. Defaults to `False`.
+        img_height (int, optional): The height of the input images. Only needed if `normalize_coords` is `True`.
+        img_width (int, optional): The width of the input images. Only needed if `normalize_coords` is `True`.
+
+    Returns:
+        A python list of length `batch_size` where each list element represents the predicted boxes
+        for one image and contains a Numpy array of shape `(boxes, 6)` where each row is a box prediction for
+        a non-background class for the respective image in the format `[class_id, confidence, xmin, ymin, xmax, ymax]`.
+    '''
+    if normalize_coords and ((img_height is None) or (img_width is None)):
+        raise ValueError("If relative box coordinates are supposed to be converted to absolute coordinates, the decoder needs the image size in order to decode the predictions, but `img_height == {}` and `img_width == {}`".format(img_height, img_width))
+
+    # 1: Convert the box coordinates from the predicted anchor box offsets to predicted absolute coordinates
+
+    y_pred_decoded_raw = np.copy(y_pred[:,:,:-8]) # Slice out the classes and the four offsets, throw away the anchor coordinates and variances, resulting in a tensor of shape `[batch, n_boxes, n_classes + 4 coordinates]`
+
+    if input_coords == 'centroids':
+        if variance_encoded_in_target:
+            # Decode the predicted box center x and y coordinates.
+            y_pred_decoded_raw[:,:,[-4,-3]] = y_pred_decoded_raw[:,:,[-4,-3]] * y_pred[:,:,[-6,-5]] + y_pred[:,:,[-8,-7]]
+            # Decode the predicted box width and heigt.
+            y_pred_decoded_raw[:,:,[-2,-1]] = np.exp(y_pred_decoded_raw[:,:,[-2,-1]]) * y_pred[:,:,[-6,-5]]
+        else:
+            # Decode the predicted box center x and y coordinates.
+            y_pred_decoded_raw[:,:,[-4,-3]] = y_pred_decoded_raw[:,:,[-4,-3]] * y_pred[:,:,[-6,-5]] * y_pred[:,:,[-4,-3]] + y_pred[:,:,[-8,-7]]
+            # Decode the predicted box width and heigt.
+            y_pred_decoded_raw[:,:,[-2,-1]] = np.exp(y_pred_decoded_raw[:,:,[-2,-1]] * y_pred[:,:,[-2,-1]]) * y_pred[:,:,[-6,-5]]
+        y_pred_decoded_raw = convert_coordinates(y_pred_decoded_raw, start_index=-4, conversion='centroids2corners')
+    elif input_coords == 'minmax':
+        y_pred_decoded_raw[:,:,-4:] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
+        y_pred_decoded_raw[:,:,[-4,-3]] *= np.expand_dims(y_pred[:,:,-7] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
+        y_pred_decoded_raw[:,:,[-2,-1]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-6], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
+        y_pred_decoded_raw[:,:,-4:] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
+        y_pred_decoded_raw = convert_coordinates(y_pred_decoded_raw, start_index=-4, conversion='minmax2corners')
+    elif input_coords == 'corners':
+        y_pred_decoded_raw[:,:,-4:] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
+        y_pred_decoded_raw[:,:,[-4,-2]] *= np.expand_dims(y_pred[:,:,-6] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
+        y_pred_decoded_raw[:,:,[-3,-1]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-7], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
+        y_pred_decoded_raw[:,:,-4:] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
+    else:
+        raise ValueError("Unexpected value for `input_coords`. Supported input coordinate formats are 'minmax', 'corners' and 'centroids'.")
+
+    # 2: If the model predicts normalized box coordinates and they are supposed to be converted back to absolute coordinates, do that
+
+    if normalize_coords:
+        y_pred_decoded_raw[:,:,[-4,-2]] *= img_width # Convert xmin, xmax back to absolute coordinates
+        y_pred_decoded_raw[:,:,[-3,-1]] *= img_height # Convert ymin, ymax back to absolute coordinates
+
+    # Diagnostic step: For each batch item, prepend a box's index to its coordinates.
+    y_pred_decoded_raw2 = np.zeros((y_pred_decoded_raw.shape[0], y_pred_decoded_raw.shape[1], y_pred_decoded_raw.shape[2] + 1))
+    y_pred_decoded_raw2[:,:,1:] = y_pred_decoded_raw
+    y_pred_decoded_raw2[:,:,0] = np.arange(y_pred_decoded_raw.shape[1]) # Broadcasting
+    y_pred_decoded_raw = y_pred_decoded_raw2
+
+    # 3: Apply confidence thresholding and non-maximum suppression per class
+
+    n_classes = y_pred_decoded_raw.shape[-1] - 5 # The number of classes is the length of the last axis minus the four box coordinates and minus the index
+
+    y_pred_decoded = [] # Store the final predictions in this list
+    for batch_item in y_pred_decoded_raw: # `batch_item` has shape `[n_boxes, n_classes + 4 coords]`
+        pred = [] # Store the final predictions for this batch item here
+        for class_id in range(1, n_classes): # For each class except the background class (which has class ID 0)...
+            single_class = batch_item[:,[0, class_id + 1, -4, -3, -2, -1]] # ...keep only the confidences for that class, making this an array of shape `[n_boxes, 6]` and...
+            threshold_met = single_class[single_class[:,1] > confidence_thresh] # ...keep only those boxes with a confidence above the set threshold.
+            if threshold_met.shape[0] > 0: # If any boxes made the threshold...
+                maxima = _greedy_nms_debug(threshold_met, iou_threshold=iou_threshold, coords='corners') # ...perform NMS on them.
+                maxima_output = np.zeros((maxima.shape[0], maxima.shape[1] + 1)) # Expand the last dimension by one element to have room for the class ID. This is now an arrray of shape `[n_boxes, 6]`
+                maxima_output[:,0] = maxima[:,0] # Write the box index to the first column...
+                maxima_output[:,1] = class_id # ...and write the class ID to the second column...
+                maxima_output[:,2:] = maxima[:,1:] # ...and write the rest of the maxima data to the other columns...
+                pred.append(maxima_output) # ...and append the maxima for this class to the list of maxima for this batch item.
+        # Once we're through with all classes, keep only the `top_k` maxima with the highest scores
+        pred = np.concatenate(pred, axis=0)
+        if pred.shape[0] > top_k: # If we have more than `top_k` results left at this point, otherwise there is nothing to filter,...
+            top_k_indices = np.argpartition(pred[:,2], kth=pred.shape[0]-top_k, axis=0)[pred.shape[0]-top_k:] # ...get the indices of the `top_k` highest-score maxima...
+            pred = pred[top_k_indices] # ...and keep only those entries of `pred`...
+        y_pred_decoded.append(pred) # ...and now that we're done, append the array of final predictions for this batch item to the output list
 
     return y_pred_decoded
 
@@ -445,7 +619,9 @@ class SSDBoxEncoder:
                  aspect_ratios_global=[0.5, 1.0, 2.0],
                  aspect_ratios_per_layer=None,
                  two_boxes_for_ar1=True,
-                 limit_boxes=True,
+                 steps=None,
+                 offsets=None,
+                 limit_boxes=False,
                  variances=[1.0, 1.0, 1.0, 1.0],
                  pos_iou_threshold=0.5,
                  neg_iou_threshold=0.3,
@@ -493,6 +669,21 @@ class SSDBoxEncoder:
                 If `True`, two anchor boxes will be generated for aspect ratio 1. The first will be generated
                 using the scaling factor for the respective layer, the second one will be generated using
                 geometric mean of said scaling factor and next bigger scaling factor.
+            steps (list, optional): `None` or a list with as many elements as there are predictor layers. The elements can be
+                either ints/floats or tuples of two ints/floats. These numbers represent for each predictor layer how many
+                pixels apart the anchor box center points should be vertically and horizontally along the spatial grid over
+                the image. If the list contains ints/floats, then that value will be used for both spatial dimensions.
+                If the list contains tuples of two ints/floats, then they represent `(step_height, step_width)`.
+                If no steps are provided, then they will be computed such that the anchor box center points will form an
+                equidistant grid within the image dimensions. Defaults to `None`.
+            offsets (list, optional): `None` or a list with as many elements as there are predictor layers. The elements can be
+                either floats or tuples of two floats. These numbers represent for each predictor layer how many
+                pixels from the top and left boarders of the image the top-most and left-most anchor box center points should be
+                as a fraction of `steps`. The last bit is important: The offsets are not absolute pixel values, but fractions
+                of the step size specified in the `steps` argument. If the list contains floats, then that value will
+                be used for both spatial dimensions. If the list contains tuples of two floats, then they represent
+                `(vertical_offset, horizontal_offset)`. If no offsets are provided, then they will default to 0.5 of the step size.
+                Defaults to `None`.
             limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
                 Defaults to `True`.
             variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
@@ -507,7 +698,8 @@ class SSDBoxEncoder:
                 anchor box is neither a positive, nor a negative box, it will be ignored during training.
             coords (str, optional): The box coordinate format to be used internally in the model (i.e. this is not the input format
                 of the ground truth labels). Can be either 'centroids' for the format `(cx, cy, w, h)` (box center coordinates, width,
-                and height) or 'minmax' for the format `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
+                and height), 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`.
+                Defaults to 'centroids'.
             normalize_coords (bool, optional): If `True`, the encoder uses relative instead of absolute coordinates.
                 This means instead of using absolute tartget coordinates, the encoder will scale all coordinates to be within [0,1].
                 This way learning becomes independent of the input image size. Defaults to `False`.
@@ -552,8 +744,14 @@ class SSDBoxEncoder:
         if neg_iou_threshold > pos_iou_threshold:
             raise ValueError("It cannot be `neg_iou_threshold > pos_iou_threshold`.")
 
-        if not (coords == 'minmax' or coords == 'centroids'):
-            raise ValueError("Unexpected value for `coords`. Supported values are 'minmax' and 'centroids'.")
+        if not (coords == 'minmax' or coords == 'centroids' or coords == 'corners'):
+            raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
+
+        if (not (steps is None)) and (len(steps) != len(predictor_sizes)):
+            raise ValueError("You must provide at least one step value per predictor layer.")
+
+        if (not (offsets is None)) and (len(offsets) != len(predictor_sizes)):
+            raise ValueError("You must provide at least one offset value per predictor layer.")
 
         self.img_height = img_height
         self.img_width = img_width
@@ -565,6 +763,14 @@ class SSDBoxEncoder:
         self.aspect_ratios_global = aspect_ratios_global
         self.aspect_ratios_per_layer = aspect_ratios_per_layer
         self.two_boxes_for_ar1 = two_boxes_for_ar1
+        if (not steps is None):
+            self.steps = steps
+        else:
+            self.steps = [None] * len(predictor_sizes)
+        if (not offsets is None):
+            self.offsets = offsets
+        else:
+            self.offsets = [None] * len(predictor_sizes)
         self.limit_boxes = limit_boxes
         self.variances = variances
         self.pos_iou_threshold = pos_iou_threshold
@@ -592,6 +798,8 @@ class SSDBoxEncoder:
                               aspect_ratios,
                               this_scale,
                               next_scale,
+                              this_steps=None,
+                              this_offsets=None,
                               diagnostics=False):
         '''
         Compute an array of the spatial positions and sizes of the anchor boxes for one particular classification
@@ -623,34 +831,52 @@ class SSDBoxEncoder:
         '''
         # Compute box width and height for each aspect ratio
         # The shorter side of the image will be used to compute `w` and `h` using `scale` and `aspect_ratios`.
-        aspect_ratios = np.sort(aspect_ratios)
         size = min(self.img_height, self.img_width)
         # Compute the box widths and and heights for all aspect ratios
         wh_list = []
-        n_boxes = len(aspect_ratios)
         for ar in aspect_ratios:
-            if (ar == 1) & self.two_boxes_for_ar1:
-                # Compute the regular anchor box for aspect ratio 1 and...
-                w = this_scale * size * np.sqrt(ar)
-                h = this_scale * size / np.sqrt(ar)
-                wh_list.append((w,h))
-                # ...also compute one slightly larger version using the geometric mean of this scale value and the next
-                w = np.sqrt(this_scale * next_scale) * size * np.sqrt(ar)
-                h = np.sqrt(this_scale * next_scale) * size / np.sqrt(ar)
-                wh_list.append((w,h))
-                # Add 1 to `n_boxes` since we seem to have two boxes for aspect ratio 1
-                n_boxes += 1
+            if (ar == 1):
+                # Compute the regular anchor box for aspect ratio 1.
+                box_height = box_width = this_scale * size
+                wh_list.append((box_width, box_height))
+                if self.two_boxes_for_ar1:
+                    # Compute one slightly larger version using the geometric mean of this scale value and the next.
+                    box_height = box_width = np.sqrt(this_scale * next_scale) * size
+                    wh_list.append((box_width, box_height))
             else:
-                w = this_scale * size * np.sqrt(ar)
-                h = this_scale * size / np.sqrt(ar)
-                wh_list.append((w,h))
+                box_width = this_scale * size * np.sqrt(ar)
+                box_height = this_scale * size / np.sqrt(ar)
+                wh_list.append((box_width, box_height))
         wh_list = np.array(wh_list)
+        n_boxes = len(wh_list)
 
-        # Compute the grid of box center points. They are identical for all aspect ratios
-        cell_height = self.img_height / feature_map_size[0]
-        cell_width = self.img_width / feature_map_size[1]
-        cx = np.linspace(cell_width/2, self.img_width-cell_width/2, feature_map_size[1])
-        cy = np.linspace(cell_height/2, self.img_height-cell_height/2, feature_map_size[0])
+        # Compute the grid of box center points. They are identical for all aspect ratios.
+
+        # Compute the step sizes, i.e. how far apart the anchor box center points will be vertically and horizontally.
+        if (this_steps is None):
+            step_height = self.img_height / feature_map_size[0]
+            step_width = self.img_width / feature_map_size[1]
+        else:
+            if isinstance(this_steps, (list, tuple)) and (len(this_steps) == 2):
+                step_height = this_steps[0]
+                step_width = this_steps[1]
+            elif isinstance(this_steps, (int, float)):
+                step_height = this_steps
+                step_width = this_steps
+        # Compute the offsets, i.e. at what pixel values the first anchor box center point will be from the top and from the left of the image.
+        if (this_offsets is None):
+            offset_height = 0.5
+            offset_width = 0.5
+        else:
+            if isinstance(this_offsets, (list, tuple)) and (len(this_offsets) == 2):
+                offset_height = this_offsets[0]
+                offset_width = this_offsets[0]
+            elif isinstance(this_offsets, (int, float)):
+                offset_height = this_offsets
+                offset_width = this_offsets
+        # Now that we have the offsets and step sizes, compute the grid of anchor box center points.
+        cy = np.linspace(offset_height * step_height, (offset_height + feature_map_size[0] - 1) * step_height, feature_map_size[0])
+        cx = np.linspace(offset_width * step_width, (offset_width + feature_map_size[1] - 1) * step_width, feature_map_size[1])
         cx_grid, cy_grid = np.meshgrid(cx, cy)
         cx_grid = np.expand_dims(cx_grid, -1) # This is necessary for np.tile() to do what we want further down
         cy_grid = np.expand_dims(cy_grid, -1) # This is necessary for np.tile() to do what we want further down
@@ -665,28 +891,31 @@ class SSDBoxEncoder:
         boxes_tensor[:, :, :, 3] = wh_list[:, 1] # Set h
 
         # Convert `(cx, cy, w, h)` to `(xmin, xmax, ymin, ymax)`
-        boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='centroids2minmax')
+        boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='centroids2corners')
 
         # If `limit_boxes` is enabled, clip the coordinates to lie within the image boundaries
         if self.limit_boxes:
-            x_coords = boxes_tensor[:,:,:,[0, 1]]
+            x_coords = boxes_tensor[:,:,:,[0, 2]]
             x_coords[x_coords >= self.img_width] = self.img_width - 1
             x_coords[x_coords < 0] = 0
-            boxes_tensor[:,:,:,[0, 1]] = x_coords
-            y_coords = boxes_tensor[:,:,:,[2, 3]]
+            boxes_tensor[:,:,:,[0, 2]] = x_coords
+            y_coords = boxes_tensor[:,:,:,[1, 3]]
             y_coords[y_coords >= self.img_height] = self.img_height - 1
             y_coords[y_coords < 0] = 0
-            boxes_tensor[:,:,:,[2, 3]] = y_coords
+            boxes_tensor[:,:,:,[1, 3]] = y_coords
 
         # `normalize_coords` is enabled, normalize the coordinates to be within [0,1]
         if self.normalize_coords:
-            boxes_tensor[:, :, :, :2] /= self.img_width
-            boxes_tensor[:, :, :, 2:] /= self.img_height
+            boxes_tensor[:, :, :, [0, 2]] /= self.img_width
+            boxes_tensor[:, :, :, [1, 3]] /= self.img_height
 
+        # TODO: Implement box limiting directly for `(cx, cy, w, h)` so that we don't have to unnecessarily convert back and forth.
         if self.coords == 'centroids':
-            # TODO: Implement box limiting directly for `(cx, cy, w, h)` so that we don't have to unnecessarily convert back and forth
-            # Convert `(xmin, xmax, ymin, ymax)` back to `(cx, cy, w, h)`
-            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='minmax2centroids')
+            # Convert `(xmin, ymin, xmax, ymax)` back to `(cx, cy, w, h)`.
+            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2centroids')
+        elif self.coords == 'minmax':
+            # Convert `(xmin, ymin, xmax, ymax)` to `(xmin, xmax, ymin, ymax).
+            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2minmax')
 
         # Now prepend one dimension to `boxes_tensor` to account for the batch size and tile it along
         # The result will be a 5D tensor of shape `(batch_size, feature_map_height, feature_map_width, n_boxes, 4)`
@@ -701,7 +930,7 @@ class SSDBoxEncoder:
         boxes_tensor = np.reshape(boxes_tensor, (batch_size, -1, 4))
 
         if diagnostics:
-            return boxes_tensor, wh_list, (int(cell_height), int(cell_width))
+            return boxes_tensor, (cy, cx), wh_list, (step_height, step_width), (offset_height, offset_width)
         else:
             return boxes_tensor
 
@@ -740,29 +969,39 @@ class SSDBoxEncoder:
         boxes_tensor = []
         if diagnostics:
             wh_list = [] # List to hold the box widths and heights
-            cell_sizes = [] # List to hold horizontal and vertical distances between any two boxes
+            steps = [] # List to hold horizontal and vertical distances between any two boxes
+            offsets = []
+            centers = [] # Anchor box center points as `(cy, cx)`
             if self.aspect_ratios_per_layer: # If individual aspect ratios are given per layer, we need to pass them to `generate_anchor_boxes()` accordingly
                 for i in range(len(self.predictor_sizes)):
-                    boxes, wh, cells = self.generate_anchor_boxes(batch_size=batch_size,
-                                                                  feature_map_size=self.predictor_sizes[i],
-                                                                  aspect_ratios=self.aspect_ratios_per_layer[i],
-                                                                  this_scale=self.scales[i],
-                                                                  next_scale=self.scales[i+1],
-                                                                  diagnostics=True)
+                    boxes, center, wh, step, offset = self.generate_anchor_boxes(batch_size=batch_size,
+                                                                                 feature_map_size=self.predictor_sizes[i],
+                                                                                 aspect_ratios=self.aspect_ratios_per_layer[i],
+                                                                                 this_scale=self.scales[i],
+                                                                                 next_scale=self.scales[i+1],
+                                                                                 this_steps=self.steps[i],
+                                                                                 this_offsets=self.offsets[i],
+                                                                                 diagnostics=True)
                     boxes_tensor.append(boxes)
                     wh_list.append(wh)
-                    cell_sizes.append(cells)
+                    steps.append(step)
+                    offsets.append(offset)
+                    centers.append(center)
             else: # Use the same global aspect ratio list for all layers
                 for i in range(len(self.predictor_sizes)):
-                    boxes, wh, cells = self.generate_anchor_boxes(batch_size=batch_size,
-                                                                  feature_map_size=self.predictor_sizes[i],
-                                                                  aspect_ratios=self.aspect_ratios_global,
-                                                                  this_scale=self.scales[i],
-                                                                  next_scale=self.scales[i+1],
-                                                                  diagnostics=True)
+                    boxes, center, wh, step, offset = self.generate_anchor_boxes(batch_size=batch_size,
+                                                                                 feature_map_size=self.predictor_sizes[i],
+                                                                                 aspect_ratios=self.aspect_ratios_global,
+                                                                                 this_scale=self.scales[i],
+                                                                                 next_scale=self.scales[i+1],
+                                                                                 this_steps=self.steps[i],
+                                                                                 this_offsets=self.offsets[i],
+                                                                                 diagnostics=True)
                     boxes_tensor.append(boxes)
                     wh_list.append(wh)
-                    cell_sizes.append(cells)
+                    steps.append(step)
+                    offsets.append(offset)
+                    centers.append(center)
         else:
             if self.aspect_ratios_per_layer:
                 for i in range(len(self.predictor_sizes)):
@@ -771,6 +1010,8 @@ class SSDBoxEncoder:
                                                                    aspect_ratios=self.aspect_ratios_per_layer[i],
                                                                    this_scale=self.scales[i],
                                                                    next_scale=self.scales[i+1],
+                                                                   this_steps=self.steps[i],
+                                                                   this_offsets=self.offsets[i],
                                                                    diagnostics=False))
             else:
                 for i in range(len(self.predictor_sizes)):
@@ -779,6 +1020,8 @@ class SSDBoxEncoder:
                                                                    aspect_ratios=self.aspect_ratios_global,
                                                                    this_scale=self.scales[i],
                                                                    next_scale=self.scales[i+1],
+                                                                   this_steps=self.steps[i],
+                                                                   this_offsets=self.offsets[i],
                                                                    diagnostics=False))
 
         boxes_tensor = np.concatenate(boxes_tensor, axis=1) # Concatenate the anchor tensors from the individual layers to one
@@ -799,7 +1042,7 @@ class SSDBoxEncoder:
         y_encode_template = np.concatenate((classes_tensor, boxes_tensor, boxes_tensor, variances_tensor), axis=2)
 
         if diagnostics:
-            return y_encode_template, wh_list, cell_sizes
+            return y_encode_template, centers, wh_list, steps, offsets
         else:
             return y_encode_template
 
@@ -820,7 +1063,7 @@ class SSDBoxEncoder:
             ground_truth_labels (list): A python list of length `batch_size` that contains one 2D Numpy array
                 for each batch image. Each such array has `k` rows for the `k` ground truth bounding boxes belonging
                 to the respective image, and the data for each ground truth bounding box has the format
-                `(class_id, xmin, xmax, ymin, ymax)`, and `class_id` must be an integer greater than 0 for all boxes
+                `(class_id, xmin, ymin, xmax, ymax)`, and `class_id` must be an integer greater than 0 for all boxes
                 as class_id 0 is reserved for the background class.
             diagnostics (bool, optional): If `True`, not only the encoded ground truth tensor will be returned,
                 but also a copy of it with anchor box coordinates in place of the ground truth coordinates.
@@ -850,12 +1093,14 @@ class SSDBoxEncoder:
             negative_boxes = np.ones((y_encode_template.shape[1])) # 1 for all negative boxes, 0 otherwise
             for true_box in ground_truth_labels[i]: # For each ground truth box belonging to the current batch item...
                 true_box = true_box.astype(np.float)
-                if abs(true_box[2] - true_box[1] < 0.001) or abs(true_box[4] - true_box[3] < 0.001): continue # Protect ourselves against bad ground truth data: boxes with width or height equal to zero
+                if abs(true_box[3] - true_box[1] < 0.001) or abs(true_box[4] - true_box[2] < 0.001): continue # Protect ourselves against bad ground truth data: boxes with width or height equal to zero
                 if self.normalize_coords:
-                    true_box[1:3] /= self.img_width # Normalize xmin and xmax to be within [0,1]
-                    true_box[3:5] /= self.img_height # Normalize ymin and ymax to be within [0,1]
+                    true_box[[1,3]] /= self.img_width # Normalize xmin and xmax to be within [0,1]
+                    true_box[[2,4]] /= self.img_height # Normalize ymin and ymax to be within [0,1]
                 if self.coords == 'centroids':
-                    true_box = convert_coordinates(true_box, start_index=1, conversion='minmax2centroids')
+                    true_box = convert_coordinates(true_box, start_index=1, conversion='corners2centroids')
+                elif self.coords == 'minmax':
+                    true_box = convert_coordinates(true_box, start_index=1, conversion='corners2minmax')
                 similarities = iou(y_encode_template[i,:,-12:-8], true_box[1:], coords=self.coords) # The iou similarities for all anchor boxes
                 negative_boxes[similarities >= self.neg_iou_threshold] = 0 # If a negative box gets an IoU match >= `self.neg_iou_threshold`, it's no longer a valid negative box
                 similarities *= available_boxes # Filter out anchor boxes which aren't available anymore (i.e. already matched to a different ground truth box)
@@ -880,6 +1125,11 @@ class SSDBoxEncoder:
             y_encoded[:,:,[-12,-11]] /= y_encode_template[:,:,[-10,-9]] * y_encode_template[:,:,[-4,-3]] # (cx(gt) - cx(anchor)) / w(anchor) / cx_variance, (cy(gt) - cy(anchor)) / h(anchor) / cy_variance
             y_encoded[:,:,[-10,-9]] /= y_encode_template[:,:,[-10,-9]] # w(gt) / w(anchor), h(gt) / h(anchor)
             y_encoded[:,:,[-10,-9]] = np.log(y_encoded[:,:,[-10,-9]]) / y_encode_template[:,:,[-2,-1]] # ln(w(gt) / w(anchor)) / w_variance, ln(h(gt) / h(anchor)) / h_variance (ln == natural logarithm)
+        elif self.coords == 'corners':
+            y_encoded[:,:,-12:-8] -= y_encode_template[:,:,-12:-8] # (gt - anchor) for all four coordinates
+            y_encoded[:,:,[-12,-10]] /= np.expand_dims(y_encode_template[:,:,-10] - y_encode_template[:,:,-12], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
+            y_encoded[:,:,[-11,-9]] /= np.expand_dims(y_encode_template[:,:,-9] - y_encode_template[:,:,-11], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
+            y_encoded[:,:,-12:-8] /= y_encode_template[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
         else:
             y_encoded[:,:,-12:-8] -= y_encode_template[:,:,-12:-8] # (gt - anchor) for all four coordinates
             y_encoded[:,:,[-12,-11]] /= np.expand_dims(y_encode_template[:,:,-11] - y_encode_template[:,:,-12], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)

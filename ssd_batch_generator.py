@@ -139,7 +139,7 @@ class BatchGenerator:
     '''
 
     def __init__(self,
-                 box_output_format=['class_id', 'xmin', 'xmax', 'ymin', 'ymax'],
+                 box_output_format=['class_id', 'xmin', 'ymin', 'xmax', 'ymax'],
                  filenames=None,
                  filenames_type='text',
                  images_path=None,
@@ -154,12 +154,12 @@ class BatchGenerator:
 
         Arguments:
             box_output_format (list, optional): A list of five strings representing the desired order of the five
-                items class ID, xmin, xmax, ymin, ymax in the generated data. The expected strings are
-                'xmin', 'xmax', 'ymin', 'ymax', 'class_id'. If you want to train the model, this
+                items class ID, xmin, ymin, xmax, ymax in the generated data. The expected strings are
+                'xmin', 'ymin', 'xmax', 'ymax', 'class_id'. If you want to train the model, this
                 must be the order that the box encoding class requires as input. Defaults to
-                `['class_id', 'xmin', 'xmax', 'ymin', 'ymax']`. Note that even though the parser methods are
+                `['class_id', 'xmin', 'ymin', 'xmax', 'ymax']`. Note that even though the parser methods are
                 able to produce different output formats, the SSDBoxEncoder currently requires the format
-                `['class_id', 'xmin', 'xmax', 'ymin', 'ymax']`. This list only specifies the five box parameters
+                `['class_id', 'xmin', 'ymin', 'xmax', 'ymax']`. This list only specifies the five box parameters
                 that are relevant as training targets, a list of filenames is generated separately.
             filenames (string or list, optional): `None` or either a Python list/tuple or a string representing
                 a filepath. If a list/tuple is passed, it must contain the file names (full paths) of the
@@ -424,7 +424,7 @@ class BatchGenerator:
                     if (not self.include_classes == 'all') and (not class_id in self.include_classes): continue
                     pose = obj.pose.text
                     truncated = int(obj.truncated.text)
-                    if exclude_truncated and (truncated ==1): continue
+                    if exclude_truncated and (truncated == 1): continue
                     difficult = int(obj.difficult.text)
                     if exclude_difficult and (difficult == 1): continue
                     xmin = int(obj.bndbox.xmin.text)
@@ -488,6 +488,9 @@ class BatchGenerator:
                  gray=False,
                  limit_boxes=True,
                  include_thresh=0.3,
+                 subtract_mean=None,
+                 divide_by_stddev=None,
+                 swap_channels=False,
                  diagnostics=False):
         '''
         Generate batches of samples and corresponding labels indefinitely from
@@ -583,6 +586,18 @@ class BatchGenerator:
                 to still be included in the batch data. If set to 0, all boxes are kept except those which lie
                 entirely outside of the image bounderies after limiting. If set to 1, only boxes that did not
                 need to be limited at all are kept. Defaults to 0.3.
+            subtract_mean (array-like, optional): `None` or an array-like object of integers or floating point values
+                of any shape that is broadcast-compatible with the image shape. The elements of this array will be
+                subtracted from the image pixel intensity values. For example, pass a list of three integers
+                to perform per-channel mean normalization for color images. Defaults to `None`.
+            divide_by_stddev (array-like, optional): `None` or an array-like object of non-zero integers or
+                floating point values of any shape that is broadcast-compatible with the image shape. The image pixel
+                intensity values will be divided by the elements of this array. For example, pass a list
+                of three integers to perform per-channel standard deviation normalization for color images.
+                Defaults to `None`.
+            swap_channels (bool, optional): If `True` the color channel order of the input images will be reversed,
+                i.e. if the input color channel order is RGB, the color channels will be swapped to BGR.
+                Defaults to `False`.
             diagnostics (bool, optional): If `True`, yields three additional output items:
                 1) A list of the image file names in the batch.
                 2) An array with the original, unaltered images.
@@ -946,7 +961,19 @@ class BatchGenerator:
             # If any batch items need to be removed because of failed random cropping, remove them now.
             for j in sorted(batch_items_to_remove, reverse=True):
                 batch_X.pop(j)
-                batch_y.pop(j) # This isn't efficient, but this should hopefully not need to be done often anyway.
+                batch_y.pop(j) # This isn't efficient, but it hopefully should not need to be done often anyway.
+
+            # CAUTION: Converting `batch_X` into an array will result in an empty batch if the images have varying sizes.
+            #          At this point, all images must have the same size, otherwise you will get an error during training.
+            batch_X = np.array(batch_X)
+
+            # Perform image transformations that can be bulk-applied to the whole batch.
+            if not (subtract_mean is None):
+                batch_X = batch_X.astype(np.int16) - np.array(subtract_mean)
+            if not (divide_by_stddev is None):
+                batch_X = batch_X.astype(np.int16) / np.array(divide_by_stddev)
+            if swap_channels:
+                batch_X = batch_X[:,:,:,[2, 1, 0]]
 
             if train: # During training we need the encoded labels instead of the format that `batch_y` has
                 if ssd_box_encoder is None:
@@ -956,21 +983,19 @@ class BatchGenerator:
                 else:
                     y_true = ssd_box_encoder.encode_y(batch_y, diagnostics) # Encode the labels into the `y_true` tensor that the cost function needs
 
-            # CAUTION: Converting `batch_X` into an array will result in an empty batch if the images have varying sizes.
-            #          At this point, all images have to have the same size, otherwise you will get an error during training.
             if train:
                 if diagnostics:
-                    yield (np.array(batch_X), y_true, matched_anchors, batch_y, this_filenames, original_images, original_labels)
+                    yield (batch_X, y_true, matched_anchors, batch_y, this_filenames, original_images, original_labels)
                 else:
-                    yield (np.array(batch_X), y_true)
+                    yield (batch_X, y_true)
             else:
                 if not batch_y is None:
                     if diagnostics:
-                        yield (np.array(batch_X), batch_y, this_filenames, original_images, original_labels)
+                        yield (batch_X, batch_y, this_filenames, original_images, original_labels)
                     else:
-                        yield (np.array(batch_X), batch_y, this_filenames)
+                        yield (batch_X, batch_y, this_filenames)
                 else:
-                    yield (np.array(batch_X), this_filenames)
+                    yield (batch_X, this_filenames)
 
     def get_filenames_labels(self):
         '''
