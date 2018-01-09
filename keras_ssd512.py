@@ -46,10 +46,10 @@ def ssd_512(image_size,
             normalize_coords=False,
             subtract_mean=None,
             divide_by_stddev=None,
-            swap_channels=True,
+            swap_channels=False,
             return_predictor_sizes=False):
     '''
-    Build a Keras model with SSD_300 architecture, see references.
+    Build a Keras model with SSD512 architecture, see references.
 
     The base network is a reduced atrous VGG-16, extended by the SSD architecture,
     as described in the paper.
