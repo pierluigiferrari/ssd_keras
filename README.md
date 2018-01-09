@@ -7,7 +7,7 @@
 3. [Dependencies](#dependencies)
 4. [How to use it](#how-to-use-it)
 5. [Download the convolutionalized VGG-16 weights](#download-the-convolutionalized-vgg-16-weights)
-6. [Download the original trained models](#download-the-original-trained-models)
+6. [Download the original trained model weights](#download-the-original-trained-model-weights)
 7. [ToDo](#todo)
 8. [Terminology](#terminology)
 
