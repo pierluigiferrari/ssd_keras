@@ -19,7 +19,10 @@ The main goal of this project is to create an SSD implementation that is well do
 
 Ports of the trained weights of all the original models are provided below, as are convolutionalized VGG-16 weights in case you would like to train from scratch.
 
-There are currently two base network architectures in this repository. The first one, [`keras_ssd300.py`](./keras_ssd300.py), is a port of the original SSD300 architecture that is based on a convolutionalized, subsampled VGG-16 as described in the paper. The network architecture and all default parameter settings were taken directly from the `.prototxt` files of the original Caffe implementation. The other, [`keras_ssd7.py`](./keras_ssd7.py), is a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough for simpler object detection tasks and to play around. You're obviously not going to get state-of-the-art results with that one.
+There are currently the following network architectures in this repository:
+* SSD300: [`keras_ssd300.py`](./keras_ssd300.py)
+* SSD512: [`keras_ssd512.py`](./keras_ssd512.py)
+* SSD7: [`keras_ssd7.py`](./keras_ssd7.py) - a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough for less complex object detection tasks and testing. You're obviously not going to get state-of-the-art results with that one.
 
 If you want to build an arbitrary SSD model architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you adapt it for an arbitrary base network.
 
