@@ -66,6 +66,7 @@ This repository provides Jupyter notebooks that explain training and inference, 
 
 How to use one of the trained original models for inference:
 * [`ssd300_inference.ipynb`](./ssd300_inference.ipynb)
+* [`ssd512_inference.ipynb`](./ssd512_inference.ipynb)
 
 How to train a model:
 * [`ssd300_training.ipynb`](./ssd300_training.ipynb)
