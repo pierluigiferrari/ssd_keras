@@ -245,25 +245,6 @@ def _greedy_nms2(predictions, iou_threshold=0.45, coords='corners'):
         boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
     return np.array(maxima)
 
-def _greedy_nms_debug(predictions, iou_threshold=0.45, coords='corners'):
-    '''
-    The same greedy non-maximum suppression algorithm as above, but slightly modified for use as an internal
-    function for per-class NMS in `decode_y_debug()`. The difference is that it keeps the indices of all left-over boxes
-    for each batch item, which allows you to know which predictor layer predicted a given output box and is thus
-    useful for debugging.
-    '''
-    boxes_left = np.copy(predictions)
-    maxima = [] # This is where we store the boxes that make it through the non-maximum suppression
-    while boxes_left.shape[0] > 0: # While there are still boxes left to compare...
-        maximum_index = np.argmax(boxes_left[:,1]) # ...get the index of the next box with the highest confidence...
-        maximum_box = np.copy(boxes_left[maximum_index]) # ...copy that box and...
-        maxima.append(maximum_box) # ...append it to `maxima` because we'll definitely keep it
-        boxes_left = np.delete(boxes_left, maximum_index, axis=0) # Now remove the maximum box from `boxes_left`
-        if boxes_left.shape[0] == 0: break # If there are no boxes left after this step, break. Otherwise...
-        similarities = iou(boxes_left[:,2:], maximum_box[2:], coords=coords) # ...compare (IoU) the other left over boxes to the maximum box...
-        boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
-    return np.array(maxima)
-
 def decode_y(y_pred,
              confidence_thresh=0.01,
              iou_threshold=0.45,
@@ -471,128 +452,6 @@ def decode_y2(y_pred,
             top_k_indices = np.argpartition(boxes[:,1], kth=boxes.shape[0]-top_k, axis=0)[boxes.shape[0]-top_k:] # ...get the indices of the `top_k` highest-scoring boxes...
             boxes = boxes[top_k_indices] # ...and keep only those boxes...
         y_pred_decoded.append(boxes) # ...and now that we're done, append the array of final predictions for this batch item to the output list
-
-    return y_pred_decoded
-
-def decode_y_debug(y_pred,
-                   confidence_thresh=0.01,
-                   iou_threshold=0.45,
-                   top_k=200,
-                   input_coords='centroids',
-                   normalize_coords=False,
-                   img_height=None,
-                   img_width=None,
-                   variance_encoded_in_target=False):
-    '''
-    Convert model prediction output back to a format that contains only the positive box predictions
-    (i.e. the same format that `enconde_y()` takes as input).
-
-    After the decoding, two stages of prediction filtering are performed for each class individually:
-    First confidence thresholding, then greedy non-maximum suppression. The filtering results for all
-    classes are concatenated and the `top_k` overall highest confidence results constitute the final
-    predictions for a given batch item. This procedure follows the original Caffe implementation.
-    For a slightly different and more efficient alternative to decode raw model output that performs
-    non-maximum suppresion globally instead of per class, see `decode_y2()` below.
-
-    Arguments:
-        y_pred (array): The prediction output of the SSD model, expected to be a Numpy array
-            of shape `(batch_size, #boxes, #classes + 4 + 4 + 4)`, where `#boxes` is the total number of
-            boxes predicted by the model per image and the last axis contains
-            `[one-hot vector for the classes, 4 predicted coordinate offsets, 4 anchor box coordinates, 4 variances]`.
-        confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence in a specific
-            positive class in order to be considered for the non-maximum suppression stage for the respective class.
-            A lower value will result in a larger part of the selection process being done by the non-maximum suppression
-            stage, while a larger value will result in a larger part of the selection process happening in the confidence
-            thresholding stage. Defaults to 0.01, following the paper.
-        iou_threshold (float, optional): A float in [0,1]. All boxes with a Jaccard similarity of greater than `iou_threshold`
-            with a locally maximal box will be removed from the set of predictions for a given class, where 'maximal' refers
-            to the box score. Defaults to 0.45 following the paper.
-        top_k (int, optional): The number of highest scoring predictions to be kept for each batch item after the
-            non-maximum suppression stage. Defaults to 200, following the paper.
-        input_coords (str, optional): The box coordinate format that the model outputs. Can be either 'centroids'
-            for the format `(cx, cy, w, h)` (box center coordinates, width, and height), 'minmax' for the format
-            `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`. Defaults to 'centroids'.
-        normalize_coords (bool, optional): Set to `True` if the model outputs relative coordinates (i.e. coordinates in [0,1])
-            and you wish to transform these relative coordinates back to absolute coordinates. If the model outputs
-            relative coordinates, but you do not want to convert them back to absolute coordinates, set this to `False`.
-            Do not set this to `True` if the model already outputs absolute coordinates, as that would result in incorrect
-            coordinates. Requires `img_height` and `img_width` if set to `True`. Defaults to `False`.
-        img_height (int, optional): The height of the input images. Only needed if `normalize_coords` is `True`.
-        img_width (int, optional): The width of the input images. Only needed if `normalize_coords` is `True`.
-
-    Returns:
-        A python list of length `batch_size` where each list element represents the predicted boxes
-        for one image and contains a Numpy array of shape `(boxes, 6)` where each row is a box prediction for
-        a non-background class for the respective image in the format `[class_id, confidence, xmin, ymin, xmax, ymax]`.
-    '''
-    if normalize_coords and ((img_height is None) or (img_width is None)):
-        raise ValueError("If relative box coordinates are supposed to be converted to absolute coordinates, the decoder needs the image size in order to decode the predictions, but `img_height == {}` and `img_width == {}`".format(img_height, img_width))
-
-    # 1: Convert the box coordinates from the predicted anchor box offsets to predicted absolute coordinates
-
-    y_pred_decoded_raw = np.copy(y_pred[:,:,:-8]) # Slice out the classes and the four offsets, throw away the anchor coordinates and variances, resulting in a tensor of shape `[batch, n_boxes, n_classes + 4 coordinates]`
-
-    if input_coords == 'centroids':
-        if variance_encoded_in_target:
-            # Decode the predicted box center x and y coordinates.
-            y_pred_decoded_raw[:,:,[-4,-3]] = y_pred_decoded_raw[:,:,[-4,-3]] * y_pred[:,:,[-6,-5]] + y_pred[:,:,[-8,-7]]
-            # Decode the predicted box width and heigt.
-            y_pred_decoded_raw[:,:,[-2,-1]] = np.exp(y_pred_decoded_raw[:,:,[-2,-1]]) * y_pred[:,:,[-6,-5]]
-        else:
-            # Decode the predicted box center x and y coordinates.
-            y_pred_decoded_raw[:,:,[-4,-3]] = y_pred_decoded_raw[:,:,[-4,-3]] * y_pred[:,:,[-6,-5]] * y_pred[:,:,[-4,-3]] + y_pred[:,:,[-8,-7]]
-            # Decode the predicted box width and heigt.
-            y_pred_decoded_raw[:,:,[-2,-1]] = np.exp(y_pred_decoded_raw[:,:,[-2,-1]] * y_pred[:,:,[-2,-1]]) * y_pred[:,:,[-6,-5]]
-        y_pred_decoded_raw = convert_coordinates(y_pred_decoded_raw, start_index=-4, conversion='centroids2corners')
-    elif input_coords == 'minmax':
-        y_pred_decoded_raw[:,:,-4:] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
-        y_pred_decoded_raw[:,:,[-4,-3]] *= np.expand_dims(y_pred[:,:,-7] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
-        y_pred_decoded_raw[:,:,[-2,-1]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-6], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
-        y_pred_decoded_raw[:,:,-4:] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
-        y_pred_decoded_raw = convert_coordinates(y_pred_decoded_raw, start_index=-4, conversion='minmax2corners')
-    elif input_coords == 'corners':
-        y_pred_decoded_raw[:,:,-4:] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
-        y_pred_decoded_raw[:,:,[-4,-2]] *= np.expand_dims(y_pred[:,:,-6] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
-        y_pred_decoded_raw[:,:,[-3,-1]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-7], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
-        y_pred_decoded_raw[:,:,-4:] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
-    else:
-        raise ValueError("Unexpected value for `input_coords`. Supported input coordinate formats are 'minmax', 'corners' and 'centroids'.")
-
-    # 2: If the model predicts normalized box coordinates and they are supposed to be converted back to absolute coordinates, do that
-
-    if normalize_coords:
-        y_pred_decoded_raw[:,:,[-4,-2]] *= img_width # Convert xmin, xmax back to absolute coordinates
-        y_pred_decoded_raw[:,:,[-3,-1]] *= img_height # Convert ymin, ymax back to absolute coordinates
-
-    # Diagnostic step: For each batch item, prepend a box's index to its coordinates.
-    y_pred_decoded_raw2 = np.zeros((y_pred_decoded_raw.shape[0], y_pred_decoded_raw.shape[1], y_pred_decoded_raw.shape[2] + 1))
-    y_pred_decoded_raw2[:,:,1:] = y_pred_decoded_raw
-    y_pred_decoded_raw2[:,:,0] = np.arange(y_pred_decoded_raw.shape[1]) # Broadcasting
-    y_pred_decoded_raw = y_pred_decoded_raw2
-
-    # 3: Apply confidence thresholding and non-maximum suppression per class
-
-    n_classes = y_pred_decoded_raw.shape[-1] - 5 # The number of classes is the length of the last axis minus the four box coordinates and minus the index
-
-    y_pred_decoded = [] # Store the final predictions in this list
-    for batch_item in y_pred_decoded_raw: # `batch_item` has shape `[n_boxes, n_classes + 4 coords]`
-        pred = [] # Store the final predictions for this batch item here
-        for class_id in range(1, n_classes): # For each class except the background class (which has class ID 0)...
-            single_class = batch_item[:,[0, class_id + 1, -4, -3, -2, -1]] # ...keep only the confidences for that class, making this an array of shape `[n_boxes, 6]` and...
-            threshold_met = single_class[single_class[:,1] > confidence_thresh] # ...keep only those boxes with a confidence above the set threshold.
-            if threshold_met.shape[0] > 0: # If any boxes made the threshold...
-                maxima = _greedy_nms_debug(threshold_met, iou_threshold=iou_threshold, coords='corners') # ...perform NMS on them.
-                maxima_output = np.zeros((maxima.shape[0], maxima.shape[1] + 1)) # Expand the last dimension by one element to have room for the class ID. This is now an arrray of shape `[n_boxes, 6]`
-                maxima_output[:,0] = maxima[:,0] # Write the box index to the first column...
-                maxima_output[:,1] = class_id # ...and write the class ID to the second column...
-                maxima_output[:,2:] = maxima[:,1:] # ...and write the rest of the maxima data to the other columns...
-                pred.append(maxima_output) # ...and append the maxima for this class to the list of maxima for this batch item.
-        # Once we're through with all classes, keep only the `top_k` maxima with the highest scores
-        pred = np.concatenate(pred, axis=0)
-        if pred.shape[0] > top_k: # If we have more than `top_k` results left at this point, otherwise there is nothing to filter,...
-            top_k_indices = np.argpartition(pred[:,2], kth=pred.shape[0]-top_k, axis=0)[pred.shape[0]-top_k:] # ...get the indices of the `top_k` highest-score maxima...
-            pred = pred[top_k_indices] # ...and keep only those entries of `pred`...
-        y_pred_decoded.append(pred) # ...and now that we're done, append the array of final predictions for this batch item to the output list
 
     return y_pred_decoded
 
@@ -1112,3 +971,194 @@ class SSDBoxEncoder:
             return y_encoded, y_matched_anchors
         else:
             return y_encoded
+
+################################################################################
+# Debugging tools, not relevant for normal use
+################################################################################
+
+# The functions below are for debugging, so you won't normally need them. That is,
+# unless you need to debug your model, of course.
+
+def decode_y_debug(y_pred,
+                   confidence_thresh=0.01,
+                   iou_threshold=0.45,
+                   top_k=200,
+                   input_coords='centroids',
+                   normalize_coords=False,
+                   img_height=None,
+                   img_width=None,
+                   variance_encoded_in_target=False):
+    '''
+    This decoder performs the same processing as `decode_y()`, but the output format for each left-over
+    predicted box is `[box_id, class_id, confidence, xmin, ymin, xmax, ymax]`.
+
+    That is, in addition to the usual data, each predicted box has the internal index of that box within
+    the model (`box_id`) prepended to it. This allows you to know exactly which part of the model made a given
+    box prediction; in particular, it allows you to know which predictor layer made a given prediction.
+    This can be useful for debugging.
+
+    Arguments:
+        y_pred (array): The prediction output of the SSD model, expected to be a Numpy array
+            of shape `(batch_size, #boxes, #classes + 4 + 4 + 4)`, where `#boxes` is the total number of
+            boxes predicted by the model per image and the last axis contains
+            `[one-hot vector for the classes, 4 predicted coordinate offsets, 4 anchor box coordinates, 4 variances]`.
+        confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence in a specific
+            positive class in order to be considered for the non-maximum suppression stage for the respective class.
+            A lower value will result in a larger part of the selection process being done by the non-maximum suppression
+            stage, while a larger value will result in a larger part of the selection process happening in the confidence
+            thresholding stage. Defaults to 0.01, following the paper.
+        iou_threshold (float, optional): A float in [0,1]. All boxes with a Jaccard similarity of greater than `iou_threshold`
+            with a locally maximal box will be removed from the set of predictions for a given class, where 'maximal' refers
+            to the box score. Defaults to 0.45 following the paper.
+        top_k (int, optional): The number of highest scoring predictions to be kept for each batch item after the
+            non-maximum suppression stage. Defaults to 200, following the paper.
+        input_coords (str, optional): The box coordinate format that the model outputs. Can be either 'centroids'
+            for the format `(cx, cy, w, h)` (box center coordinates, width, and height), 'minmax' for the format
+            `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`. Defaults to 'centroids'.
+        normalize_coords (bool, optional): Set to `True` if the model outputs relative coordinates (i.e. coordinates in [0,1])
+            and you wish to transform these relative coordinates back to absolute coordinates. If the model outputs
+            relative coordinates, but you do not want to convert them back to absolute coordinates, set this to `False`.
+            Do not set this to `True` if the model already outputs absolute coordinates, as that would result in incorrect
+            coordinates. Requires `img_height` and `img_width` if set to `True`. Defaults to `False`.
+        img_height (int, optional): The height of the input images. Only needed if `normalize_coords` is `True`.
+        img_width (int, optional): The width of the input images. Only needed if `normalize_coords` is `True`.
+
+    Returns:
+        A python list of length `batch_size` where each list element represents the predicted boxes
+        for one image and contains a Numpy array of shape `(boxes, 7)` where each row is a box prediction for
+        a non-background class for the respective image in the format `[box_id, class_id, confidence, xmin, ymin, xmax, ymax]`.
+    '''
+    if normalize_coords and ((img_height is None) or (img_width is None)):
+        raise ValueError("If relative box coordinates are supposed to be converted to absolute coordinates, the decoder needs the image size in order to decode the predictions, but `img_height == {}` and `img_width == {}`".format(img_height, img_width))
+
+    # 1: Convert the box coordinates from the predicted anchor box offsets to predicted absolute coordinates
+
+    y_pred_decoded_raw = np.copy(y_pred[:,:,:-8]) # Slice out the classes and the four offsets, throw away the anchor coordinates and variances, resulting in a tensor of shape `[batch, n_boxes, n_classes + 4 coordinates]`
+
+    if input_coords == 'centroids':
+        if variance_encoded_in_target:
+            # Decode the predicted box center x and y coordinates.
+            y_pred_decoded_raw[:,:,[-4,-3]] = y_pred_decoded_raw[:,:,[-4,-3]] * y_pred[:,:,[-6,-5]] + y_pred[:,:,[-8,-7]]
+            # Decode the predicted box width and heigt.
+            y_pred_decoded_raw[:,:,[-2,-1]] = np.exp(y_pred_decoded_raw[:,:,[-2,-1]]) * y_pred[:,:,[-6,-5]]
+        else:
+            # Decode the predicted box center x and y coordinates.
+            y_pred_decoded_raw[:,:,[-4,-3]] = y_pred_decoded_raw[:,:,[-4,-3]] * y_pred[:,:,[-6,-5]] * y_pred[:,:,[-4,-3]] + y_pred[:,:,[-8,-7]]
+            # Decode the predicted box width and heigt.
+            y_pred_decoded_raw[:,:,[-2,-1]] = np.exp(y_pred_decoded_raw[:,:,[-2,-1]] * y_pred[:,:,[-2,-1]]) * y_pred[:,:,[-6,-5]]
+        y_pred_decoded_raw = convert_coordinates(y_pred_decoded_raw, start_index=-4, conversion='centroids2corners')
+    elif input_coords == 'minmax':
+        y_pred_decoded_raw[:,:,-4:] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
+        y_pred_decoded_raw[:,:,[-4,-3]] *= np.expand_dims(y_pred[:,:,-7] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
+        y_pred_decoded_raw[:,:,[-2,-1]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-6], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
+        y_pred_decoded_raw[:,:,-4:] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
+        y_pred_decoded_raw = convert_coordinates(y_pred_decoded_raw, start_index=-4, conversion='minmax2corners')
+    elif input_coords == 'corners':
+        y_pred_decoded_raw[:,:,-4:] *= y_pred[:,:,-4:] # delta(pred) / size(anchor) / variance * variance == delta(pred) / size(anchor) for all four coordinates, where 'size' refers to w or h, respectively
+        y_pred_decoded_raw[:,:,[-4,-2]] *= np.expand_dims(y_pred[:,:,-6] - y_pred[:,:,-8], axis=-1) # delta_xmin(pred) / w(anchor) * w(anchor) == delta_xmin(pred), delta_xmax(pred) / w(anchor) * w(anchor) == delta_xmax(pred)
+        y_pred_decoded_raw[:,:,[-3,-1]] *= np.expand_dims(y_pred[:,:,-5] - y_pred[:,:,-7], axis=-1) # delta_ymin(pred) / h(anchor) * h(anchor) == delta_ymin(pred), delta_ymax(pred) / h(anchor) * h(anchor) == delta_ymax(pred)
+        y_pred_decoded_raw[:,:,-4:] += y_pred[:,:,-8:-4] # delta(pred) + anchor == pred for all four coordinates
+    else:
+        raise ValueError("Unexpected value for `input_coords`. Supported input coordinate formats are 'minmax', 'corners' and 'centroids'.")
+
+    # 2: If the model predicts normalized box coordinates and they are supposed to be converted back to absolute coordinates, do that
+
+    if normalize_coords:
+        y_pred_decoded_raw[:,:,[-4,-2]] *= img_width # Convert xmin, xmax back to absolute coordinates
+        y_pred_decoded_raw[:,:,[-3,-1]] *= img_height # Convert ymin, ymax back to absolute coordinates
+
+    # 3: For each batch item, prepend each box's internal index to its coordinates.
+
+    y_pred_decoded_raw2 = np.zeros((y_pred_decoded_raw.shape[0], y_pred_decoded_raw.shape[1], y_pred_decoded_raw.shape[2] + 1)) # Expand the last axis by one.
+    y_pred_decoded_raw2[:,:,1:] = y_pred_decoded_raw
+    y_pred_decoded_raw2[:,:,0] = np.arange(y_pred_decoded_raw.shape[1]) # Put the box indices as the first element for each box via broadcasting.
+    y_pred_decoded_raw = y_pred_decoded_raw2
+
+    # 4: Apply confidence thresholding and non-maximum suppression per class
+
+    n_classes = y_pred_decoded_raw.shape[-1] - 5 # The number of classes is the length of the last axis minus the four box coordinates and minus the index
+
+    y_pred_decoded = [] # Store the final predictions in this list
+    for batch_item in y_pred_decoded_raw: # `batch_item` has shape `[n_boxes, n_classes + 4 coords]`
+        pred = [] # Store the final predictions for this batch item here
+        for class_id in range(1, n_classes): # For each class except the background class (which has class ID 0)...
+            single_class = batch_item[:,[0, class_id + 1, -4, -3, -2, -1]] # ...keep only the confidences for that class, making this an array of shape `[n_boxes, 6]` and...
+            threshold_met = single_class[single_class[:,1] > confidence_thresh] # ...keep only those boxes with a confidence above the set threshold.
+            if threshold_met.shape[0] > 0: # If any boxes made the threshold...
+                maxima = _greedy_nms_debug(threshold_met, iou_threshold=iou_threshold, coords='corners') # ...perform NMS on them.
+                maxima_output = np.zeros((maxima.shape[0], maxima.shape[1] + 1)) # Expand the last dimension by one element to have room for the class ID. This is now an arrray of shape `[n_boxes, 6]`
+                maxima_output[:,0] = maxima[:,0] # Write the box index to the first column...
+                maxima_output[:,1] = class_id # ...and write the class ID to the second column...
+                maxima_output[:,2:] = maxima[:,1:] # ...and write the rest of the maxima data to the other columns...
+                pred.append(maxima_output) # ...and append the maxima for this class to the list of maxima for this batch item.
+        # Once we're through with all classes, keep only the `top_k` maxima with the highest scores
+        pred = np.concatenate(pred, axis=0)
+        if pred.shape[0] > top_k: # If we have more than `top_k` results left at this point, otherwise there is nothing to filter,...
+            top_k_indices = np.argpartition(pred[:,2], kth=pred.shape[0]-top_k, axis=0)[pred.shape[0]-top_k:] # ...get the indices of the `top_k` highest-score maxima...
+            pred = pred[top_k_indices] # ...and keep only those entries of `pred`...
+        y_pred_decoded.append(pred) # ...and now that we're done, append the array of final predictions for this batch item to the output list
+
+    return y_pred_decoded
+
+def _greedy_nms_debug(predictions, iou_threshold=0.45, coords='corners'):
+    '''
+    The same greedy non-maximum suppression algorithm as above, but slightly modified for use as an internal
+    function for per-class NMS in `decode_y_debug()`. The difference is that it keeps the indices of all left-over boxes
+    for each batch item, which allows you to know which predictor layer predicted a given output box and is thus
+    useful for debugging.
+    '''
+    boxes_left = np.copy(predictions)
+    maxima = [] # This is where we store the boxes that make it through the non-maximum suppression
+    while boxes_left.shape[0] > 0: # While there are still boxes left to compare...
+        maximum_index = np.argmax(boxes_left[:,1]) # ...get the index of the next box with the highest confidence...
+        maximum_box = np.copy(boxes_left[maximum_index]) # ...copy that box and...
+        maxima.append(maximum_box) # ...append it to `maxima` because we'll definitely keep it
+        boxes_left = np.delete(boxes_left, maximum_index, axis=0) # Now remove the maximum box from `boxes_left`
+        if boxes_left.shape[0] == 0: break # If there are no boxes left after this step, break. Otherwise...
+        similarities = iou(boxes_left[:,2:], maximum_box[2:], coords=coords) # ...compare (IoU) the other left over boxes to the maximum box...
+        boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
+    return np.array(maxima)
+
+def get_num_boxes_per_pred_layer(predictor_sizes, aspect_ratios, two_boxes_for_ar1):
+    '''
+    Returns a list of the number of boxes that each predictor layer predicts.
+
+    `aspect_ratios` must be a nested list, containing a list of aspect ratios
+    for each predictor layer.
+    '''
+    num_boxes_per_pred_layer = []
+    for i in range(len(predictor_sizes)):
+        if two_boxes_for_ar1:
+            num_boxes_per_pred_layer.append(predictor_sizes[i][0] * predictor_sizes[i][1] * (len(aspect_ratios[i]) + 1))
+        else:
+            num_boxes_per_pred_layer.append(predictor_sizes[i][0] * predictor_sizes[i][1] * len(aspect_ratios[i]))
+    return num_boxes_per_pred_layer
+
+def get_pred_layers(y_pred_decoded, num_boxes_per_pred_layer):
+    '''
+    For a given prediction tensor decoded with `decode_y_debug()`, returns a list
+    with the indices of the predictor layers that made each predictions.
+
+    That is, this function lets you know which predictor layer is responsible
+    for a given prediction.
+
+    Arguments:
+        y_pred_decoded (array): The decoded model output tensor. Must have been
+            decoded with `decode_y_debug()` so that it contains the internal box index
+            for each predicted box.
+        num_boxes_per_pred_layer (list): A list that contains the total number
+            of boxes that each predictor layer predicts.
+    '''
+    pred_layers_all = []
+    cum_boxes_per_pred_layer = np.cumsum(num_boxes_per_pred_layer)
+    for batch_item in y_pred_decoded:
+        pred_layers = []
+        for prediction in batch_item:
+            if (prediction[0] < 0) or (prediction[0] >= cum_boxes_per_pred_layer[-1]):
+                raise ValueError("Box index is out of bounds of the possible indices as given by the values in `num_boxes_per_pred_layer`.")
+            for i in range(len(cum_boxes_per_pred_layer)):
+                if prediction[0] < cum_boxes_per_pred_layer[i]:
+                    pred_layers.append(i)
+                    break
+        pred_layers_all.append(pred_layers)
+    return pred_layers_all
