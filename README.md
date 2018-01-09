@@ -70,7 +70,7 @@ How to train a model:
 
 #### Training and prediction
 
-The general training setup is layed out and explained in [`ssd7_training.ipynb`](./ssd7_training.ipynb) and in [`ssd300_training.ipynb`](./ssd300_training.ipynb). The setup and explanations are similar in both notebooks for the most part, so it doesn't matter which one you look at to understand the general training setup, but the parameters in [`train_ssd300.ipynb`](./train_ssd300.ipynb) are preset to copy the setup of the original Caffe implementation for training on Pascal VOC, while the parameters in [`train_ssd7.ipynb`](./train_ssd7.ipynb) are preset to train on the [Udacity traffic datasets](https://github.com/udacity/self-driving-car/tree/master/annotations). If your goal isn't to train the original SSD300, then I would recommend reading [`train_ssd7.ipynb`](./train_ssd7.ipynb), which contains slightly more general explanations.
+The general training setup is layed out and explained in [`ssd7_training.ipynb`](./ssd7_training.ipynb) and in [`ssd300_training.ipynb`](./ssd300_training.ipynb). The setup and explanations are similar in both notebooks for the most part, so it doesn't matter which one you look at to understand the general training setup, but the parameters in [`ssd300_training.ipynb`](./ssd300_training.ipynb) are preset to copy the setup of the original Caffe implementation for training on Pascal VOC, while the parameters in [`ssd7_training.ipynb`](./ssd7_training.ipynb) are preset to train on the [Udacity traffic datasets](https://github.com/udacity/self-driving-car/tree/master/annotations). If your goal isn't to train the original SSD300, then I would recommend reading [`ssd7_training.ipynb`](./ssd7_training.ipynb), which contains slightly more general explanations.
 
 To train the original SSD300 model on Pascal VOC:
 
@@ -81,7 +81,7 @@ To train the original SSD300 model on Pascal VOC:
   wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar
   ```
 2. Download the weights for the convolutionalized VGG-16 or for one of the trained original models provided below.
-3. Set the file paths for the datasets and model weights accordingly in [`train_ssd300.ipynb`](./train_ssd300.ipynb) and execute the cells.
+3. Set the file paths for the datasets and model weights accordingly in [`ssd300_training.ipynb`](./ssd300_training.ipynb) and execute the cells.
 
 It is strongly recommended that you load the pre-trained VGG-16 weights when attempting to train SSD300, otherwise your training will almost certainly be unsuccessful. Note that the original VGG-16 was trained layer-wise, so trying to train the even deeper SSD300 all at once from scratch would very likely fail. Also note that even with the pre-trained VGG-16 weights it will take at least 20,000 training steps to get a half-decent performance out of SSD300.
 
