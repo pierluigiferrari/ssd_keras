@@ -121,7 +121,7 @@ This is a modified version of the VGG-16 model from `keras.applications.vgg16`. 
 
 ### Download the original trained model weights
 
-Here are the ported weights for all the original trained models. The filenames correspond to their respective `.caffemodel` counterparts. The stars and footnotes refer to those in the README of the [original Caffe implementation](https://github.com/weiliu89/caffe/tree/ssd#models).
+Here are the ported weights for all the original trained models. The filenames correspond to their respective `.caffemodel` counterparts. The asterisks and footnotes refer to those in the README of the [original Caffe implementation](https://github.com/weiliu89/caffe/tree/ssd#models).
 
 1. PASCAL VOC models:
 
