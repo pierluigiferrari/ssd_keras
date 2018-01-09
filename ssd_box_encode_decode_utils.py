@@ -721,18 +721,16 @@ class SSDBoxEncoder:
             if not 0 < min_scale <= max_scale:
                 raise ValueError("It must be 0 < min_scale <= max_scale, but it is min_scale = {} and max_scale = {}".format(min_scale, max_scale))
 
-        if aspect_ratios_per_layer:
+        if not (aspect_ratios_per_layer is None):
             if (len(aspect_ratios_per_layer) != len(predictor_sizes)): # Must be two nested `if` statements since `list` and `bool` cannot be combined by `&`
                 raise ValueError("It must be either aspect_ratios_per_layer is None or len(aspect_ratios_per_layer) == len(predictor_sizes), but len(aspect_ratios_per_layer) == {} and len(predictor_sizes) == {}".format(len(aspect_ratios_per_layer), len(predictor_sizes)))
             for aspect_ratios in aspect_ratios_per_layer:
-                aspect_ratios = np.array(aspect_ratios)
-                if np.any(aspect_ratios <= 0):
+                if np.any(np.array(aspect_ratios) <= 0):
                     raise ValueError("All aspect ratios must be greater than zero.")
         else:
-            if not aspect_ratios_global:
-                raise ValueError("At least one of `aspect_ratios_global` and `aspect_ratios_per_layer` cannot be `None`.")
-            aspect_ratios_global = np.array(aspect_ratios_global)
-            if np.any(aspect_ratios_global <= 0):
+            if (aspect_ratios_global is None):
+                raise ValueError("At least one of `aspect_ratios_global` and `aspect_ratios_per_layer` must not be `None`.")
+            if np.any(np.array(aspect_ratios_global) <= 0):
                 raise ValueError("All aspect ratios must be greater than zero.")
 
         if len(variances) != 4:
@@ -759,9 +757,16 @@ class SSDBoxEncoder:
         self.predictor_sizes = predictor_sizes
         self.min_scale = min_scale
         self.max_scale = max_scale
-        self.scales = scales
-        self.aspect_ratios_global = aspect_ratios_global
-        self.aspect_ratios_per_layer = aspect_ratios_per_layer
+        if (scales is None):
+            self.scales = np.linspace(self.min_scale, self.max_scale, len(self.predictor_sizes)+1)
+        else:
+            # If a list of scales is given explicitly, we'll use that instead of computing it from `min_scale` and `max_scale`.
+            self.scales = scales
+        if (aspect_ratios_per_layer is None):
+            self.aspect_ratios = [aspect_ratios_global] * len(predictor_sizes)
+        else:
+            # If aspect ratios are given per layer, we'll use those.
+            self.aspect_ratios = aspect_ratios_per_layer
         self.two_boxes_for_ar1 = two_boxes_for_ar1
         if (not steps is None):
             self.steps = steps
@@ -778,7 +783,7 @@ class SSDBoxEncoder:
         self.coords = coords
         self.normalize_coords = normalize_coords
 
-        # Compute the number of boxes per cell
+        # Compute the number of boxes per cell.
         if aspect_ratios_per_layer:
             self.n_boxes = []
             for aspect_ratios in aspect_ratios_per_layer:
@@ -792,21 +797,44 @@ class SSDBoxEncoder:
             else:
                 self.n_boxes = len(aspect_ratios_global)
 
-    def generate_anchor_boxes(self,
-                              batch_size,
-                              feature_map_size,
-                              aspect_ratios,
-                              this_scale,
-                              next_scale,
-                              this_steps=None,
-                              this_offsets=None,
-                              diagnostics=False):
+        # Compute the anchor boxes for all the predictor layers. We only have to do this once
+        # as the anchor boxes depend only on the model configuration, not on the input data.
+        # For each conv predictor layer (i.e. for each scale factor)the tensors for that lauer's
+        # anchor boxes will have the shape `(feature_map_height, feature_map_width, n_boxes, 4)`.
+        self.boxes_list = [] # This will contain the anchor boxes for each predicotr layer.
+
+        self.wh_list_diag = [] # Box widths and heights for each predictor layer
+        self.steps_diag = [] # Horizontal and vertical distances between any two boxes for each predictor layer
+        self.offsets_diag = [] # Offsets for each predictor layer
+        self.centers_diag = [] # Anchor box center points as `(cy, cx)` for each predictor layer
+
+        for i in range(len(self.predictor_sizes)):
+            boxes, center, wh, step, offset = self.generate_anchor_boxes_for_layer(feature_map_size=self.predictor_sizes[i],
+                                                                                   aspect_ratios=self.aspect_ratios[i],
+                                                                                   this_scale=self.scales[i],
+                                                                                   next_scale=self.scales[i+1],
+                                                                                   this_steps=self.steps[i],
+                                                                                   this_offsets=self.offsets[i],
+                                                                                   diagnostics=True)
+            self.boxes_list.append(boxes)
+            self.wh_list_diag.append(wh)
+            self.steps_diag.append(step)
+            self.offsets_diag.append(offset)
+            self.centers_diag.append(center)
+
+    def generate_anchor_boxes_for_layer(self,
+                                        feature_map_size,
+                                        aspect_ratios,
+                                        this_scale,
+                                        next_scale,
+                                        this_steps=None,
+                                        this_offsets=None,
+                                        diagnostics=False):
         '''
-        Compute an array of the spatial positions and sizes of the anchor boxes for one particular classification
-        layer of size `feature_map_size == [feature_map_height, feature_map_width]`.
+        Compute an array of the spatial positions and sizes of the anchor boxes for one predictor layer
+        of size `feature_map_size == [feature_map_height, feature_map_width]`.
 
         Arguments:
-            batch_size (int): The batch size.
             feature_map_size (tuple): A list or tuple `[feature_map_height, feature_map_width]` with the spatial
                 dimensions of the feature map for which to generate the anchor boxes.
             aspect_ratios (list): A list of floats, the aspect ratios for which anchor boxes are to be generated.
@@ -815,13 +843,14 @@ class SSDBoxEncoder:
                 as a fraction of the shorter side of the input image.
             next_scale (float): A float in [0, 1], the next larger scaling factor. Only relevant if
                 `self.two_boxes_for_ar1 == True`.
-            diagnostics (bool, optional): If true, two additional outputs will be returned.
-                1) An array containing `(width, height)` for each box aspect ratio.
-                2) A tuple `(cell_height, cell_width)` meaning how far apart the box centroids are placed
-                   vertically and horizontally.
-                This information is useful to understand in just a few numbers what the generated grid of
+            diagnostics (bool, optional): If true, the following additional outputs will be returned:
+                1) A list of the center point `x` and `y` coordinates for each spatial location.
+                2) A list containing `(width, height)` for each box aspect ratio.
+                3) A tuple containing `(step_height, step_width)`
+                4) A tuple containing `(offset_height, offset_width)`
+                This information can be useful to understand in just a few numbers what the generated grid of
                 anchor boxes actually looks like, i.e. how large the different boxes are and how dense
-                their distribution is, in order to determine whether the box grid covers the input images
+                their spatial distribution is, in order to determine whether the box grid covers the input images
                 appropriately and whether the box sizes are appropriate to fit the sizes of the objects
                 to be detected.
 
@@ -829,7 +858,8 @@ class SSDBoxEncoder:
             A 4D Numpy tensor of shape `(feature_map_height, feature_map_width, n_boxes_per_cell, 4)` where the
             last dimension contains `(xmin, xmax, ymin, ymax)` for each anchor box in each cell of the feature map.
         '''
-        # Compute box width and height for each aspect ratio
+        # Compute box width and height for each aspect ratio.
+
         # The shorter side of the image will be used to compute `w` and `h` using `scale` and `aspect_ratios`.
         size = min(self.img_height, self.img_width)
         # Compute the box widths and and heights for all aspect ratios
@@ -890,7 +920,7 @@ class SSDBoxEncoder:
         boxes_tensor[:, :, :, 2] = wh_list[:, 0] # Set w
         boxes_tensor[:, :, :, 3] = wh_list[:, 1] # Set h
 
-        # Convert `(cx, cy, w, h)` to `(xmin, xmax, ymin, ymax)`
+        # Convert `(cx, cy, w, h)` to `(xmin, ymin, xmax, ymax)`
         boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='centroids2corners')
 
         # If `limit_boxes` is enabled, clip the coordinates to lie within the image boundaries
@@ -916,18 +946,6 @@ class SSDBoxEncoder:
         elif self.coords == 'minmax':
             # Convert `(xmin, ymin, xmax, ymax)` to `(xmin, xmax, ymin, ymax).
             boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2minmax')
-
-        # Now prepend one dimension to `boxes_tensor` to account for the batch size and tile it along
-        # The result will be a 5D tensor of shape `(batch_size, feature_map_height, feature_map_width, n_boxes, 4)`
-        boxes_tensor = np.expand_dims(boxes_tensor, axis=0)
-        boxes_tensor = np.tile(boxes_tensor, (batch_size, 1, 1, 1, 1))
-
-        # Now reshape the 5D tensor above into a 3D tensor of shape
-        # `(batch, feature_map_height * feature_map_width * n_boxes, 4)`. The resulting
-        # order of the tensor content will be identical to the order obtained from the reshaping operation
-        # in our Keras model (we're using the Tensorflow backend, and tf.reshape() and np.reshape()
-        # use the same default index order, which is C-like index ordering)
-        boxes_tensor = np.reshape(boxes_tensor, (batch_size, -1, 4))
 
         if diagnostics:
             return boxes_tensor, (cy, cx), wh_list, (step_height, step_width), (offset_height, offset_width)
@@ -958,73 +976,24 @@ class SSDBoxEncoder:
             output contains not only the 4 predicted box coordinate offsets, but also the 4 coordinates for
             the anchor boxes and the 4 variance values.
         '''
+        # Tile the anchor boxes for each predictor layer across all batch items.
+        boxes_batch = []
+        for boxes in self.boxes_list:
+            # Prepend one dimension to `self.boxes_list` to account for the batch size and tile it along.
+            # The result will be a 5D tensor of shape `(batch_size, feature_map_height, feature_map_width, n_boxes, 4)`
+            boxes = np.expand_dims(boxes, axis=0)
+            boxes = np.tile(boxes, (batch_size, 1, 1, 1, 1))
 
-        # 1: Get the anchor box scaling factors for each conv layer from which we're going to make predictions
-        #    If `scales` is given explicitly, we'll use that instead of computing it from `min_scale` and `max_scale`
-        if self.scales is None:
-            self.scales = np.linspace(self.min_scale, self.max_scale, len(self.predictor_sizes)+1)
+            # Now reshape the 5D tensor above into a 3D tensor of shape
+            # `(batch, feature_map_height * feature_map_width * n_boxes, 4)`. The resulting
+            # order of the tensor content will be identical to the order obtained from the reshaping operation
+            # in our Keras model (we're using the Tensorflow backend, and tf.reshape() and np.reshape()
+            # use the same default index order, which is C-like index ordering)
+            boxes = np.reshape(boxes, (batch_size, -1, 4))
+            boxes_batch.append(boxes)
 
-        # 2: For each conv predictor layer (i.e. for each scale factor) get the tensors for
-        #    the anchor box coordinates of shape `(batch, n_boxes_total, 4)`
-        boxes_tensor = []
-        if diagnostics:
-            wh_list = [] # List to hold the box widths and heights
-            steps = [] # List to hold horizontal and vertical distances between any two boxes
-            offsets = []
-            centers = [] # Anchor box center points as `(cy, cx)`
-            if self.aspect_ratios_per_layer: # If individual aspect ratios are given per layer, we need to pass them to `generate_anchor_boxes()` accordingly
-                for i in range(len(self.predictor_sizes)):
-                    boxes, center, wh, step, offset = self.generate_anchor_boxes(batch_size=batch_size,
-                                                                                 feature_map_size=self.predictor_sizes[i],
-                                                                                 aspect_ratios=self.aspect_ratios_per_layer[i],
-                                                                                 this_scale=self.scales[i],
-                                                                                 next_scale=self.scales[i+1],
-                                                                                 this_steps=self.steps[i],
-                                                                                 this_offsets=self.offsets[i],
-                                                                                 diagnostics=True)
-                    boxes_tensor.append(boxes)
-                    wh_list.append(wh)
-                    steps.append(step)
-                    offsets.append(offset)
-                    centers.append(center)
-            else: # Use the same global aspect ratio list for all layers
-                for i in range(len(self.predictor_sizes)):
-                    boxes, center, wh, step, offset = self.generate_anchor_boxes(batch_size=batch_size,
-                                                                                 feature_map_size=self.predictor_sizes[i],
-                                                                                 aspect_ratios=self.aspect_ratios_global,
-                                                                                 this_scale=self.scales[i],
-                                                                                 next_scale=self.scales[i+1],
-                                                                                 this_steps=self.steps[i],
-                                                                                 this_offsets=self.offsets[i],
-                                                                                 diagnostics=True)
-                    boxes_tensor.append(boxes)
-                    wh_list.append(wh)
-                    steps.append(step)
-                    offsets.append(offset)
-                    centers.append(center)
-        else:
-            if self.aspect_ratios_per_layer:
-                for i in range(len(self.predictor_sizes)):
-                    boxes_tensor.append(self.generate_anchor_boxes(batch_size=batch_size,
-                                                                   feature_map_size=self.predictor_sizes[i],
-                                                                   aspect_ratios=self.aspect_ratios_per_layer[i],
-                                                                   this_scale=self.scales[i],
-                                                                   next_scale=self.scales[i+1],
-                                                                   this_steps=self.steps[i],
-                                                                   this_offsets=self.offsets[i],
-                                                                   diagnostics=False))
-            else:
-                for i in range(len(self.predictor_sizes)):
-                    boxes_tensor.append(self.generate_anchor_boxes(batch_size=batch_size,
-                                                                   feature_map_size=self.predictor_sizes[i],
-                                                                   aspect_ratios=self.aspect_ratios_global,
-                                                                   this_scale=self.scales[i],
-                                                                   next_scale=self.scales[i+1],
-                                                                   this_steps=self.steps[i],
-                                                                   this_offsets=self.offsets[i],
-                                                                   diagnostics=False))
-
-        boxes_tensor = np.concatenate(boxes_tensor, axis=1) # Concatenate the anchor tensors from the individual layers to one
+        # Concatenate the anchor tensors from the individual layers to one.
+        boxes_tensor = np.concatenate(boxes_batch, axis=1)
 
         # 3: Create a template tensor to hold the one-hot class encodings of shape `(batch, #boxes, #classes)`
         #    It will contain all zeros for now, the classes will be set in the matching process that follows
@@ -1042,7 +1011,7 @@ class SSDBoxEncoder:
         y_encode_template = np.concatenate((classes_tensor, boxes_tensor, boxes_tensor, variances_tensor), axis=2)
 
         if diagnostics:
-            return y_encode_template, centers, wh_list, steps, offsets
+            return y_encode_template, self.centers_diag, self.wh_list_diag, self.steps_diag, self.offsets_diag
         else:
             return y_encode_template
 
