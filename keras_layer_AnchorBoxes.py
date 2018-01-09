@@ -124,7 +124,7 @@ class AnchorBoxes(Layer):
         self.coords = coords
         self.normalize_coords = normalize_coords
         # Compute the number of boxes per cell
-        if (1 in aspect_ratios) & two_boxes_for_ar1:
+        if (1 in aspect_ratios) and two_boxes_for_ar1:
             self.n_boxes = len(aspect_ratios) + 1
         else:
             self.n_boxes = len(aspect_ratios)
