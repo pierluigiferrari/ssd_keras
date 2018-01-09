@@ -45,7 +45,8 @@ def ssd_300(image_size,
             normalize_coords=False,
             subtract_mean=None,
             divide_by_stddev=None,
-            swap_channels=True):
+            swap_channels=False,
+            return_predictor_sizes=False):
     '''
     Build a Keras model with SSD_300 architecture, see references.
 
@@ -142,6 +143,11 @@ def ssd_300(image_size,
         swap_channels (bool, optional): If `True` the color channel order of the input images will be reversed,
             i.e. if the input color channel order is RGB, the color channels will be swapped to BGR. Note that the
             original Caffe implementation assumes BGR input. Defaults to `True`.
+        return_predictor_sizes (bool, optional): If `True`, this function not only returns the model, but also
+            a list containing the spatial dimensions of the predictor layers. This isn't strictly necessary since
+            you can always get their sizes easily via the Keras API, but it's convenient and less error-prone
+            to get them this way. THey are only relevant for training anyway (SSDBoxEncoder needs to know the
+            spatial dimensions of the predictor layers), for inference you don't need them.
 
     Returns:
         model: The Keras SSD model.
@@ -187,46 +193,25 @@ def ssd_300(image_size,
 
     # Set the aspect ratios for each predictor layer. These are only needed for the anchor box layers.
     if aspect_ratios_per_layer:
-        aspect_ratios_conv4_3 = aspect_ratios_per_layer[0]
-        aspect_ratios_fc7 = aspect_ratios_per_layer[1]
-        aspect_ratios_conv6_2 = aspect_ratios_per_layer[2]
-        aspect_ratios_conv7_2 = aspect_ratios_per_layer[3]
-        aspect_ratios_conv8_2 = aspect_ratios_per_layer[4]
-        aspect_ratios_conv9_2 = aspect_ratios_per_layer[5]
+        aspect_ratios = aspect_ratios_per_layer
     else:
-        aspect_ratios_conv4_3 = aspect_ratios_global
-        aspect_ratios_fc7 = aspect_ratios_global
-        aspect_ratios_conv6_2 = aspect_ratios_global
-        aspect_ratios_conv7_2 = aspect_ratios_global
-        aspect_ratios_conv8_2 = aspect_ratios_global
-        aspect_ratios_conv9_2 = aspect_ratios_global
+        aspect_ratios = [aspect_ratios_global] * n_predictor_layers
 
     # Compute the number of boxes to be predicted per cell for each predictor layer.
     # We need this so that we know how many channels the predictor layers need to have.
     if aspect_ratios_per_layer:
         n_boxes = []
-        for aspect_ratios in aspect_ratios_per_layer:
-            if (1 in aspect_ratios) & two_boxes_for_ar1:
-                n_boxes.append(len(aspect_ratios) + 1) # +1 for the second box for aspect ratio 1
+        for ar in aspect_ratios_per_layer:
+            if (1 in ar) & two_boxes_for_ar1:
+                n_boxes.append(len(ar) + 1) # +1 for the second box for aspect ratio 1
             else:
-                n_boxes.append(len(aspect_ratios))
-        n_boxes_conv4_3 = n_boxes[0] # 4 boxes per cell for the original implementation
-        n_boxes_fc7 = n_boxes[1] # 6 boxes per cell for the original implementation
-        n_boxes_conv6_2 = n_boxes[2] # 6 boxes per cell for the original implementation
-        n_boxes_conv7_2 = n_boxes[3] # 6 boxes per cell for the original implementation
-        n_boxes_conv8_2 = n_boxes[4] # 4 boxes per cell for the original implementation
-        n_boxes_conv9_2 = n_boxes[5] # 4 boxes per cell for the original implementation
+                n_boxes.append(len(ar))
     else: # If only a global aspect ratio list was passed, then the number of boxes is the same for each predictor layer
         if (1 in aspect_ratios_global) & two_boxes_for_ar1:
             n_boxes = len(aspect_ratios_global) + 1
         else:
             n_boxes = len(aspect_ratios_global)
-        n_boxes_conv4_3 = n_boxes
-        n_boxes_fc7 = n_boxes
-        n_boxes_conv6_2 = n_boxes
-        n_boxes_conv7_2 = n_boxes
-        n_boxes_conv8_2 = n_boxes
-        n_boxes_conv9_2 = n_boxes
+        n_boxes = [n_boxes] * n_predictor_layers
 
     if steps is None:
         steps = [None] * n_predictor_layers
@@ -305,40 +290,40 @@ def ssd_300(image_size,
 
     # We precidt `n_classes` confidence values for each box, hence the confidence predictors have depth `n_boxes * n_classes`
     # Output shape of the confidence layers: `(batch, height, width, n_boxes * n_classes)`
-    conv4_3_norm_mbox_conf = Conv2D(n_boxes_conv4_3 * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='conv4_3_norm_mbox_conf')(conv4_3_norm)
-    fc7_mbox_conf = Conv2D(n_boxes_fc7 * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='fc7_mbox_conf')(fc7)
-    conv6_2_mbox_conf = Conv2D(n_boxes_conv6_2 * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='conv6_2_mbox_conf')(conv6_2)
-    conv7_2_mbox_conf = Conv2D(n_boxes_conv7_2 * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='conv7_2_mbox_conf')(conv7_2)
-    conv8_2_mbox_conf = Conv2D(n_boxes_conv8_2 * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='conv8_2_mbox_conf')(conv8_2)
-    conv9_2_mbox_conf = Conv2D(n_boxes_conv9_2 * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='conv9_2_mbox_conf')(conv9_2)
+    conv4_3_norm_mbox_conf = Conv2D(n_boxes[0] * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='conv4_3_norm_mbox_conf')(conv4_3_norm)
+    fc7_mbox_conf = Conv2D(n_boxes[1] * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='fc7_mbox_conf')(fc7)
+    conv6_2_mbox_conf = Conv2D(n_boxes[2] * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='conv6_2_mbox_conf')(conv6_2)
+    conv7_2_mbox_conf = Conv2D(n_boxes[3] * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='conv7_2_mbox_conf')(conv7_2)
+    conv8_2_mbox_conf = Conv2D(n_boxes[4] * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='conv8_2_mbox_conf')(conv8_2)
+    conv9_2_mbox_conf = Conv2D(n_boxes[5] * n_classes, (3, 3), padding='same', kernel_initializer='he_normal', name='conv9_2_mbox_conf')(conv9_2)
     # We predict 4 box coordinates for each box, hence the localization predictors have depth `n_boxes * 4`
     # Output shape of the localization layers: `(batch, height, width, n_boxes * 4)`
-    conv4_3_norm_mbox_loc = Conv2D(n_boxes_conv4_3 * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='conv4_3_norm_mbox_loc')(conv4_3_norm)
-    fc7_mbox_loc = Conv2D(n_boxes_fc7 * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='fc7_mbox_loc')(fc7)
-    conv6_2_mbox_loc = Conv2D(n_boxes_conv6_2 * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='conv6_2_mbox_loc')(conv6_2)
-    conv7_2_mbox_loc = Conv2D(n_boxes_conv7_2 * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='conv7_2_mbox_loc')(conv7_2)
-    conv8_2_mbox_loc = Conv2D(n_boxes_conv8_2 * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='conv8_2_mbox_loc')(conv8_2)
-    conv9_2_mbox_loc = Conv2D(n_boxes_conv9_2 * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='conv9_2_mbox_loc')(conv9_2)
+    conv4_3_norm_mbox_loc = Conv2D(n_boxes[0] * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='conv4_3_norm_mbox_loc')(conv4_3_norm)
+    fc7_mbox_loc = Conv2D(n_boxes[1] * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='fc7_mbox_loc')(fc7)
+    conv6_2_mbox_loc = Conv2D(n_boxes[2] * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='conv6_2_mbox_loc')(conv6_2)
+    conv7_2_mbox_loc = Conv2D(n_boxes[3] * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='conv7_2_mbox_loc')(conv7_2)
+    conv8_2_mbox_loc = Conv2D(n_boxes[4] * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='conv8_2_mbox_loc')(conv8_2)
+    conv9_2_mbox_loc = Conv2D(n_boxes[5] * 4, (3, 3), padding='same', kernel_initializer='he_normal', name='conv9_2_mbox_loc')(conv9_2)
 
     ### Generate the anchor boxes (called "priors" in the original Caffe/C++ implementation, so I'll keep their layer names)
 
     # Output shape of anchors: `(batch, height, width, n_boxes, 8)`
-    conv4_3_norm_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios_conv4_3,
+    conv4_3_norm_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios[0],
                                              two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[0], this_offsets=offsets[0], limit_boxes=limit_boxes,
                                              variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv4_3_norm_mbox_priorbox')(conv4_3_norm_mbox_loc)
-    fc7_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios_fc7,
+    fc7_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios[1],
                                     two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[1], this_offsets=offsets[1], limit_boxes=limit_boxes,
                                     variances=variances, coords=coords, normalize_coords=normalize_coords, name='fc7_mbox_priorbox')(fc7_mbox_loc)
-    conv6_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6_2,
+    conv6_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios[2],
                                         two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[2], this_offsets=offsets[2], limit_boxes=limit_boxes,
                                         variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv6_2_mbox_priorbox')(conv6_2_mbox_loc)
-    conv7_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios_conv7_2,
+    conv7_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios[3],
                                         two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[3], this_offsets=offsets[3], limit_boxes=limit_boxes,
                                         variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv7_2_mbox_priorbox')(conv7_2_mbox_loc)
-    conv8_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[4], next_scale=scales[5], aspect_ratios=aspect_ratios_conv8_2,
+    conv8_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[4], next_scale=scales[5], aspect_ratios=aspect_ratios[4],
                                         two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[4], this_offsets=offsets[4], limit_boxes=limit_boxes,
                                         variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv8_2_mbox_priorbox')(conv8_2_mbox_loc)
-    conv9_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[5], next_scale=scales[6], aspect_ratios=aspect_ratios_conv9_2,
+    conv9_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[5], next_scale=scales[6], aspect_ratios=aspect_ratios[5],
                                         two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[5], this_offsets=offsets[5], limit_boxes=limit_boxes,
                                         variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv9_2_mbox_priorbox')(conv9_2_mbox_loc)
 
@@ -406,16 +391,18 @@ def ssd_300(image_size,
 
     model = Model(inputs=x, outputs=predictions)
 
-    # Get the spatial dimensions (height, width) of the predictor conv layers, we need them to
-    # be able to generate the default boxes for the matching process outside of the model during training.
-    # Note that the original implementation performs anchor box matching inside the loss function. We don't do that.
-    # Instead, we'll do it in the batch generator function.
-    # The spatial dimensions are the same for the confidence and localization predictors, so we just take those of the conf layers.
-    predictor_sizes = np.array([conv4_3_norm_mbox_conf._keras_shape[1:3],
-                                 fc7_mbox_conf._keras_shape[1:3],
-                                 conv6_2_mbox_conf._keras_shape[1:3],
-                                 conv7_2_mbox_conf._keras_shape[1:3],
-                                 conv8_2_mbox_conf._keras_shape[1:3],
-                                 conv9_2_mbox_conf._keras_shape[1:3]])
-
-    return model, predictor_sizes
+    if return_predictor_sizes:
+        # Get the spatial dimensions (height, width) of the predictor conv layers, we need them to
+        # be able to generate the default boxes for the matching process outside of the model during training.
+        # Note that the original implementation performs anchor box matching inside the loss function. We don't do that.
+        # Instead, we'll do it in the batch generator function.
+        # The spatial dimensions are the same for the confidence and localization predictors, so we just take those of the conf layers.
+        predictor_sizes = np.array([conv4_3_norm_mbox_conf._keras_shape[1:3],
+                                     fc7_mbox_conf._keras_shape[1:3],
+                                     conv6_2_mbox_conf._keras_shape[1:3],
+                                     conv7_2_mbox_conf._keras_shape[1:3],
+                                     conv8_2_mbox_conf._keras_shape[1:3],
+                                     conv9_2_mbox_conf._keras_shape[1:3]])
+        return model, predictor_sizes
+    else:
+        return model
