@@ -759,7 +759,7 @@ class SSDBoxEncoder:
         else:
             if isinstance(this_offsets, (list, tuple)) and (len(this_offsets) == 2):
                 offset_height = this_offsets[0]
-                offset_width = this_offsets[0]
+                offset_width = this_offsets[1]
             elif isinstance(this_offsets, (int, float)):
                 offset_height = this_offsets
                 offset_width = this_offsets

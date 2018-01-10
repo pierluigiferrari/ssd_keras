@@ -197,7 +197,7 @@ class AnchorBoxes(Layer):
         else:
             if isinstance(self.this_offsets, (list, tuple)) and (len(self.this_offsets) == 2):
                 offset_height = self.this_offsets[0]
-                offset_width = self.this_offsets[0]
+                offset_width = self.this_offsets[1]
             elif isinstance(self.this_offsets, (int, float)):
                 offset_height = self.this_offsets
                 offset_width = self.this_offsets
