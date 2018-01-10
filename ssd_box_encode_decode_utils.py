@@ -41,7 +41,7 @@ def iou(boxes1, boxes2, coords='centroids'):
             Shape must be broadcast-compatible to `boxes1`.
         coords (str, optional): The coordinate format in the input arrays. Can be either 'centroids' for the format
             `(cx, cy, w, h)`, 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format
-            `(xmin, ymin, xmax, ymax)`. Defaults to 'centroids'.
+            `(xmin, ymin, xmax, ymax)`.
 
     Returns:
         A 1D Numpy array of dtype float containing values in [0,1], the Jaccard similarity of the boxes in `boxes1` and `boxes2`.
@@ -60,10 +60,10 @@ def iou(boxes1, boxes2, coords='centroids'):
         # TODO: Implement a version that uses fewer computation steps (that doesn't need conversion)
         boxes1 = convert_coordinates(boxes1, start_index=0, conversion='centroids2minmax')
         boxes2 = convert_coordinates(boxes2, start_index=0, conversion='centroids2minmax')
-    elif not (coords == 'minmax' or coords == 'corners'):
+    elif not (coords in {'minmax', 'corners'}):
         raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
 
-    if coords == 'minmax':
+    if coords in {'minmax', 'centroids'}:
         intersection = np.maximum(0, np.minimum(boxes1[:,1], boxes2[:,1]) - np.maximum(boxes1[:,0], boxes2[:,0])) * np.maximum(0, np.minimum(boxes1[:,3], boxes2[:,3]) - np.maximum(boxes1[:,2], boxes2[:,2]))
         union = (boxes1[:,1] - boxes1[:,0]) * (boxes1[:,3] - boxes1[:,2]) + (boxes2[:,1] - boxes2[:,0]) * (boxes2[:,3] - boxes2[:,2]) - intersection
     elif coords == 'corners':
