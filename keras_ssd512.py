@@ -30,13 +30,13 @@ def ssd_512(image_size,
             max_scale=None,
             scales=None,
             aspect_ratios_global=None,
-            aspect_ratios_per_layer=[[0.5, 1.0, 2.0],
-                                     [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                                     [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                                     [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                                     [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                                     [0.5, 1.0, 2.0],
-                                     [0.5, 1.0, 2.0]],
+            aspect_ratios_per_layer=[[1.0, 2.0, 0.5],
+                                     [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                                     [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                                     [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                                     [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                                     [1.0, 2.0, 0.5],
+                                     [1.0, 2.0, 0.5]],
             two_boxes_for_ar1=True,
             steps=None,
             offsets=None,
@@ -92,14 +92,14 @@ def ssd_512(image_size,
         aspect_ratios_per_layer (list, optional): A list containing one aspect ratio list for each prediction layer.
             This allows you to set the aspect ratios for each predictor layer individually, which is the case for the
             original SSD512 implementation. If a list is passed, it overrides `aspect_ratios_global`.
-            Defaults to the aspect ratios used in the original SSD300 architecture, i.e.:
-                [[0.5, 1.0, 2.0],
-                 [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                 [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                 [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                 [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                 [0.5, 1.0, 2.0],
-                 [0.5, 1.0, 2.0]]
+            Defaults to the aspect ratios used in the original SSD512 architecture, i.e.:
+                [[1.0, 2.0, 0.5],
+                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                 [1.0, 2.0, 0.5],
+                 [1.0, 2.0, 0.5]]
         two_boxes_for_ar1 (bool, optional): Only relevant for aspect ratio lists that contain 1. Will be ignored otherwise.
             If `True`, two anchor boxes will be generated for aspect ratio 1. The first will be generated
             using the scaling factor for the respective layer, the second one will be generated using
@@ -140,13 +140,12 @@ def ssd_512(image_size,
             floating point values of any shape that is broadcast-compatible with the image shape. The image pixel
             intensity values will be divided by the elements of this array. For example, pass a list
             of three integers to perform per-channel standard deviation normalization for color images.
-        swap_channels (bool, optional): If `True` the color channel order of the input images will be reversed,
-            i.e. if the input color channel order is RGB, the color channels will be swapped to BGR. Note that the
-            original Caffe implementation assumes BGR input.
+        swap_channels (bool, optional): If `True`, the color channel order of the input images will be reversed,
+            i.e. if the input color channel order is RGB, the color channels will be swapped to BGR.
         return_predictor_sizes (bool, optional): If `True`, this function not only returns the model, but also
             a list containing the spatial dimensions of the predictor layers. This isn't strictly necessary since
             you can always get their sizes easily via the Keras API, but it's convenient and less error-prone
-            to get them this way. THey are only relevant for training anyway (SSDBoxEncoder needs to know the
+            to get them this way. They are only relevant for training anyway (SSDBoxEncoder needs to know the
             spatial dimensions of the predictor layers), for inference you don't need them.
 
     Returns:
@@ -225,7 +224,7 @@ def ssd_512(image_size,
 
     x = Input(shape=(img_height, img_width, img_channels))
 
-    # The following identity layer is only needed so that subsequent two lambda layers can be optional.
+    # The following identity layer is only needed so that subsequent lambda layers can be optional.
     x1 = Lambda(lambda z: z,
                 output_shape=(img_height, img_width, img_channels),
                 name='idendity_layer')(x)

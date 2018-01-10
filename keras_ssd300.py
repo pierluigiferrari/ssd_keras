@@ -30,12 +30,12 @@ def ssd_300(image_size,
             max_scale=None,
             scales=None,
             aspect_ratios_global=None,
-            aspect_ratios_per_layer=[[0.5, 1.0, 2.0],
-                                     [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                                     [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                                     [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                                     [0.5, 1.0, 2.0],
-                                     [0.5, 1.0, 2.0]],
+            aspect_ratios_per_layer=[[1.0, 2.0, 0.5],
+                                     [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                                     [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                                     [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                                     [1.0, 2.0, 0.5],
+                                     [1.0, 2.0, 0.5]],
             two_boxes_for_ar1=True,
             steps=None,
             offsets=None,
@@ -72,13 +72,13 @@ def ssd_300(image_size,
             the background class (i.e. the number of positive classes +1 for
             the background calss).
         min_scale (float, optional): The smallest scaling factor for the size of the anchor boxes as a fraction
-            of the shorter side of the input images. Defaults to 0.1.
+            of the shorter side of the input images.
         max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
             of the shorter side of the input images. All scaling factors between the smallest and the
             largest will be linearly interpolated. Note that the second to last of the linearly interpolated
             scaling factors will actually be the scaling factor for the last predictor layer, while the last
             scaling factor is used for the second box for aspect ratio 1 in the last predictor layer
-            if `two_boxes_for_ar1` is `True`. Defaults to 0.9.
+            if `two_boxes_for_ar1` is `True`.
         scales (list, optional): A list of floats containing scaling factors per convolutional predictor layer.
             This list must be one element longer than the number of predictor layers. The first `k` elements are the
             scaling factors for the `k` predictor layers, while the last element is used for the second box
@@ -92,12 +92,12 @@ def ssd_300(image_size,
             This allows you to set the aspect ratios for each predictor layer individually, which is the case for the
             original SSD300 implementation. If a list is passed, it overrides `aspect_ratios_global`.
             Defaults to the aspect ratios used in the original SSD300 architecture, i.e.:
-                [[0.5, 1.0, 2.0],
-                 [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                 [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                 [1.0/3.0, 0.5, 1.0, 2.0, 3.0],
-                 [0.5, 1.0, 2.0],
-                 [0.5, 1.0, 2.0]]
+                [[1.0, 2.0, 0.5],
+                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
+                 [1.0, 2.0, 0.5],
+                 [1.0, 2.0, 0.5]]
         two_boxes_for_ar1 (bool, optional): Only relevant for aspect ratio lists that contain 1. Will be ignored otherwise.
             If `True`, two anchor boxes will be generated for aspect ratio 1. The first will be generated
             using the scaling factor for the respective layer, the second one will be generated using
@@ -109,7 +109,7 @@ def ssd_300(image_size,
             the image. If the list contains ints/floats, then that value will be used for both spatial dimensions.
             If the list contains tuples of two ints/floats, then they represent `(step_height, step_width)`.
             If no steps are provided, then they will be computed such that the anchor box center points will form an
-            equidistant grid within the image dimensions. Defaults to `None`.
+            equidistant grid within the image dimensions.
         offsets (list, optional): `None` or a list with as many elements as there are predictor layers. The elements can be
             either floats or tuples of two floats. These numbers represent for each predictor layer how many
             pixels from the top and left boarders of the image the top-most and left-most anchor box center points should be
@@ -117,7 +117,6 @@ def ssd_300(image_size,
             of the step size specified in the `steps` argument. If the list contains floats, then that value will
             be used for both spatial dimensions. If the list contains tuples of two floats, then they represent
             `(vertical_offset, horizontal_offset)`. If no offsets are provided, then they will default to 0.5 of the step size.
-            Defaults to `None`.
         limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
             This would normally be set to `True`, but here it defaults to `False`, following the original
             implementation.
@@ -134,24 +133,22 @@ def ssd_300(image_size,
         subtract_mean (array-like, optional): `None` or an array-like object of integers or floating point values
             of any shape that is broadcast-compatible with the image shape. The elements of this array will be
             subtracted from the image pixel intensity values. For example, pass a list of three integers
-            to perform per-channel mean normalization for color images. Defaults to `None`.
+            to perform per-channel mean normalization for color images.
         divide_by_stddev (array-like, optional): `None` or an array-like object of non-zero integers or
             floating point values of any shape that is broadcast-compatible with the image shape. The image pixel
             intensity values will be divided by the elements of this array. For example, pass a list
             of three integers to perform per-channel standard deviation normalization for color images.
-            Defaults to `None`.
-        swap_channels (bool, optional): If `True` the color channel order of the input images will be reversed,
-            i.e. if the input color channel order is RGB, the color channels will be swapped to BGR. Note that the
-            original Caffe implementation assumes BGR input. Defaults to `True`.
+        swap_channels (bool, optional): If `True`, the color channel order of the input images will be reversed,
+            i.e. if the input color channel order is RGB, the color channels will be swapped to BGR.
         return_predictor_sizes (bool, optional): If `True`, this function not only returns the model, but also
             a list containing the spatial dimensions of the predictor layers. This isn't strictly necessary since
             you can always get their sizes easily via the Keras API, but it's convenient and less error-prone
-            to get them this way. THey are only relevant for training anyway (SSDBoxEncoder needs to know the
+            to get them this way. They are only relevant for training anyway (SSDBoxEncoder needs to know the
             spatial dimensions of the predictor layers), for inference you don't need them.
 
     Returns:
-        model: The Keras SSD model.
-        predictor_sizes: A Numpy array containing the `(height, width)` portion
+        model: The Keras SSD300 model.
+        predictor_sizes (optional): A Numpy array containing the `(height, width)` portion
             of the output tensor shape for each convolutional predictor layer. During
             training, the generator function needs this in order to transform
             the ground truth labels into tensors of identical structure as the
@@ -225,7 +222,7 @@ def ssd_300(image_size,
 
     x = Input(shape=(img_height, img_width, img_channels))
 
-    # The following identity layer is only needed so that subsequent two lambda layers can be optional.
+    # The following identity layer is only needed so that subsequent lambda layers can be optional.
     x1 = Lambda(lambda z: z,
                 output_shape=(img_height, img_width, img_channels),
                 name='idendity_layer')(x)
