@@ -31,10 +31,16 @@ def build_model(image_size,
                 aspect_ratios_global=[0.5, 1.0, 2.0],
                 aspect_ratios_per_layer=None,
                 two_boxes_for_ar1=True,
+                steps=None,
+                offsets=None,
                 limit_boxes=True,
                 variances=[1.0, 1.0, 1.0, 1.0],
                 coords='centroids',
-                normalize_coords=False):
+                normalize_coords=False,
+                subtract_mean=None,
+                divide_by_stddev=None,
+                swap_channels=False,
+                return_predictor_sizes=False):
     '''
     Build a Keras model with SSD architecture, see references.
 
@@ -68,13 +74,13 @@ def build_model(image_size,
             the background class (i.e. the number of positive classes +1 for
             the background calss).
         min_scale (float, optional): The smallest scaling factor for the size of the anchor boxes as a fraction
-            of the shorter side of the input images. Defaults to 0.1.
+            of the shorter side of the input images.
         max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
             of the shorter side of the input images. All scaling factors between the smallest and the
             largest will be linearly interpolated. Note that the second to last of the linearly interpolated
             scaling factors will actually be the scaling factor for the last predictor layer, while the last
             scaling factor is used for the second box for aspect ratio 1 in the last predictor layer
-            if `two_boxes_for_ar1` is `True`. Defaults to 0.9.
+            if `two_boxes_for_ar1` is `True`.
         scales (list, optional): A list of floats containing scaling factors per convolutional predictor layer.
             This list must be one element longer than the number of predictor layers. The first `k` elements are the
             scaling factors for the `k` predictor layers, while the last element is used for the second box
@@ -88,12 +94,27 @@ def build_model(image_size,
             Defaults to `[0.5, 1.0, 2.0]`.
         aspect_ratios_per_layer (list, optional): A list containing one aspect ratio list for each predictor layer.
             This allows you to set the aspect ratios for each predictor layer individually. If a list is passed,
-            it overrides `aspect_ratios_global`. Defaults to `None`.
+            it overrides `aspect_ratios_global`.
         two_boxes_for_ar1 (bool, optional): Only relevant for aspect ratio lists that contain 1. Will be ignored otherwise.
             If `True`, two anchor boxes will be generated for aspect ratio 1. The first will be generated
             using the scaling factor for the respective layer, the second one will be generated using
             geometric mean of said scaling factor and next bigger scaling factor. Defaults to `True`, following the original
             implementation.
+        steps (list, optional): `None` or a list with as many elements as there are predictor layers. The elements can be
+            either ints/floats or tuples of two ints/floats. These numbers represent for each predictor layer how many
+            pixels apart the anchor box center points should be vertically and horizontally along the spatial grid over
+            the image. If the list contains ints/floats, then that value will be used for both spatial dimensions.
+            If the list contains tuples of two ints/floats, then they represent `(step_height, step_width)`.
+            If no steps are provided, then they will be computed such that the anchor box center points will form an
+            equidistant grid within the image dimensions.
+        offsets (list, optional): `None` or a list with as many elements as there are predictor layers. The elements can be
+            either floats or tuples of two floats. These numbers represent for each predictor layer how many
+            pixels from the top and left boarders of the image the top-most and left-most anchor box center points should be
+            as a fraction of `steps`. The last bit is important: The offsets are not absolute pixel values, but fractions
+            of the step size specified in the `steps` argument. If the list contains floats, then that value will
+            be used for both spatial dimensions. If the list contains tuples of two floats, then they represent
+            `(vertical_offset, horizontal_offset)`. If no offsets are provided, then they will default to 0.5 of the step size,
+            which is also the recommended setting.
         limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
             This would normally be set to `True`, but here it defaults to `False`, following the original
             implementation.
@@ -101,16 +122,31 @@ def build_model(image_size,
             to be precise) for the encoded predicted box coordinates. A variance value of 1.0 would apply
             no scaling at all to the predictions, while values in (0,1) upscale the encoded predictions and values greater
             than 1.0 downscale the encoded predictions. If you want to reproduce the configuration of the original SSD,
-            set this to `[0.1, 0.1, 0.2, 0.2]`, provided the coordinate format is 'centroids'. Defaults to `[1.0, 1.0, 1.0, 1.0]`.
+            set this to `[0.1, 0.1, 0.2, 0.2]`, provided the coordinate format is 'centroids'.
         coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
             `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
-            `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
+            `(xmin, xmax, ymin, ymax)`.
         normalize_coords (bool, optional): Set to `True` if the model is supposed to use relative instead of absolute coordinates,
-            i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates. Defaults to `False`.
+            i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates.
+        subtract_mean (array-like, optional): `None` or an array-like object of integers or floating point values
+            of any shape that is broadcast-compatible with the image shape. The elements of this array will be
+            subtracted from the image pixel intensity values. For example, pass a list of three integers
+            to perform per-channel mean normalization for color images.
+        divide_by_stddev (array-like, optional): `None` or an array-like object of non-zero integers or
+            floating point values of any shape that is broadcast-compatible with the image shape. The image pixel
+            intensity values will be divided by the elements of this array. For example, pass a list
+            of three integers to perform per-channel standard deviation normalization for color images.
+        swap_channels (bool, optional): If `True`, the color channel order of the input images will be reversed,
+            i.e. if the input color channel order is RGB, the color channels will be swapped to BGR.
+        return_predictor_sizes (bool, optional): If `True`, this function not only returns the model, but also
+            a list containing the spatial dimensions of the predictor layers. This isn't strictly necessary since
+            you can always get their sizes easily via the Keras API, but it's convenient and less error-prone
+            to get them this way. They are only relevant for training anyway (SSDBoxEncoder needs to know the
+            spatial dimensions of the predictor layers), for inference you don't need them.
 
     Returns:
         model: The Keras SSD model.
-        predictor_sizes: A Numpy array containing the `(height, width)` portion
+        predictor_sizes (optional): A Numpy array containing the `(height, width)` portion
             of the output tensor shape for each convolutional predictor layer. During
             training, the generator function needs this in order to transform
             the ground truth labels into tensors of identical structure as the
@@ -144,51 +180,64 @@ def build_model(image_size,
     if np.any(variances <= 0):
         raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
 
+    if (not (steps is None)) and (len(steps) != n_predictor_layers):
+        raise ValueError("You must provide at least one step value per predictor layer.")
+
+    if (not (offsets is None)) and (len(offsets) != n_predictor_layers):
+        raise ValueError("You must provide at least one offset value per predictor layer.")
+
     # Set the aspect ratios for each predictor layer. These are only needed for the anchor box layers.
     if aspect_ratios_per_layer:
-        aspect_ratios_conv4 = aspect_ratios_per_layer[0]
-        aspect_ratios_conv5 = aspect_ratios_per_layer[1]
-        aspect_ratios_conv6 = aspect_ratios_per_layer[2]
-        aspect_ratios_conv7 = aspect_ratios_per_layer[3]
+        aspect_ratios = aspect_ratios_per_layer
     else:
-        aspect_ratios_conv4 = aspect_ratios_global
-        aspect_ratios_conv5 = aspect_ratios_global
-        aspect_ratios_conv6 = aspect_ratios_global
-        aspect_ratios_conv7 = aspect_ratios_global
+        aspect_ratios = [aspect_ratios_global] * n_predictor_layers
 
     # Compute the number of boxes to be predicted per cell for each predictor layer.
     # We need this so that we know how many channels the predictor layers need to have.
     if aspect_ratios_per_layer:
         n_boxes = []
-        for aspect_ratios in aspect_ratios_per_layer:
-            if (1 in aspect_ratios) & two_boxes_for_ar1:
-                n_boxes.append(len(aspect_ratios) + 1) # +1 for the second box for aspect ratio 1
+        for ar in aspect_ratios_per_layer:
+            if (1 in ar) & two_boxes_for_ar1:
+                n_boxes.append(len(ar) + 1) # +1 for the second box for aspect ratio 1
             else:
-                n_boxes.append(len(aspect_ratios))
-        n_boxes_conv4 = n_boxes[0]
-        n_boxes_conv5 = n_boxes[1]
-        n_boxes_conv6 = n_boxes[2]
-        n_boxes_conv7 = n_boxes[3]
+                n_boxes.append(len(ar))
     else: # If only a global aspect ratio list was passed, then the number of boxes is the same for each predictor layer
         if (1 in aspect_ratios_global) & two_boxes_for_ar1:
             n_boxes = len(aspect_ratios_global) + 1
         else:
             n_boxes = len(aspect_ratios_global)
-        n_boxes_conv4 = n_boxes
-        n_boxes_conv5 = n_boxes
-        n_boxes_conv6 = n_boxes
-        n_boxes_conv7 = n_boxes
+        n_boxes = [n_boxes] * n_predictor_layers
+
+    if steps is None:
+        steps = [None] * n_predictor_layers
+    if offsets is None:
+        offsets = [None] * n_predictor_layers
 
     # Input image format
     img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
 
-    # Design the actual network
-    x = Input(shape=(img_height, img_width, img_channels))
-    normed = Lambda(lambda z: z/127.5 - 1., # Convert input feature range to [-1,1]
-                    output_shape=(img_height, img_width, img_channels),
-                    name='lambda1')(x)
+    # Build the actual network
 
-    conv1 = Conv2D(32, (5, 5), name='conv1', strides=(1, 1), padding="same", kernel_initializer='he_normal')(normed)
+    x = Input(shape=(img_height, img_width, img_channels))
+
+    # The following identity layer is only needed so that subsequent lambda layers can be optional.
+    x1 = Lambda(lambda z: z,
+                output_shape=(img_height, img_width, img_channels),
+                name='idendity_layer')(x)
+    if not (subtract_mean is None):
+        x1 = Lambda(lambda z: z - np.array(subtract_mean),
+                   output_shape=(img_height, img_width, img_channels),
+                   name='input_mean_normalization')(x1)
+    if not (divide_by_stddev is None):
+        x1 = Lambda(lambda z: z / np.array(divide_by_stddev),
+                   output_shape=(img_height, img_width, img_channels),
+                   name='input_stddev_normalization')(x1)
+    if swap_channels and (img_channels == 3):
+        x1 = Lambda(lambda z: z[...,::-1],
+                   output_shape=(img_height, img_width, img_channels),
+                   name='input_channel_swap')(x1)
+
+    conv1 = Conv2D(32, (5, 5), name='conv1', strides=(1, 1), padding="same", kernel_initializer='he_normal')(x1)
     conv1 = BatchNormalization(axis=3, momentum=0.99, name='bn1')(conv1) # Tensorflow uses filter format [filter_height, filter_width, in_channels, out_channels], hence axis = 3
     conv1 = ELU(name='elu1')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2), name='pool1')(conv1)
@@ -229,31 +278,35 @@ def build_model(image_size,
     # easily rewrite this into an arbitrarily deep base network and add an arbitrary number of
     # predictor layers on top of the base network by simply following the pattern shown here.
 
-    # Build the convolutional predictor layers on top of conv layers 4, 5, 6, and 7
-    # We build two predictor layers on top of each of these layers: One for classes (classification), one for box coordinates (localization)
+    # Build the convolutional predictor layers on top of conv layers 4, 5, 6, and 7.
+    # We build two predictor layers on top of each of these layers: One for class prediction (classification), one for box coordinate prediction (localization)
     # We precidt `n_classes` confidence values for each box, hence the `classes` predictors have depth `n_boxes * n_classes`
     # We predict 4 box coordinates for each box, hence the `boxes` predictors have depth `n_boxes * 4`
     # Output shape of `classes`: `(batch, height, width, n_boxes * n_classes)`
-    classes4 = Conv2D(n_boxes_conv4 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes4', kernel_initializer='he_normal')(conv4)
-    classes5 = Conv2D(n_boxes_conv5 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes5', kernel_initializer='he_normal')(conv5)
-    classes6 = Conv2D(n_boxes_conv6 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes6', kernel_initializer='he_normal')(conv6)
-    classes7 = Conv2D(n_boxes_conv7 * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes7', kernel_initializer='he_normal')(conv7)
+    classes4 = Conv2D(n_boxes[0] * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes4', kernel_initializer='he_normal')(conv4)
+    classes5 = Conv2D(n_boxes[1] * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes5', kernel_initializer='he_normal')(conv5)
+    classes6 = Conv2D(n_boxes[2] * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes6', kernel_initializer='he_normal')(conv6)
+    classes7 = Conv2D(n_boxes[3] * n_classes, (3, 3), strides=(1, 1), padding="valid", name='classes7', kernel_initializer='he_normal')(conv7)
     # Output shape of `boxes`: `(batch, height, width, n_boxes * 4)`
-    boxes4 = Conv2D(n_boxes_conv4 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes4', kernel_initializer='he_normal')(conv4)
-    boxes5 = Conv2D(n_boxes_conv5 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes5', kernel_initializer='he_normal')(conv5)
-    boxes6 = Conv2D(n_boxes_conv6 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes6', kernel_initializer='he_normal')(conv6)
-    boxes7 = Conv2D(n_boxes_conv7 * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes7', kernel_initializer='he_normal')(conv7)
+    boxes4 = Conv2D(n_boxes[0] * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes4', kernel_initializer='he_normal')(conv4)
+    boxes5 = Conv2D(n_boxes[1] * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes5', kernel_initializer='he_normal')(conv5)
+    boxes6 = Conv2D(n_boxes[2] * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes6', kernel_initializer='he_normal')(conv6)
+    boxes7 = Conv2D(n_boxes[3] * 4, (3, 3), strides=(1, 1), padding="valid", name='boxes7', kernel_initializer='he_normal')(conv7)
 
     # Generate the anchor boxes
     # Output shape of `anchors`: `(batch, height, width, n_boxes, 8)`
-    anchors4 = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios_conv4,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors4')(boxes4)
-    anchors5 = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios_conv5,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors5')(boxes5)
-    anchors6 = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios_conv6,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors6')(boxes6)
-    anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios_conv7,
-                           two_boxes_for_ar1=two_boxes_for_ar1, limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors7')(boxes7)
+    anchors4 = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios[0],
+                           two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[0], this_offsets=offsets[0],
+                           limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors4')(boxes4)
+    anchors5 = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios[1],
+                           two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[1], this_offsets=offsets[1],
+                           limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors5')(boxes5)
+    anchors6 = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios[2],
+                           two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[2], this_offsets=offsets[2],
+                           limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors6')(boxes6)
+    anchors7 = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios[3],
+                           two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[3], this_offsets=offsets[3],
+                           limit_boxes=limit_boxes, variances=variances, coords=coords, normalize_coords=normalize_coords, name='anchors7')(boxes7)
 
     # Reshape the class predictions, yielding 3D tensors of shape `(batch, height * width * n_boxes, n_classes)`
     # We want the classes isolated in the last axis to perform softmax on them
@@ -304,11 +357,13 @@ def build_model(image_size,
 
     model = Model(inputs=x, outputs=predictions)
 
-    # Get the spatial dimensions (height, width) of the convolutional predictor layers, we need them to generate the default boxes
-    # The spatial dimensions are the same for the `classes` and `boxes` predictors
-    predictor_sizes = np.array([classes4._keras_shape[1:3],
-                                classes5._keras_shape[1:3],
-                                classes6._keras_shape[1:3],
-                                classes7._keras_shape[1:3]])
-
-    return model, predictor_sizes
+    if return_predictor_sizes:
+        # Get the spatial dimensions (height, width) of the convolutional predictor layers, we need them to generate the default boxes
+        # The spatial dimensions are the same for the `classes` and `boxes` predictors
+        predictor_sizes = np.array([classes4._keras_shape[1:3],
+                                    classes5._keras_shape[1:3],
+                                    classes6._keras_shape[1:3],
+                                    classes7._keras_shape[1:3]])
+        return model, predictor_sizes
+    else:
+        return model
