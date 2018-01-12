@@ -491,7 +491,7 @@ class SSDBoxEncoder:
         Arguments:
             img_height (int): The height of the input images.
             img_width (int): The width of the input images.
-            n_classes (int): The number of classes including the background class.
+            n_classes (int): The number of positive classes, e.g. 20 for Pascal VOC, 80 for MS COCO.
             predictor_sizes (list): A list of int-tuples of the format `(height, width)`
                 containing the output heights and widths of the convolutional predictor layers.
             min_scale (float, optional): The smallest scaling factor for the size of the anchor boxes as a fraction
@@ -613,7 +613,7 @@ class SSDBoxEncoder:
 
         self.img_height = img_height
         self.img_width = img_width
-        self.n_classes = n_classes
+        self.n_classes = n_classes + 1
         self.predictor_sizes = predictor_sizes
         self.min_scale = min_scale
         self.max_scale = max_scale

@@ -68,9 +68,7 @@ def ssd_300(image_size,
 
     Arguments:
         image_size (tuple): The input image size in the format `(height, width, channels)`.
-        n_classes (int): The number of categories for classification including
-            the background class (i.e. the number of positive classes +1 for
-            the background calss).
+        n_classes (int): The number of positive classes, e.g. 20 for Pascal VOC, 80 for MS COCO.
         min_scale (float, optional): The smallest scaling factor for the size of the anchor boxes as a fraction
             of the shorter side of the input images.
         max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
@@ -160,6 +158,8 @@ def ssd_300(image_size,
     '''
 
     n_predictor_layers = 6 # The number of predictor conv layers in the network is 6 for the original SSD300
+
+    n_classes += 1 # Account for the background class.
 
     # Get a few exceptions out of the way first
     if aspect_ratios_global is None and aspect_ratios_per_layer is None:
