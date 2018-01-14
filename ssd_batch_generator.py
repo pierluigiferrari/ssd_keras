@@ -19,6 +19,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
+from collections import defaultdict
+import warnings
 import numpy as np
 import cv2
 import random
@@ -27,8 +29,18 @@ from copy import deepcopy
 from PIL import Image
 import csv
 import os
-from bs4 import BeautifulSoup
-import pickle
+try:
+    import json
+except ImportError:
+    warnings.warn("'json' module is missing. The JSON-parser will be unavailable.")
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    warnings.warn("'BeautifulSoup' module is missing. The XML-parser will be unavailable.")
+try:
+    import pickle
+except ImportError:
+    warnings.warn("'pickle' module is missing. You won't be able to save parsed file lists and annotations as pickled files.")
 
 # Image processing functions used by the generator to perform the following image manipulations:
 # - Translation
@@ -142,8 +154,9 @@ class BatchGenerator:
                  box_output_format=['class_id', 'xmin', 'ymin', 'xmax', 'ymax'],
                  filenames=None,
                  filenames_type='text',
-                 images_path=None,
-                 labels=None):
+                 images_dir=None,
+                 labels=None,
+                 image_ids=None):
         '''
         This class provides parser methods that you call separately after calling the constructor to assemble
         the list of image filenames and the list of labels for the dataset from CSV or XML files. If you already
@@ -171,36 +184,26 @@ class BatchGenerator:
                 (2) a text file. Each line of the text file contains the file name (basename of the file only,
                 not the full directory path) to one image and nothing else. In this case the `filenames_type`
                 argument must be set to `text` and you must pass the path to the directory that contains the
-                images in `images_path`.
+                images in `images_dir`.
             filenames_type (string, optional): In case a string is passed for `filenames`, this indicates what
                 type of file `filenames` is. It can be either 'pickle' for a pickled file or 'text' for a
                 plain text file. Defaults to 'text'.
-            images_path (string, optional): In case a text file is passed for `filenames`, the full paths to
-                the images will be composed from `images_path` and the names in the text file, i.e. this
+            images_dir (string, optional): In case a text file is passed for `filenames`, the full paths to
+                the images will be composed from `images_dir` and the names in the text file, i.e. this
                 should be the directory that contains the images to which the text file refers.
                 If `filenames_type` is not 'text', then this argument is irrelevant. Defaults to `None`.
             labels (string or list, optional): `None` or either a Python list/tuple or a string representing
                 the path to a pickled file containing a list/tuple. The list/tuple must contain Numpy arrays
                 that represent the labels of the dataset.
+            image_ids (string or list, optional): `None` or either a Python list/tuple or a string representing
+                the path to a pickled file containing a list/tuple. The list/tuple must contain the image
+                IDs of the images in the dataset.
         '''
-        # These are the variables we always need
-        self.include_classes = None
         self.box_output_format = box_output_format
 
-        # These are the variables that we only need if we want to use parse_csv()
-        self.images_path = None
-        self.labels_path = None
-        self.input_format = None
-
-        # These are the variables that we only need if we want to use parse_xml()
-        self.images_paths = None
-        self.annotations_path = None
-        self.image_set_path = None
-        self.image_set = None
-        self.classes = None
-
-        # The two variables below store the output from the parsers. This is the input for the generate() method.
-        # `self.filenames` is a list containing all file names of the image samples (full paths). Note that it does not contain the actual image files themselves.
+        # The variables `self.filenames`, `self.labels`, and `self.image_ids` below store the output from the parsers.
+        # This is the input for the `generate()`` method. `self.filenames` is a list containing all file names of the image samples (full paths).
+        # Note that it does not contain the actual image files themselves.
         # `self.labels` is a list containing one 2D Numpy array per image. For an image with `k` ground truth bounding boxes,
         # the respective 2D array has `k` rows, each row containing `(xmin, xmax, ymin, ymax, class_id)` for the respective bounding box.
         # Setting `self.labels` is optional, the generator also works if `self.labels` remains `None`.
@@ -213,13 +216,13 @@ class BatchGenerator:
                     if filenames_type == 'pickle':
                         self.filenames = pickle.load(f)
                     elif filenames_type == 'text':
-                        self.filenames = [os.path.join(images_path, line.strip()) for line in f]
+                        self.filenames = [os.path.join(images_dir, line.strip()) for line in f]
                     else:
                         raise ValueError("`filenames_type` can be either 'text' or 'pickle'.")
             else:
                 raise ValueError("`filenames` must be either a Python list/tuple or a string representing a filepath (to a pickled or text file). The value you passed is neither of the two.")
         else:
-            self.filenames = [] # All unique image filenames will go here.
+            self.filenames = []
 
         if not labels is None:
             if isinstance(labels, str):
@@ -230,19 +233,30 @@ class BatchGenerator:
             else:
                 raise ValueError("`labels` must be either a Python list/tuple or a string representing the path to a pickled file containing a list/tuple. The value you passed is neither of the two.")
         else:
-            self.labels = None # This will be either `None` or a list of 2D Numpy arrays with all the ground truth boxes for a given image.
+            self.labels = None
+
+        if not image_ids is None:
+            if isinstance(image_ids, str):
+                with open(image_ids, 'rb') as f:
+                    self.image_ids = pickle.load(f)
+            elif isinstance(image_ids, (list, tuple)):
+                self.image_ids = image_ids
+            else:
+                raise ValueError("`image_ids` must be either a Python list/tuple or a string representing the path to a pickled file containing a list/tuple. The value you passed is neither of the two.")
+        else:
+            self.image_ids = None
 
     def parse_csv(self,
-                  images_path=None,
-                  labels_path=None,
-                  input_format=None,
+                  images_dir,
+                  labels_filename,
+                  input_format,
                   include_classes='all',
                   random_sample=False,
                   ret=False):
         '''
         Arguments:
-            images_path (str): The path to the directory that contains the images..
-            labels_path (str, optional): The filepath to a CSV file that contains one ground truth bounding box per line
+            images_dir (str): The path to the directory that contains the images.
+            labels_filename (str): The filepath to a CSV file that contains one ground truth bounding box per line
                 and each line contains the following six items: image file name, class ID, xmin, xmax, ymin, ymax.
                 The six items do not have to be in a specific order, but they must be the first six columns of
                 each line. The order of these items in the CSV file must be specified in `input_format`.
@@ -251,7 +265,7 @@ class BatchGenerator:
                 `ymin` and `ymax` are the top-most and bottom-most absolute vertical coordinates of the box.
                 The image name is expected to be just the name of the image file without the directory path
                 at which the image is located. Defaults to `None`.
-            input_format (list, optional): A list of six strings representing the order of the six items
+            input_format (list): A list of six strings representing the order of the six items
                 image file name, class ID, xmin, xmax, ymin, ymax in the input CSV file. The expected strings
                 are 'image_name', 'xmin', 'xmax', 'ymin', 'ymax', 'class_id'. Defaults to `None`.
             include_classes (list, optional): Either 'all' or a list of integers containing the class IDs that
@@ -271,15 +285,15 @@ class BatchGenerator:
             None by default, optionally the image filenames and labels.
         '''
 
-        # If we get arguments in this call, set them
-        if not labels_path is None: self.labels_path = labels_path
-        if not input_format is None: self.input_format = input_format
-        if not include_classes is None: self.include_classes = include_classes
-        if not images_path is None: self.images_path = images_path
+        # Set class members.
+        self.images_dir = images_dir
+        self.labels_filename = labels_filename
+        self.input_format = input_format
+        self.include_classes = include_classes
 
-        # Before we begin, make sure that we have a labels_path and an input_format
-        if self.labels_path is None or self.input_format is None:
-            raise ValueError("`labels_path` and/or `input_format` have not been set yet. You need to pass them as arguments.")
+        # Before we begin, make sure that we have a labels_filename and an input_format
+        if self.labels_filename is None or self.input_format is None:
+            raise ValueError("`labels_filename` and/or `input_format` have not been set yet. You need to pass them as arguments.")
 
         # Erase data that might have been parsed before
         self.filenames = []
@@ -289,7 +303,7 @@ class BatchGenerator:
 
         data = []
 
-        with open(self.labels_path, newline='') as csvfile:
+        with open(self.labels_filename, newline='') as csvfile:
             csvread = csv.reader(csvfile, delimiter=',')
             next(csvread) # Skip the header row.
             for row in csvread: # For every line (i.e for every bounding box) in the CSV file...
@@ -317,19 +331,19 @@ class BatchGenerator:
                         p = np.random.uniform(0,1)
                         if p >= (1-random_sample):
                             self.labels.append(np.stack(current_labels, axis=0))
-                            self.filenames.append(os.path.join(self.images_path, current_file))
+                            self.filenames.append(os.path.join(self.images_dir, current_file))
                     else:
                         self.labels.append(np.stack(current_labels, axis=0))
-                        self.filenames.append(os.path.join(self.images_path, current_file))
+                        self.filenames.append(os.path.join(self.images_dir, current_file))
             else: # If this box belongs to a new image file
                 if random_sample: # In case we're not using the full dataset, but a random sample of it.
                     p = np.random.uniform(0,1)
                     if p >= (1-random_sample):
                         self.labels.append(np.stack(current_labels, axis=0))
-                        self.filenames.append(os.path.join(self.images_path, current_file))
+                        self.filenames.append(os.path.join(self.images_dir, current_file))
                 else:
                     self.labels.append(np.stack(current_labels, axis=0))
-                    self.filenames.append(os.path.join(self.images_path, current_file))
+                    self.filenames.append(os.path.join(self.images_dir, current_file))
                 current_labels = [] # Reset the labels list because this is a new file.
                 current_file = box[0]
                 current_labels.append(box[1:])
@@ -338,18 +352,18 @@ class BatchGenerator:
                         p = np.random.uniform(0,1)
                         if p >= (1-random_sample):
                             self.labels.append(np.stack(current_labels, axis=0))
-                            self.filenames.append(os.path.join(self.images_path, current_file))
+                            self.filenames.append(os.path.join(self.images_dir, current_file))
                     else:
                         self.labels.append(np.stack(current_labels, axis=0))
-                        self.filenames.append(os.path.join(self.images_path, current_file))
+                        self.filenames.append(os.path.join(self.images_dir, current_file))
 
         if ret: # In case we want to return these
             return self.filenames, self.labels
 
     def parse_xml(self,
-                  images_paths=None,
-                  annotations_paths=None,
-                  image_set_paths=None,
+                  images_dirs,
+                  annotations_dirs,
+                  image_set_filenames,
                   classes=['background',
                            'aeroplane', 'bicycle', 'bird', 'boat',
                            'bottle', 'bus', 'car', 'cat',
@@ -365,12 +379,18 @@ class BatchGenerator:
         the code, but in its current form it expects the data format and XML tags of the Pascal VOC datasets.
 
         Arguments:
-            images_paths (str, optional):
-            annotations_paths (str, optional): The path to the directory that contains the annotation XML files for
-                the images. The directory must contain one XML file per image and name of the XML file must be the
-                image ID. The content of the XML files must be in the Pascal VOC format. Defaults to `None`.
-            image_set_paths (str, optional): The path to the text file with the image
-                set to be loaded. This text file simply contains one image ID per line and nothing else. Defaults to `None`.
+            images_dirs (list): A list of strings, where each string is the path of a directory that
+                contains images that are to be part of the dataset. This allows you to aggregate multiple datasets
+                into one (e.g. one directory that contains the images for Pascal VOC 2007, another that contains
+                the images for Pascal VOC 2012, etc.).
+            annotations_dirs (list): A list of strings, where each string is the path of a directory that
+                contains the annotations (XML files) that belong to the images in the respective image directories given.
+                The directories must contain one XML file per image and the name of an XML file must be the image ID
+                of the image it belongs to. The content of the XML files must be in the Pascal VOC format.
+            image_set_filenames (list): A list of strings, where each string is the path of the text file with the image
+                set to be loaded. Must be one file per image directory given. These text files define what images in the
+                respective image directories are to be part of the dataset and simply contains one image ID per line
+                and nothing else.
             classes (list, optional): A list containing the names of the object classes as found in the
                 `name` XML tags. Must include the class `background` as the first list item. The order of this list
                 defines the class IDs. Defaults to the list of Pascal VOC classes in alphabetical order.
@@ -378,40 +398,39 @@ class BatchGenerator:
                 are to be included in the dataset. Defaults to 'all', in which case all boxes will be included
                 in the dataset.
             exclude_truncated (bool, optional): If `True`, excludes boxes that are labeled as 'truncated'.
-                Defaults to `False`.
             exclude_difficult (bool, optional): If `True`, excludes boxes that are labeled as 'difficult'.
-                Defaults to `False`.
             ret (bool, optional): Whether or not the image filenames and labels are to be returned.
-                Defaults to `False`.
 
         Returns:
             None by default, optionally the image filenames and labels.
         '''
-
-        if not images_paths is None: self.images_paths = images_paths
-        if not annotations_paths is None: self.annotations_paths = annotations_paths
-        if not image_set_paths is None: self.image_set_paths = image_set_paths
-        if not classes is None: self.classes = classes
-        if not include_classes is None: self.include_classes = include_classes
+        # Set class members.
+        self.images_dirs = images_dirs
+        self.annotations_dirs = annotations_dirs
+        self.image_set_filenames = image_set_filenames
+        self.classes = classes
+        self.include_classes = include_classes
 
         # Erase data that might have been parsed before
         self.filenames = []
+        self.image_ids = []
         self.labels = []
 
-        for image_path, image_set_path, annotations_path in zip(self.images_paths, self.image_set_paths, self.annotations_paths):
+        for images_dir, image_set_filename, annotations_dir in zip(self.images_dirs, self.image_set_filenames, self.annotations_dirs):
             # Parse the image set that so that we know all the IDs of all the images to be included in the dataset
-            with open(image_set_path) as f:
+            with open(image_set_filename) as f:
                 image_ids = [line.strip() for line in f]
+                self.image_ids += image_ids
 
             # Parse the labels for each image ID from its respective XML file
             for image_id in image_ids:
                 # Open the XML file for this image
-                with open(os.path.join(annotations_path, image_id+'.xml')) as f:
+                with open(os.path.join(annotations_dir, image_id+'.xml')) as f:
                     soup = BeautifulSoup(f, 'xml')
 
                 folder = soup.folder.text # In case we want to return the folder in addition to the image file name. Relevant for determining which dataset an image belongs to.
                 filename = soup.filename.text
-                self.filenames.append(os.path.join(image_path, filename))
+                self.filenames.append(os.path.join(images_dir, filename))
 
                 boxes = [] # We'll store all boxes for this image here
                 objects = soup.find_all('object') # Get a list of all objects in this image
@@ -451,9 +470,120 @@ class BatchGenerator:
                 self.labels.append(boxes)
 
         if ret:
-            return self.filenames, self.labels
+            return self.filenames, self.labels, self.image_ids
 
-    def save_filenames_and_labels(self, filenames_path='filenames.pkl', labels_path='labels.pkl'):
+    def parse_json(self,
+                   images_dirs,
+                   annotations_filenames,
+                   ground_truth_available=False,
+                   include_classes = 'all',
+                   ret=False):
+        '''
+        This is an JSON parser for the MS COCO datasets. It might be applicable to other datasets with minor changes to
+        the code, but in its current form it expects the JSON format of the MS COCO datasets.
+
+        Arguments:
+            images_dirs (list, optional): A list of strings, where each string is the path of a directory that
+                contains images that are to be part of the dataset. This allows you to aggregate multiple datasets
+                into one (e.g. one directory that contains the images for MS COCO Train 2014, another one for MS COCO
+                Val 2014, another one for MS COCO Train 2017 etc.).
+            annotations_filenames (list): A list of strings, where each string is the path of the JSON file
+                that contains the annotations for the images in the respective image directories given, i.e. one
+                JSON file per image directory that contains the annotations for all images in that directory.
+                The content of the JSON files must be in MS COCO object detection format. Note that these annotations
+                files do not necessarily need to contain ground truth information. MS COCO also provides annotations
+                files without ground truth information for the test datasets, called `image_info_[...].json`.
+            ground_truth_available (bool, optional): Set `True` if the annotations files contain ground truth information.
+            include_classes (list, optional): Either 'all' or a list of integers containing the class IDs that
+                are to be included in the dataset. Defaults to 'all', in which case all boxes will be included
+                in the dataset.
+            ret (bool, optional): Whether or not the image filenames and labels are to be returned.
+
+        Returns:
+            None by default, optionally the image filenames and labels.
+        '''
+        self.images_dirs = images_dirs
+        self.annotations_filenames = annotations_filenames
+        self.include_classes = include_classes
+        # Erase data that might have been parsed before.
+        self.filenames = []
+        self.image_ids = []
+        self.labels = []
+        if not ground_truth_available:
+            self.labels = None
+
+        # Build the dictionaries that map between class names and class IDs.
+        with open(annotations_filenames[0], 'r') as f:
+            annotations = json.load(f)
+        # Unfortunately the 80 MS COCO class IDs are not all consecutive. They go
+        # from 1 to 90 and some numbers are skipped. Since the IDs that we feed
+        # into a neural network must be consecutive, we'll save both the original
+        # (non-consecutive) IDs as well as transformed maps.
+        # We'll save both the map between the original
+        self.cats_to_names = {} # The map between class names (values) and their original IDs (keys)
+        self.classes_to_names = [] # A list of the class names with their indices representing the transformed IDs
+        self.classes_to_names.append('background') # Need to add the background class first so that the indexing is right.
+        self.cats_to_classes = {} # A dictionary that maps between the original (keys) and the transformed IDs (values)
+        self.classes_to_cats = {} # A dictionary that maps between the transformed (keys) and the original IDs (values)
+        for i, cat in enumerate(annotations['categories']):
+            self.cats_to_names[cat['id']] = cat['name']
+            self.classes_to_names.append(cat['name'])
+            self.cats_to_classes[cat['id']] = i + 1
+            self.classes_to_cats[i + 1] = cat['id']
+
+        # Iterate over all datasets.
+        for images_dir, annotations_filename in zip(self.images_dirs, self.annotations_filenames):
+            # Load the JSON file.
+            with open(annotations_filename, 'r') as f:
+                annotations = json.load(f)
+
+            if ground_truth_available:
+                # Create the annotations map, a dictionary whose keys are the image IDs
+                # and whose values are the annotations for the respective image ID.
+                image_ids_to_annotations = defaultdict(list)
+                for annotation in annotations['annotations']:
+                    image_ids_to_annotations[annotation['image_id']].append(annotation)
+
+            # Iterate over all images in the dataset.
+            for img in annotations['images']:
+
+                self.filenames.append(os.path.join(images_dir, img['file_name']))
+                self.image_ids.append(img['id'])
+
+                if ground_truth_available:
+                    # Get all annotations for this image.
+                    annotations = image_ids_to_annotations[img['id']]
+                    boxes = []
+                    for annotation in annotations:
+                        cat_id = annotation['category_id']
+                        # Check if this class is supposed to be included in the dataset.
+                        if (not self.include_classes == 'all') and (not cat_id in self.include_classes): continue
+                        # Transform the original class ID to fit in the sequence of consecutive IDs.
+                        class_id = self.cats_to_classes[cat_id]
+                        xmin = annotation['bbox'][0]
+                        ymin = annotation['bbox'][1]
+                        width = annotation['bbox'][2]
+                        height = annotation['bbox'][3]
+                        # Compute `xmax` and `ymax`.
+                        xmax = xmin + width
+                        ymax = ymin + height
+                        item_dict = {'image_name': img['file_name'],
+                                     'image_id': img['id'],
+                                     'class_id': class_id,
+                                     'xmin': xmin,
+                                     'ymin': ymin,
+                                     'xmax': xmax,
+                                     'ymax': ymax}
+                        box = []
+                        for item in self.box_output_format:
+                            box.append(item_dict[item])
+                        boxes.append(box)
+                    self.labels.append(boxes)
+
+        if ret:
+            return self.filenames, self.labels, self.image_ids
+
+    def save_filenames_and_labels(self, filenames_path='filenames.pkl', labels_path=None, image_ids_path=None):
         '''
         Writes the current `filenames` and `labels` lists to the specified files.
         This is particularly useful for large datasets with annotations that are
@@ -464,11 +594,16 @@ class BatchGenerator:
         Arguments:
             filenames_path (str): The path under which to save the filenames pickle.
             labels_path (str): The path under which to save the labels pickle.
+            image_ids_path (str, optional): The path under which to save the image IDs pickle.
         '''
         with open(filenames_path, 'wb') as f:
             pickle.dump(self.filenames, f)
-        with open(labels_path, 'wb') as f:
-            pickle.dump(self.labels, f)
+        if not labels_path is None:
+            with open(labels_path, 'wb') as f:
+                pickle.dump(self.labels, f)
+        if not image_ids_path is None:
+            with open(image_ids_path, 'wb') as f:
+                pickle.dump(self.image_ids, f)
 
     def generate(self,
                  batch_size=32,
@@ -491,6 +626,8 @@ class BatchGenerator:
                  subtract_mean=None,
                  divide_by_stddev=None,
                  swap_channels=False,
+                 keep_images_without_gt=False,
+                 convert_to_3_channels=True,
                  diagnostics=False):
         '''
         Generate batches of samples and corresponding labels indefinitely from
@@ -598,20 +735,38 @@ class BatchGenerator:
             swap_channels (bool, optional): If `True` the color channel order of the input images will be reversed,
                 i.e. if the input color channel order is RGB, the color channels will be swapped to BGR.
                 Defaults to `False`.
-            diagnostics (bool, optional): If `True`, yields three additional output items:
-                1) A list of the image file names in the batch.
-                2) An array with the original, unaltered images.
-                3) A list with the original, unaltered labels.
-                This can be useful for diagnostic purposes. Defaults to `False`. Only works if `train = True`.
+            keep_images_without_gt (bool, optional): If `True`, images for which there are no ground truth boxes
+                (either because there weren't any to begin with or because random cropping cropped out a patch that
+                doesn't contain any objects) will be kept in the batch. If `False`, such images will be removed
+                from the batch.
+            convert_to_3_channels (bool, optional): If `True`, single-channel images will be converted
+                to 3-channel images.
+            diagnostics (bool, optional): If `True`, yields some or all of the following additional outputs:
+                * An tensor containing the matched anchor boxes for the batch. (only if `train == True`)
+                * The labels for the batch before they were encoded (only if `train == True`)
+                * A list of the image file names in the batch.
+                * A list of the image IDs in the batch.
+                * A list of parameters for inverse coordinate transformation. These can be used to transform
+                  bounding box coordinates for a transformed image back to the original image dimensions.
+                  This only works for resizing and for all random cropping options. To revert box coordinates
+                  to the original image dimensions, for each coordinate, first multiply by the second value,
+                  then add the first. Values are provided for each batch item separately.
+                * An array with the original, unaltered images in the batch.
+                * A list with the original, unaltered labels in the batch. (if labels are available)
+                This can be useful for debugging or for evaluation (in which case you might need the image IDs).
 
         Yields:
             The next batch as either of
-            (1) a 3-tuple containing a Numpy array that contains the images, a Python list
-            that contains the corresponding labels for each image as 2D Numpy arrays, and another Python list
-            that contains the file names of the images in the batch. This is the case if `train==False`
+            (1) a 5-tuple containing a Numpy array that contains the images, a Python list
+            that contains the corresponding labels for each image as 2D Numpy arrays, another Python list
+            that contains the file names of the images in the batch, another Python list that contains
+            the image IDs of the images in the batch if there are any, and an array with inverse coordinate
+            transformation parameters (see `diagnostics` argument). This is the case if `train==False`
             and labels are available.
-            (2) a 2-tuple containing a Numpy array that contains the images and a Python list
-            that contains the file names of the images in the batch. This is the case if `train==False`
+            (2) a 4-tuple containing a Numpy array that contains the images, a Python list
+            that contains the file names of the images in the batch, another Python list that contains
+            the image IDs of the images in the batch if there are any, and an array with inverse coordinate
+            transformation parameters (see `diagnostics` argument). This is the case if `train==False`
             and labels are not available.
             (3) a 2-tuple containing a Numpy array that contains the images and another Numpy array with the
             labels in the format that `SSDBoxEncoder.encode_y()` returns, namely an array with shape
@@ -623,17 +778,22 @@ class BatchGenerator:
         '''
 
         if shuffle: # Shuffle the data before we begin
-            if self.labels is None:
+            if (self.labels is None) and (self.image_ids is None):
                 self.filenames = sklearn.utils.shuffle(self.filenames)
-            else:
+            elif (self.labels is None):
+                self.filenames, self.image_ids = sklearn.utils.shuffle(self.filenames, self.image_ids)
+            elif (self.image_ids is None):
                 self.filenames, self.labels = sklearn.utils.shuffle(self.filenames, self.labels)
+            else:
+                self.filenames, self.labels, self.image_ids = sklearn.utils.shuffle(self.filenames, self.labels, self.image_ids)
         current = 0
 
         # Find out the indices of the box coordinates in the label data
         xmin = self.box_output_format.index('xmin')
-        xmax = self.box_output_format.index('xmax')
         ymin = self.box_output_format.index('ymin')
+        xmax = self.box_output_format.index('xmax')
         ymax = self.box_output_format.index('ymax')
+        ios = np.amin([xmin, ymin, xmax, ymax]) # Index offset, we need this for the inverse coordinate transform indices.
 
         while True:
 
@@ -641,39 +801,68 @@ class BatchGenerator:
 
             if current >= len(self.filenames):
                 current = 0
-                if shuffle: # Shuffle the data after each complete pass
-                    if self.labels is None:
+                if shuffle:
+                    # Shuffle the data after each complete pass
+                    if (self.labels is None) and (self.image_ids is None):
                         self.filenames = sklearn.utils.shuffle(self.filenames)
-                    else:
+                    elif (self.labels is None):
+                        self.filenames, self.image_ids = sklearn.utils.shuffle(self.filenames, self.image_ids)
+                    elif (self.image_ids is None):
                         self.filenames, self.labels = sklearn.utils.shuffle(self.filenames, self.labels)
+                    else:
+                        self.filenames, self.labels, self.image_ids = sklearn.utils.shuffle(self.filenames, self.labels, self.image_ids)
 
-            for filename in self.filenames[current:current+batch_size]:
+            # Get the image filepaths for this batch.
+            batch_filenames = self.filenames[current:current+batch_size]
+
+            # Load the images for this batch.
+            for filename in batch_filenames:
                 with Image.open(filename) as img:
                     batch_X.append(np.array(img))
 
-            if not self.labels is None:
+            # Get the labels for this batch (if there are any).
+            if not (self.labels is None):
                 batch_y = deepcopy(self.labels[current:current+batch_size])
             else:
                 batch_y = None
 
-            this_filenames = self.filenames[current:current+batch_size] # The filenames of the files in the current batch
+            # Get the image IDs for this batch (if there are any).
+            if not self.image_ids is None:
+                batch_image_ids = self.image_ids[current:current+batch_size]
+            else:
+                batch_image_ids = None
+
+            # We'll create a list here that stores for each batch image the inverse transformation parameters for any
+            # image transformations so that it will be possible to convert any predicted bounding box coordinates
+            # on the converted image back to what those coordinates should be in the original image. This is relevant
+            # for evaluation.
+            # To revert box coordinates to the original image dimensions, for each coordinate, first multiply by the second value, then add the first.
+            batch_inverse_coord_transform = np.array([[[0, 1]] * 4] * batch_size, dtype=np.float) # Array of shape `(batch_size, 4, 2)`, where the last axis contains an additive and a multiplicative scalar transformation constant.
 
             if diagnostics:
-                original_images = np.copy(batch_X) # The original, unaltered images
-                original_labels = deepcopy(batch_y) # The original, unaltered labels
+                batch_original_images = deepcopy(batch_X) # The original, unaltered images
+                batch_original_labels = deepcopy(batch_y) # The original, unaltered labels
 
             current += batch_size
 
-            # At this point we're done producing the batch. Now perform some
-            # optional image transformations:
-
-            batch_items_to_remove = [] # In case we need to remove any images from the batch because of failed random cropping, store their indices in this list
+            batch_items_to_remove = [] # In case we need to remove any images from the batch because of failed random cropping, store their indices in this list.
 
             for i in range(len(batch_X)):
 
-                img_height, img_width, ch = batch_X[i].shape
+                img_height, img_width = batch_X[i].shape[0], batch_X[i].shape[1]
+
                 if not batch_y is None:
-                    batch_y[i] = np.array(batch_y[i]) # Convert labels into an array (in case it isn't one already), otherwise the indexing below breaks
+                    # If this image has no ground truth boxes, maybe we don't want to keep it in the batch.
+                    if (len(batch_y[i]) == 0) and not keep_images_without_gt:
+                        batch_items_to_remove.append(i)
+                    # Convert labels into an array (in case it isn't one already), otherwise the indexing below breaks.
+                    batch_y[i] = np.array(batch_y[i])
+
+                # From here on, perform some optional image transformations.
+
+                if (batch_X[i].ndim == 2) and convert_to_3_channels:
+                    # Convert the 1-channel image into a 3-channel image.
+                    batch_X[i] = np.stack([batch_X[i]] * 3, axis=-1)
 
                 if equalize:
                     batch_X[i] = histogram_eq(batch_X[i])
@@ -691,7 +880,7 @@ class BatchGenerator:
                     p = np.random.uniform(0,1)
                     if p >= (1-flip):
                         batch_X[i] = _flip(batch_X[i])
-                        if not batch_y is None:
+                        if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                             batch_y[i][:,[xmin,xmax]] = img_width - batch_y[i][:,[xmax,xmin]] # xmin and xmax are swapped when mirrored
 
                 if translate:
@@ -699,7 +888,7 @@ class BatchGenerator:
                     if p >= (1-translate[2]):
                         # Translate the image and return the shift values so that we can adjust the labels
                         batch_X[i], xshift, yshift = _translate(batch_X[i], translate[0], translate[1])
-                        if not batch_y is None:
+                        if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                             # Adjust the box coordinates.
                             batch_y[i][:,[xmin,xmax]] += xshift
                             batch_y[i][:,[ymin,ymax]] += yshift
@@ -728,7 +917,7 @@ class BatchGenerator:
                     if p >= (1-scale[2]):
                         # Rescale the image and return the transformation matrix M so we can use it to adjust the box coordinates
                         batch_X[i], M, scale_factor = _scale(batch_X[i], scale[0], scale[1])
-                        if not batch_y is None:
+                        if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                             # Adjust the box coordinates.
                             # Transform two opposite corner points of the rectangular boxes using the transformation matrix `M`
                             toplefts = np.array([batch_y[i][:,xmin], batch_y[i][:,ymin], np.ones(batch_y[i].shape[0])])
@@ -810,11 +999,14 @@ class BatchGenerator:
                         if y_range >= 0 and x_range >= 0: # If the patch to be cropped out is smaller than the original image in both dimenstions, we just perform a regular crop
                             # Crop the image
                             patch_X = np.copy(batch_X[i][crop_ymin:crop_ymin+random_crop[0], crop_xmin:crop_xmin+random_crop[1]])
-                            if not batch_y is None:
+                            if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                                 # Translate the box coordinates into the new coordinate system: Cropping shifts the origin by `(crop_ymin, crop_xmin)`
                                 patch_y = np.copy(batch_y[i])
                                 patch_y[:,[ymin,ymax]] -= crop_ymin
                                 patch_y[:,[xmin,xmax]] -= crop_xmin
+                                # Add the parameters to reverse this transformation.
+                                patch_y_inverse_y = crop_ymin
+                                patch_y_inverse_x = crop_xmin
                                 # Limit the box coordinates to lie within the new image boundaries
                                 if limit_boxes:
                                     # Both the x- and y-coordinates might need to be limited
@@ -833,11 +1025,14 @@ class BatchGenerator:
                             canvas = np.zeros((random_crop[0], random_crop[1], patch_X.shape[2]), dtype=np.uint8) # ...generate a blank background image to place the patch onto,...
                             canvas[:, crop_xmin:crop_xmin+img_width] = patch_X # ...and place the patch onto the canvas at the random `crop_xmin` position computed above.
                             patch_X = canvas
-                            if not batch_y is None:
+                            if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                                 # Translate the box coordinates into the new coordinate system: In this case, the origin is shifted by `(crop_ymin, -crop_xmin)`
                                 patch_y = np.copy(batch_y[i])
                                 patch_y[:,[ymin,ymax]] -= crop_ymin
                                 patch_y[:,[xmin,xmax]] += crop_xmin
+                                # Add the parameters to reverse this transformation.
+                                patch_y_inverse_y = crop_ymin
+                                patch_y_inverse_x = -crop_xmin
                                 # Limit the box coordinates to lie within the new image boundaries
                                 if limit_boxes:
                                     # Only the y-coordinates might need to be limited
@@ -852,11 +1047,14 @@ class BatchGenerator:
                             canvas = np.zeros((random_crop[0], random_crop[1], patch_X.shape[2]), dtype=np.uint8) # ...generate a blank background image to place the patch onto,...
                             canvas[crop_ymin:crop_ymin+img_height, :] = patch_X # ...and place the patch onto the canvas at the random `crop_ymin` position computed above.
                             patch_X = canvas
-                            if not batch_y is None:
+                            if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                                 # Translate the box coordinates into the new coordinate system: In this case, the origin is shifted by `(-crop_ymin, crop_xmin)`
                                 patch_y = np.copy(batch_y[i])
                                 patch_y[:,[ymin,ymax]] += crop_ymin
                                 patch_y[:,[xmin,xmax]] -= crop_xmin
+                                # Add the parameters to reverse this transformation.
+                                patch_y_inverse_y = -crop_ymin
+                                patch_y_inverse_x = crop_xmin
                                 # Limit the box coordinates to lie within the new image boundaries
                                 if limit_boxes:
                                     # Only the x-coordinates might need to be limited
@@ -870,13 +1068,16 @@ class BatchGenerator:
                             canvas = np.zeros((random_crop[0], random_crop[1], patch_X.shape[2]), dtype=np.uint8) # ...generate a blank background image to place the patch onto,...
                             canvas[crop_ymin:crop_ymin+img_height, crop_xmin:crop_xmin+img_width] = patch_X # ...and place the patch onto the canvas at the random `(crop_ymin, crop_xmin)` position computed above.
                             patch_X = canvas
-                            if not batch_y is None:
+                            if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                                 # Translate the box coordinates into the new coordinate system: In this case, the origin is shifted by `(-crop_ymin, -crop_xmin)`
                                 patch_y = np.copy(batch_y[i])
                                 patch_y[:,[ymin,ymax]] += crop_ymin
                                 patch_y[:,[xmin,xmax]] += crop_xmin
+                                # Add the parameters to reverse this transformation.
+                                patch_y_inverse_y = -crop_ymin
+                                patch_y_inverse_x = -crop_xmin
                                 # Note that no limiting is necessary in this case
-                        if not batch_y is None:
+                        if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                             # Some objects might have gotten pushed so far outside the image boundaries in the transformation
                             # process that they don't serve as useful training examples anymore, because too little of them is
                             # visible. We'll remove all boxes that we had to limit so much that their area is less than
@@ -891,11 +1092,15 @@ class BatchGenerator:
                             if random_crop[2] == 0: # If `min_1_object == 0`, break out of the while loop after the first loop because we are fine with whatever crop we got
                                 batch_X[i] = patch_X # The cropped patch becomes our new batch item
                                 batch_y[i] = patch_y # The adjusted boxes become our new labels for this batch item
+                                batch_inverse_coord_transform[i,[ymin-ios,ymax-ios],0] += patch_y_inverse_y
+                                batch_inverse_coord_transform[i,[xmin-ios,xmax-ios],0] += patch_y_inverse_x
                                 break
                             elif len(patch_y) > 0: # If we have at least one object left, this crop is valid and we can stop
                                 min_1_object_fulfilled = True
                                 batch_X[i] = patch_X # The cropped patch becomes our new batch item
                                 batch_y[i] = patch_y # The adjusted boxes become our new labels for this batch item
+                                batch_inverse_coord_transform[i,[ymin-ios,ymax-ios],0] += patch_y_inverse_y
+                                batch_inverse_coord_transform[i,[xmin-ios,xmax-ios],0] += patch_y_inverse_x
                             elif (trial_counter >= random_crop[3]) and (not i in batch_items_to_remove): # If we've reached the trial limit and still not found a valid crop, remove this image from the batch
                                 batch_items_to_remove.append(i)
                         else: # If `batch_y` is `None`, i.e. if we don't have ground truth data, any crop is a valid crop.
@@ -911,7 +1116,7 @@ class BatchGenerator:
                     # Update the image size so that subsequent transformations can work correctly
                     img_height -= crop[0] + crop[1]
                     img_width -= crop[2] + crop[3]
-                    if not batch_y is None:
+                    if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                         # Translate the box coordinates into the new coordinate system if necessary: The origin is shifted by `(crop[0], crop[2])` (i.e. by the top and left crop values)
                         # If nothing was cropped off from the top or left of the image, the coordinate system stays the same as before
                         if crop[0] > 0:
@@ -950,18 +1155,32 @@ class BatchGenerator:
 
                 if resize:
                     batch_X[i] = cv2.resize(batch_X[i], dsize=(resize[1], resize[0]))
-                    if not batch_y is None:
-                        batch_y[i][:,[xmin,xmax]] = (batch_y[i][:,[xmin,xmax]] * (resize[1] / img_width)).astype(np.int)
-                        batch_y[i][:,[ymin,ymax]] = (batch_y[i][:,[ymin,ymax]] * (resize[0] / img_height)).astype(np.int)
+                    if not ((batch_y is None) or (len(batch_y[i]) == 0)):
+                        batch_y[i][:,[ymin,ymax]] = batch_y[i][:,[ymin,ymax]] * (resize[0] / img_height)
+                        batch_y[i][:,[xmin,xmax]] = batch_y[i][:,[xmin,xmax]] * (resize[1] / img_width)
+                        batch_inverse_coord_transform[i,[ymin-ios,ymax-ios],1] *= (img_height / resize[0])
+                        batch_inverse_coord_transform[i,[xmin-ios,xmax-ios],1] *= (img_width / resize[1])
                     img_width, img_height = resize # Updating these at this point is unnecessary, but it's one fewer source of error if this method gets expanded in the future.
 
                 if gray:
-                    batch_X[i] = np.expand_dims(cv2.cvtColor(batch_X[i], cv2.COLOR_RGB2GRAY), axis=2)
+                    batch_X[i] = cv2.cvtColor(batch_X[i], cv2.COLOR_RGB2GRAY)
+                    if convert_to_3_channels:
+                        batch_X[i] = np.stack([batch_X[i]] * 3, axis=-1)
+                    else:
+                        batch_X[i] = np.expand_dims(batch_X[i], axis=-1)
 
-            # If any batch items need to be removed because of failed random cropping, remove them now.
-            for j in sorted(batch_items_to_remove, reverse=True):
-                batch_X.pop(j)
-                batch_y.pop(j) # This isn't efficient, but it hopefully should not need to be done often anyway.
+            if not keep_images_without_gt:
+                # If any batch items need to be removed because of failed random cropping, remove them now.
+                for j in sorted(batch_items_to_remove, reverse=True):
+                    # This isn't efficient, but it hopefully should not need to be done often anyway.
+                    batch_X.pop(j)
+                    batch_filenames.pop(j)
+                    batch_inverse_coord_transform.pop(j)
+                    if not batch_y is None: batch_y.pop(j)
+                    if not batch_imgage_ids is None: batch_image_ids.pop(j)
+                    if diagnostics:
+                        batch_original_images.pop(j)
+                        batch_original_labels.pop(j)
 
             # CAUTION: Converting `batch_X` into an array will result in an empty batch if the images have varying sizes.
             #          At this point, all images must have the same size, otherwise you will get an error during training.
@@ -981,28 +1200,31 @@ class BatchGenerator:
                 if diagnostics:
                     y_true, matched_anchors = ssd_box_encoder.encode_y(batch_y, diagnostics)
                 else:
-                    y_true = ssd_box_encoder.encode_y(batch_y, diagnostics) # Encode the labels into the `y_true` tensor that the cost function needs
+                    y_true = ssd_box_encoder.encode_y(batch_y, diagnostics) # Encode the labels into the `y_true` tensor that the cost function needs.
 
             if train:
                 if diagnostics:
-                    yield (batch_X, y_true, matched_anchors, batch_y, this_filenames, original_images, original_labels)
+                    yield (batch_X, y_true, matched_anchors, batch_y, batch_filenames, batch_image_ids, batch_inverse_coord_transform, batch_original_images, batch_original_labels)
                 else:
                     yield (batch_X, y_true)
             else:
                 if not batch_y is None:
                     if diagnostics:
-                        yield (batch_X, batch_y, this_filenames, original_images, original_labels)
+                        yield (batch_X, batch_y, batch_filenames, batch_image_ids, batch_inverse_coord_transform, batch_original_images, batch_original_labels)
                     else:
-                        yield (batch_X, batch_y, this_filenames)
+                        yield (batch_X, batch_y, batch_filenames, batch_image_ids, batch_inverse_coord_transform)
                 else:
-                    yield (batch_X, this_filenames)
+                    if diagnostics:
+                        yield (batch_X, batch_filenames, batch_image_ids, batch_inverse_coord_transform, batch_original_images)
+                    else:
+                        yield (batch_X, batch_filenames, batch_image_ids, batch_inverse_coord_transform)
 
     def get_filenames_labels(self):
         '''
         Returns:
-            The list of filenames and the list of labels.
+            The list of filenames, the list of labels, and the list of image IDs.
         '''
-        return self.filenames, self.labels
+        return self.filenames, self.labels, self.image_ids
 
     def get_n_samples(self):
         '''
