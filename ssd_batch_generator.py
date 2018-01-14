@@ -610,6 +610,8 @@ class BatchGenerator:
                  shuffle=True,
                  train=True,
                  ssd_box_encoder=None,
+                 returns={'processed_images', 'encoded_labels'},
+                 convert_to_3_channels=True,
                  equalize=False,
                  brightness=False,
                  flip=False,
@@ -626,9 +628,7 @@ class BatchGenerator:
                  subtract_mean=None,
                  divide_by_stddev=None,
                  swap_channels=False,
-                 keep_images_without_gt=False,
-                 convert_to_3_channels=True,
-                 diagnostics=False):
+                 keep_images_without_gt=False):
         '''
         Generate batches of samples and corresponding labels indefinitely from
         lists of filenames and labels.
@@ -640,28 +640,56 @@ class BatchGenerator:
         Can shuffle `filenames` and `labels` consistently after each complete pass.
 
         Can perform image transformations for data conversion and data augmentation.
-        `resize`, `gray`, and `equalize` are image conversion tools and should be
-        used consistently during training and inference. The remaining transformations
-        serve for data augmentation. Each data augmentation process can set its own
-        independent application probability. The transformations are performed
-        in the order of their arguments, i.e. equalization is performed first,
-        grayscale conversion is performed last.
+        Each data augmentation process can set its own independent application probability.
+        The transformations are performed in the order of their arguments, i.e. translation
+        is performed before scaling. All conversions and transforms default to `False`.
 
         `prob` works the same way in all arguments in which it appears. It must be a float in [0,1]
         and determines the probability that the respective transform is applied to a given image.
 
-        All conversions and transforms default to `False`.
-
         Arguments:
-            batch_size (int, optional): The size of the batches to be generated. Defaults to 32.
-            shuffle (bool, optional): Whether or not to shuffle the dataset before each pass. Defaults to `True`.
+            batch_size (int, optional): The size of the batches to be generated.
+            shuffle (bool, optional): Whether or not to shuffle the dataset before each pass.
                 This option should always be `True` during training, but it can be useful to turn shuffling off
                 for debugging or if you're using the generator for prediction.
             train (bool, optional): Whether or not the generator is used in training mode. If `True`, then the labels
                 will be transformed into the format that the SSD cost function requires. Otherwise,
-                the output format of the labels is identical to the input format. Defaults to `True`.
+                the output format of the labels is identical to the input format.
             ssd_box_encoder (SSDBoxEncoder, optional): Only required if `train = True`. An SSDBoxEncoder object
                 to encode the ground truth labels to the required format for training an SSD model.
+            returns (set, optional): A set of strings that determines what outputs the generator yields. The generator's output
+                is always a tuple with the processed images as its first element and, if in training mode, the encoded
+                labels as its second element. Apart from that, the output tuple can contain additional outputs according
+                to the keywords in `returns`. The possible keyword strings and their respective outputs are:
+                * 'processed_images': An array containing the processed images. Will always be in the outputs.
+                * 'encoded_labels': The encoded labels tensor. This is an array of shape `(batch_size, n_boxes, n_classes + 12)`
+                    that is the output of `SSDBoxEncoder.encode_y()`. Will always be in the outputs if in training mode.
+                * 'matched_anchors': The same as 'encoded_labels', but containing anchor box coordinates for all matched
+                    anchor boxes instead of ground truth coordinates. The can be useful to visualize what anchor boxes
+                    are being matched to each ground truth box. Only available in training mode.
+                * 'processed_labels': The processed, but not yet encoded labels. This is a list that contains for each
+                    batch image a Numpy array with all ground truth boxes for that image. Only available if ground truth is available.
+                * 'filenames': A list containing the file names (full paths) of the images in the batch.
+                * 'image_ids': A list containing the integer IDs of the images in the batch. Only available if there
+                    are image IDs available.
+                * 'inverse_transform': An array of shape `(batch_size, 4, 2)` that contains two coordinate conversion values for
+                    each image in the batch and for each of the four coordinates. These these coordinate conversion values makes
+                    it possible to convert the box coordinates that were predicted on a transformed image back to what those coordinates
+                    would be in the original image. This is mostly relevant for evaluation: If you want to evaluate your model on
+                    a dataset with varying image sizes, then you are forced to transform the images somehow (by resizing or cropping)
+                    to make them all the same size. Your model will then predict boxes for those transformed images, but for the
+                    evaluation you will need the box coordinates to be correct for the original images, not for the transformed
+                    images. This means you will have to transform the predicted box coordinates back to the original image sizes.
+                    Since the images have varying sizes, the function that transforms the coordinates is different for every image.
+                    This array contains the necessary conversion values for every coordinate of every image in the batch.
+                    In order to convert coordinates to the original image sizes, first multiply each coordinate by the second
+                    conversion value, then add the first conversion value to it. Note that the conversion will only be correct
+                    for the `resize`, `random_crop`, `max_crop_and_resize` and `full_crop_and_resize` transformations.
+                * 'original_images': A list containing the original images in the batch before any processing.
+                * 'original_labels': A list containing the original ground truth boxes for the images in this batch before any
+                    processing. Only available if ground truth is available.
+                The order of the outputs in the tuple is the order of the list above. If `returns` contains a keyword for an
+                output that is unavailable, that output will simply be skipped and not be part of the yielded tuple.
             equalize (bool, optional): If `True`, performs histogram equalization on the images.
                 This can improve contrast and lead the improved model performance.
             brightness (tuple, optional): `False` or a tuple containing three floats, `(min, max, prob)`.
@@ -688,7 +716,7 @@ class BatchGenerator:
                 `random_crop` and `resize`.
             full_crop_and_resize (tuple, optional): `False` or a tuple of four integers and one float,
                 `(height, width, min_1_object, max_#_trials, mix_ratio)`. This will generate a patch of size `(height, width)`
-                that always contains the full input image. The latter third and fourth components of the tuple work identically as
+                that always contains the full input image. The third and fourth components of the tuple work identically as
                 in `random_crop`. `mix_ratio` is only relevant if `max_crop_and_resize` is active, in which case it must be a float in
                 `[0, 1]` that decides what ratio of images will be processed using `max_crop_and_resize` and what ratio of images
                 will be processed using `full_crop_and_resize`. If `mix_ratio` is 1, all images will be processed using `full_crop_and_resize`.
@@ -704,7 +732,7 @@ class BatchGenerator:
                 image patch are allowed. `max_#_trials` is only relevant if `min_1_object == 1` and sets the maximum number
                 of attempts to get a valid crop. If no valid crop was obtained within this maximum number of attempts,
                 the respective image will be removed from the batch without replacement (i.e. for each removed image, the batch
-                will be one sample smaller). Defaults to `False`.
+                will be one sample smaller).
             crop (tuple, optional): `False` or a tuple of four integers, `(crop_top, crop_bottom, crop_left, crop_right)`,
                 with the number of pixels to crop off of each side of the images.
                 The targets are adjusted accordingly. Note: Cropping happens before resizing.
@@ -722,59 +750,29 @@ class BatchGenerator:
                 fraction of the area of a ground truth box that must be left after limiting in order for the box
                 to still be included in the batch data. If set to 0, all boxes are kept except those which lie
                 entirely outside of the image bounderies after limiting. If set to 1, only boxes that did not
-                need to be limited at all are kept. Defaults to 0.3.
+                need to be limited at all are kept.
             subtract_mean (array-like, optional): `None` or an array-like object of integers or floating point values
                 of any shape that is broadcast-compatible with the image shape. The elements of this array will be
                 subtracted from the image pixel intensity values. For example, pass a list of three integers
-                to perform per-channel mean normalization for color images. Defaults to `None`.
+                to perform per-channel mean normalization for color images.
             divide_by_stddev (array-like, optional): `None` or an array-like object of non-zero integers or
                 floating point values of any shape that is broadcast-compatible with the image shape. The image pixel
                 intensity values will be divided by the elements of this array. For example, pass a list
                 of three integers to perform per-channel standard deviation normalization for color images.
-                Defaults to `None`.
             swap_channels (bool, optional): If `True` the color channel order of the input images will be reversed,
                 i.e. if the input color channel order is RGB, the color channels will be swapped to BGR.
-                Defaults to `False`.
             keep_images_without_gt (bool, optional): If `True`, images for which there are no ground truth boxes
                 (either because there weren't any to begin with or because random cropping cropped out a patch that
                 doesn't contain any objects) will be kept in the batch. If `False`, such images will be removed
                 from the batch.
             convert_to_3_channels (bool, optional): If `True`, single-channel images will be converted
                 to 3-channel images.
-            diagnostics (bool, optional): If `True`, yields some or all of the following additional outputs:
-                * An tensor containing the matched anchor boxes for the batch. (only if `train == True`)
-                * The labels for the batch before they were encoded (only if `train == True`)
-                * A list of the image file names in the batch.
-                * A list of the image IDs in the batch.
-                * A list of parameters for inverse coordinate transformation. These can be used to transform
-                  bounding box coordinates for a transformed image back to the original image dimensions.
-                  This only works for resizing and for all random cropping options. To revert box coordinates
-                  to the original image dimensions, for each coordinate, first multiply by the second value,
-                  then add the first. Values are provided for each batch item separately.
-                * An array with the original, unaltered images in the batch.
-                * A list with the original, unaltered labels in the batch. (if labels are available)
-                This can be useful for debugging or for evaluation (in which case you might need the image IDs).
 
         Yields:
-            The next batch as either of
-            (1) a 5-tuple containing a Numpy array that contains the images, a Python list
-            that contains the corresponding labels for each image as 2D Numpy arrays, another Python list
-            that contains the file names of the images in the batch, another Python list that contains
-            the image IDs of the images in the batch if there are any, and an array with inverse coordinate
-            transformation parameters (see `diagnostics` argument). This is the case if `train==False`
-            and labels are available.
-            (2) a 4-tuple containing a Numpy array that contains the images, a Python list
-            that contains the file names of the images in the batch, another Python list that contains
-            the image IDs of the images in the batch if there are any, and an array with inverse coordinate
-            transformation parameters (see `diagnostics` argument). This is the case if `train==False`
-            and labels are not available.
-            (3) a 2-tuple containing a Numpy array that contains the images and another Numpy array with the
-            labels in the format that `SSDBoxEncoder.encode_y()` returns, namely an array with shape
-            `(batch_size, #boxes, #classes + 4 + 4 + 4)`, where `#boxes` is the total number of
-            boxes predicted by the model per image and the last axis contains
-            `[one-hot vector for the classes, 4 ground truth coordinate offsets, 4 anchor box coordinates, 4 variances]`.
-            The format and order of the box coordinates is according to the `box_output_format` that was specified
-            in the `BachtGenerator` constructor.
+            The next batch as a tuple of items as defined by the `returns` argument. By default, this will be
+            a 2-tuple containing the processed batch images as its first element and the encoded ground truth boxes
+            tensor as its second element if in training mode, or a 1-tuple containing only the processed batch images if
+            not in training mode. Any additional outputs must be specified in the `returns` argument.
         '''
 
         if shuffle: # Shuffle the data before we begin
@@ -832,15 +830,12 @@ class BatchGenerator:
             else:
                 batch_image_ids = None
 
-            # We'll create a list here that stores for each batch image the inverse transformation parameters for any
-            # image transformations so that it will be possible to convert any predicted bounding box coordinates
-            # on the converted image back to what those coordinates should be in the original image. This is relevant
-            # for evaluation.
-            # To revert box coordinates to the original image dimensions, for each coordinate, first multiply by the second value, then add the first.
+            # Create the array that is to contain the inverse coordinate transformation values for this batch.
             batch_inverse_coord_transform = np.array([[[0, 1]] * 4] * batch_size, dtype=np.float) # Array of shape `(batch_size, 4, 2)`, where the last axis contains an additive and a multiplicative scalar transformation constant.
 
-            if diagnostics:
+            if 'original_images' in returns:
                 batch_original_images = deepcopy(batch_X) # The original, unaltered images
+            if 'original_labels' in returns and not batch_y is None:
                 batch_original_labels = deepcopy(batch_y) # The original, unaltered labels
 
             current += batch_size
@@ -872,11 +867,7 @@ class BatchGenerator:
                     if p >= (1-brightness[2]):
                         batch_X[i] = _brightness(batch_X[i], min=brightness[0], max=brightness[1])
 
-                # Could easily be extended to also allow vertical flipping, but I'm not convinced of the
-                # usefulness of vertical flipping either empirically or theoretically, so I'm going for simplicity.
-                # If you want to allow vertical flipping, just change this function to pass the respective argument
-                # to `_flip()`.
-                if flip:
+                if flip: # Performs flips along the vertical axis only (i.e. horizontal flips).
                     p = np.random.uniform(0,1)
                     if p >= (1-flip):
                         batch_X[i] = _flip(batch_X[i])
@@ -979,6 +970,9 @@ class BatchGenerator:
                         if p >= (1-full_crop_and_resize[4]):
                             random_crop = (crop_height, crop_width, full_crop_and_resize[2], full_crop_and_resize[3])
                             resize = (full_crop_and_resize[0], full_crop_and_resize[1])
+                    else:
+                        random_crop = (crop_height, crop_width, full_crop_and_resize[2], full_crop_and_resize[3])
+                        resize = (full_crop_and_resize[0], full_crop_and_resize[1])
 
                 if random_crop:
                     # Compute how much room we have in both dimensions to make a random crop.
@@ -1178,9 +1172,8 @@ class BatchGenerator:
                     batch_inverse_coord_transform.pop(j)
                     if not batch_y is None: batch_y.pop(j)
                     if not batch_imgage_ids is None: batch_image_ids.pop(j)
-                    if diagnostics:
-                        batch_original_images.pop(j)
-                        batch_original_labels.pop(j)
+                    if 'original_images' in returns: batch_original_images.pop(j)
+                    if 'original_labels' in returns and not batch_y is None: batch_original_labels.pop(j)
 
             # CAUTION: Converting `batch_X` into an array will result in an empty batch if the images have varying sizes.
             #          At this point, all images must have the same size, otherwise you will get an error during training.
@@ -1197,27 +1190,25 @@ class BatchGenerator:
             if train: # During training we need the encoded labels instead of the format that `batch_y` has
                 if ssd_box_encoder is None:
                     raise ValueError("`ssd_box_encoder` cannot be `None` in training mode.")
-                if diagnostics:
-                    y_true, matched_anchors = ssd_box_encoder.encode_y(batch_y, diagnostics)
+                if 'matched_anchors' in returns:
+                    batch_y_true, batch_matched_anchors = ssd_box_encoder.encode_y(batch_y, diagnostics=True) # Encode the labels into the `y_true` tensor that the SSD loss function needs.
                 else:
-                    y_true = ssd_box_encoder.encode_y(batch_y, diagnostics) # Encode the labels into the `y_true` tensor that the cost function needs.
+                    batch_y_true = ssd_box_encoder.encode_y(batch_y, diagnostics=False) # Encode the labels into the `y_true` tensor that the SSD loss function needs.
 
+            # Compile the output.
+            ret = []
+            ret.append(batch_X)
             if train:
-                if diagnostics:
-                    yield (batch_X, y_true, matched_anchors, batch_y, batch_filenames, batch_image_ids, batch_inverse_coord_transform, batch_original_images, batch_original_labels)
-                else:
-                    yield (batch_X, y_true)
-            else:
-                if not batch_y is None:
-                    if diagnostics:
-                        yield (batch_X, batch_y, batch_filenames, batch_image_ids, batch_inverse_coord_transform, batch_original_images, batch_original_labels)
-                    else:
-                        yield (batch_X, batch_y, batch_filenames, batch_image_ids, batch_inverse_coord_transform)
-                else:
-                    if diagnostics:
-                        yield (batch_X, batch_filenames, batch_image_ids, batch_inverse_coord_transform, batch_original_images)
-                    else:
-                        yield (batch_X, batch_filenames, batch_image_ids, batch_inverse_coord_transform)
+                ret.append(y_true)
+                if 'matched_anchors' in returns: ret.append(batch_matched_anchors)
+            if 'processed_labels' in returns and not batch_y is None: ret.append(batch_y)
+            if 'filenames' in returns: ret.append(batch_filenames)
+            if 'image_ids' in returns and not batch_image_ids is None: ret.append(batch_image_ids)
+            if 'inverse_transform' in returns: ret.append(batch_inverse_coord_transform)
+            if 'original_images' in returns: ret.append(batch_original_images)
+            if 'original_labels' in returns and not batch_y is None: ret.append(batch_original_labels)
+
+            yield ret
 
     def get_filenames_labels(self):
         '''
