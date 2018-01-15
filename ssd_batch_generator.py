@@ -618,7 +618,7 @@ class BatchGenerator:
                  translate=False,
                  scale=False,
                  max_crop_and_resize=False,
-                 full_crop_and_resize=False,
+                 random_pad_and_resize=False,
                  random_crop=False,
                  crop=False,
                  resize=False,
@@ -686,7 +686,7 @@ class BatchGenerator:
                     This array contains the necessary conversion values for every coordinate of every image in the batch.
                     In order to convert coordinates to the original image sizes, first multiply each coordinate by the second
                     conversion value, then add the first conversion value to it. Note that the conversion will only be correct
-                    for the `resize`, `random_crop`, `max_crop_and_resize` and `full_crop_and_resize` transformations.
+                    for the `resize`, `random_crop`, `max_crop_and_resize` and `random_pad_and_resize` transformations.
                 * 'original_images': A list containing the original images in the batch before any processing.
                 * 'original_labels': A list containing the original ground truth boxes for the images in this batch before any
                     processing. Only available if ground truth is available.
@@ -711,17 +711,20 @@ class BatchGenerator:
                 of `[min, max]`. Both min and max must be >=0.
             max_crop_and_resize (tuple, optional): `False` or a tuple of four integers, `(height, width, min_1_object, max_#_trials)`.
                 This will crop out the maximal possible image patch with an aspect ratio defined by `height` and `width` from the
-                input image and then resize the resulting patch to `(height, width)`. The latter two components of the tuple work
-                identically as in `random_crop`. Note the difference to `random_crop`: This operation crops patches of variable size
-                and fixed aspect ratio from the input image and then resizes the patch, while `random_crop` crops patches of fixed
-                size and fixed aspect ratio from the input image. If this operation is active, it overrides both
-                `random_crop` and `resize`.
-            full_crop_and_resize (tuple, optional): `False` or a tuple of four integers and one float,
-                `(height, width, min_1_object, max_#_trials, mix_ratio)`. This will generate a patch of size `(height, width)`
-                that always contains the full input image. The third and fourth components of the tuple work identically as
-                in `random_crop`. `mix_ratio` is only relevant if `max_crop_and_resize` is active, in which case it must be a float in
-                `[0, 1]` that decides what ratio of images will be processed using `max_crop_and_resize` and what ratio of images
-                will be processed using `full_crop_and_resize`. If `mix_ratio` is 1, all images will be processed using `full_crop_and_resize`.
+                input image and then resize the resulting patch to `(height, width)`. This preserves the aspect ratio of the original
+                image, but does not contain the entire original image (unless the aspect ratio of the original image is the same as
+                the target aspect ratio) The latter two components of the tuple work identically as in `random_crop`.
+                Note the difference to `random_crop`: This operation crops patches of variable size and fixed aspect ratio from the
+                input image and then resizes the patch, while `random_crop` crops patches of fixed size and fixed aspect ratio from
+                the input image. If this operation is active, it overrides both `random_crop` and `resize`.
+            random_pad_and_resize (tuple, optional): `False` or a tuple of four integers and one float,
+                `(height, width, min_1_object, max_#_trials, mix_ratio)`. The input image will first be padded with zeros such that
+                it has the aspect ratio defined by `height` and `width` and afterwards resized to `(height, width)`. This preserves
+                the aspect ratio of the original image an scales it to the maximum possible size that still fits inside a canvas of
+                size `(height, width)`. The third and fourth components of the tuple work identically as in `random_crop`.
+                `mix_ratio` is only relevant if `max_crop_and_resize` is active, in which case it must be a float in `[0, 1]` that
+                decides what ratio of images will be processed using `max_crop_and_resize` and what ratio of images will be processed
+                using `random_pad_and_resize`. If `mix_ratio` is 1, all images will be processed using `random_pad_and_resize`.
                 Note the difference to `max_crop_and_resize`: While `max_crop_and_resize` will crop out the largest possible patch
                 that still lies fully within the input image, the patch generated here will always contain the full input image.
                 If this operation is active, it overrides both `random_crop` and `resize`.
@@ -955,9 +958,9 @@ class BatchGenerator:
                     random_crop = (crop_height, crop_width, max_crop_and_resize[2], max_crop_and_resize[3])
                     resize = (max_crop_and_resize[0], max_crop_and_resize[1])
 
-                if full_crop_and_resize:
+                if random_pad_and_resize:
 
-                    resize_aspect_ratio = full_crop_and_resize[1] / full_crop_and_resize[0]
+                    resize_aspect_ratio = random_pad_and_resize[1] / random_pad_and_resize[0]
 
                     if img_width < img_height:
                         crop_height = img_height
@@ -969,12 +972,12 @@ class BatchGenerator:
                     # Here, we only set the parameters for them.
                     if max_crop_and_resize:
                         p = np.random.uniform(0,1)
-                        if p >= (1-full_crop_and_resize[4]):
-                            random_crop = (crop_height, crop_width, full_crop_and_resize[2], full_crop_and_resize[3])
-                            resize = (full_crop_and_resize[0], full_crop_and_resize[1])
+                        if p >= (1-random_pad_and_resize[4]):
+                            random_crop = (crop_height, crop_width, random_pad_and_resize[2], random_pad_and_resize[3])
+                            resize = (random_pad_and_resize[0], random_pad_and_resize[1])
                     else:
-                        random_crop = (crop_height, crop_width, full_crop_and_resize[2], full_crop_and_resize[3])
-                        resize = (full_crop_and_resize[0], full_crop_and_resize[1])
+                        random_crop = (crop_height, crop_width, random_pad_and_resize[2], random_pad_and_resize[3])
+                        resize = (random_pad_and_resize[0], random_pad_and_resize[1])
 
                 if random_crop:
                     # Compute how much room we have in both dimensions to make a random crop.
