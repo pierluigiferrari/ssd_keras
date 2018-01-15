@@ -1199,7 +1199,7 @@ class BatchGenerator:
             ret = []
             ret.append(batch_X)
             if train:
-                ret.append(y_true)
+                ret.append(batch_y_true)
                 if 'matched_anchors' in returns: ret.append(batch_matched_anchors)
             if 'processed_labels' in returns and not batch_y is None: ret.append(batch_y)
             if 'filenames' in returns: ret.append(batch_filenames)
