@@ -43,9 +43,9 @@ def ssd_300(image_size,
             variances=[0.1, 0.1, 0.2, 0.2],
             coords='centroids',
             normalize_coords=False,
-            subtract_mean=None,
+            subtract_mean=[104, 117, 123],
             divide_by_stddev=None,
-            swap_channels=False,
+            swap_channels=True,
             return_predictor_sizes=False):
     '''
     Build a Keras model with SSD_300 architecture, see references.
