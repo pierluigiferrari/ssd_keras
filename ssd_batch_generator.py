@@ -661,9 +661,11 @@ class BatchGenerator:
                 is always a tuple with the processed images as its first element and, if in training mode, the encoded
                 labels as its second element. Apart from that, the output tuple can contain additional outputs according
                 to the keywords in `returns`. The possible keyword strings and their respective outputs are:
-                * 'processed_images': An array containing the processed images. Will always be in the outputs.
+                * 'processed_images': An array containing the processed images. Will always be in the outputs, so it doesn't
+                    matter whether or not you include this keyword in the set.
                 * 'encoded_labels': The encoded labels tensor. This is an array of shape `(batch_size, n_boxes, n_classes + 12)`
-                    that is the output of `SSDBoxEncoder.encode_y()`. Will always be in the outputs if in training mode.
+                    that is the output of `SSDBoxEncoder.encode_y()`. Will always be in the outputs if in training mode,
+                    so it doesn't matter whether or not you include this keyword in the set if in training mode.
                 * 'matched_anchors': The same as 'encoded_labels', but containing anchor box coordinates for all matched
                     anchor boxes instead of ground truth coordinates. The can be useful to visualize what anchor boxes
                     are being matched to each ground truth box. Only available in training mode.
