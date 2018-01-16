@@ -62,7 +62,7 @@ The Theano and CNTK backends are currently not supported.
 
 ### How to use it
 
-This repository provides Jupyter notebooks that explain training and inference, and there are a bunch of explanations in the subsequent sections that complement the notebooks.
+This repository provides Jupyter notebooks that explain training, inference and evaluation, and there are a bunch of explanations in the subsequent sections that complement the notebooks.
 
 How to use one of the trained original models for inference:
 * [`ssd300_inference.ipynb`](./ssd300_inference.ipynb)
@@ -72,7 +72,10 @@ How to train a model:
 * [`ssd300_training.ipynb`](./ssd300_training.ipynb)
 * [`ssd7_training.ipynb`](./ssd7_training.ipynb)
 
-#### Training and prediction
+How to evaluate a trained model on MS COCO:
+* [`ssd300_evaluation_COCO.ipynb`](./ssd300_evaluation_COCO.ipynb)
+
+#### Training details
 
 The general training setup is layed out and explained in [`ssd7_training.ipynb`](./ssd7_training.ipynb) and in [`ssd300_training.ipynb`](./ssd300_training.ipynb). The setup and explanations are similar in both notebooks for the most part, so it doesn't matter which one you look at to understand the general training setup, but the parameters in [`ssd300_training.ipynb`](./ssd300_training.ipynb) are preset to copy the setup of the original Caffe implementation for training on Pascal VOC, while the parameters in [`ssd7_training.ipynb`](./ssd7_training.ipynb) are preset to train on the [Udacity traffic datasets](https://github.com/udacity/self-driving-car/tree/master/annotations). If your goal isn't to train the original SSD300, then I would recommend reading [`ssd7_training.ipynb`](./ssd7_training.ipynb), which contains slightly more general explanations.
 
@@ -93,10 +96,15 @@ It is strongly recommended that you load the pre-trained VGG-16 weights when att
 
 This repository provides a data generator built specifically for 2-D bounding box object detection. If you'd like to train a model on arbitrary datasets, a brief introduction to the design of the generator might be useful.
 
+The generator can handle the following annotation formats out of the box:
+* Pascal VOC (`parse_xml()`)
+* MS COCO (`parse_json()`)
+* Quite a range of CSV formats (`parse_csv()`)
+
 The generator class `BatchGenerator` is in the module [`ssd_batch_generator.py`](./ssd_batch_generator.py) and using it consists of three steps:
 
 1. Create an instance using the constructor. The constructor mainly just sets the desired order in which the generator yields the ground truth box coordinates and class ID, but you can also pass it filename and ground truth lists as described in step 2. Even though different output coordinate orders are theoretically possible, `SSDBoxEncoder` currently requires the generator to pass ground truth box coordinates to it in the format `[class_id, xmin, ymin, xmax, ymax]`, which is also the constructor's default setting for this parameter.
-2. Next, lists of image names and annotations (labels, targets, call them whatever you like) need to be parsed from one or multiple source files such as CSV or XML files by calling one of the parser methods that `BatchGenerator` provides. The generator object stores the data that is later used to generate the batches in two Python lists: `filenames` and `labels`. The former contains just the file paths of the images to be included, e.g. "some_dataset/001934375.png". The latter contains for each image a Numpy array with the bounding box coordinates and object class ID of each labeled object in the image. The job of the parse methods that the generator provides is to create these two lists. `parse_xml()` does this for the Pascal VOC data format and `parse_csv()` does it for any CSV file in which the image names, class IDs and box coordinates make up the first six columns of the file. If you have a dataset that stores its annotations in a format that is not compatible with the two existing parser methods, you can just write an additional parser method that can parse whatever format your annotations are in. As long as that parser method sets the two lists `filenames` and `labels` as described in the documentation, you can use this generator with an arbitrary dataset without having to change anything else.
+2. Next, lists of image names and annotations (labels, targets, call them whatever you like) need to be parsed from one or multiple source files such as CSV or XML files by calling one of the parser methods that `BatchGenerator` provides. The generator object stores the data that is later used to generate the batches in two Python lists: `filenames` and `labels`. The former contains just the file paths of the images to be included, e.g. "some_dataset/001934375.png". The latter contains for each image a Numpy array with the bounding box coordinates and object class ID of each labeled object in the image. The job of the parse methods that the generator provides is to create these two lists. `parse_xml()` does this for the Pascal VOC data format, `parse_json()` does it for the MS COCO format, and `parse_csv()` does it for any CSV file in which the image names, class IDs and box coordinates make up the first six columns of the file. If you have a dataset that stores its annotations in a format that is not compatible with the two existing parser methods, you can just write an additional parser method that can parse whatever format your annotations are in. As long as that parser method sets the two lists `filenames` and `labels` as described in the documentation, you can use this generator with an arbitrary dataset without having to change anything else.
 3. Finally, in order to actually generate a batch, call the `generate()` method. You have to set the desired batch size and whether or not to generate batches in training mode. If batches are generated in training mode, `generate()` calls the `encode_y()` method of `SSDBoxEncoder` from the module [`ssd_box_encode_decode_utils.py`](./ssd_box_encode_decode_utils.py) to convert the ground truth labels into the big tensor that the cost function needs. This is why you need to pass an `SSDBoxEncoder` instance to `generate()` in training mode. Inside `encode_y()` is where the anchor box matching and box coordinate conversion happens. If batches are not generated in training mode, then any ground truth labels that there may be are just returned in their regular format along with the images. The remaining arguments of `generate()` are mainly image manipulation features for ad-hoc data augmentation and to get the images into the size you need. The documentation describes them in detail.
 
 #### Encoding and decoding boxes
