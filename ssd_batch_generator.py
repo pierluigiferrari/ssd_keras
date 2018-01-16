@@ -998,14 +998,14 @@ class BatchGenerator:
                         if y_range >= 0 and x_range >= 0: # If the patch to be cropped out is smaller than the original image in both dimenstions, we just perform a regular crop
                             # Crop the image
                             patch_X = np.copy(batch_X[i][crop_ymin:crop_ymin+random_crop[0], crop_xmin:crop_xmin+random_crop[1]])
+                            # Add the parameters to reverse this transformation.
+                            patch_y_inverse_y = crop_ymin
+                            patch_y_inverse_x = crop_xmin
                             if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                                 # Translate the box coordinates into the new coordinate system: Cropping shifts the origin by `(crop_ymin, crop_xmin)`
                                 patch_y = np.copy(batch_y[i])
                                 patch_y[:,[ymin,ymax]] -= crop_ymin
                                 patch_y[:,[xmin,xmax]] -= crop_xmin
-                                # Add the parameters to reverse this transformation.
-                                patch_y_inverse_y = crop_ymin
-                                patch_y_inverse_x = crop_xmin
                                 # Limit the box coordinates to lie within the new image boundaries
                                 if limit_boxes:
                                     # Both the x- and y-coordinates might need to be limited
@@ -1024,14 +1024,14 @@ class BatchGenerator:
                             canvas = np.zeros((random_crop[0], random_crop[1], patch_X.shape[2]), dtype=np.uint8) # ...generate a blank background image to place the patch onto,...
                             canvas[:, crop_xmin:crop_xmin+img_width] = patch_X # ...and place the patch onto the canvas at the random `crop_xmin` position computed above.
                             patch_X = canvas
+                            # Add the parameters to reverse this transformation.
+                            patch_y_inverse_y = crop_ymin
+                            patch_y_inverse_x = -crop_xmin
                             if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                                 # Translate the box coordinates into the new coordinate system: In this case, the origin is shifted by `(crop_ymin, -crop_xmin)`
                                 patch_y = np.copy(batch_y[i])
                                 patch_y[:,[ymin,ymax]] -= crop_ymin
                                 patch_y[:,[xmin,xmax]] += crop_xmin
-                                # Add the parameters to reverse this transformation.
-                                patch_y_inverse_y = crop_ymin
-                                patch_y_inverse_x = -crop_xmin
                                 # Limit the box coordinates to lie within the new image boundaries
                                 if limit_boxes:
                                     # Only the y-coordinates might need to be limited
@@ -1046,14 +1046,14 @@ class BatchGenerator:
                             canvas = np.zeros((random_crop[0], random_crop[1], patch_X.shape[2]), dtype=np.uint8) # ...generate a blank background image to place the patch onto,...
                             canvas[crop_ymin:crop_ymin+img_height, :] = patch_X # ...and place the patch onto the canvas at the random `crop_ymin` position computed above.
                             patch_X = canvas
+                            # Add the parameters to reverse this transformation.
+                            patch_y_inverse_y = -crop_ymin
+                            patch_y_inverse_x = crop_xmin
                             if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                                 # Translate the box coordinates into the new coordinate system: In this case, the origin is shifted by `(-crop_ymin, crop_xmin)`
                                 patch_y = np.copy(batch_y[i])
                                 patch_y[:,[ymin,ymax]] += crop_ymin
                                 patch_y[:,[xmin,xmax]] -= crop_xmin
-                                # Add the parameters to reverse this transformation.
-                                patch_y_inverse_y = -crop_ymin
-                                patch_y_inverse_x = crop_xmin
                                 # Limit the box coordinates to lie within the new image boundaries
                                 if limit_boxes:
                                     # Only the x-coordinates might need to be limited
@@ -1067,14 +1067,14 @@ class BatchGenerator:
                             canvas = np.zeros((random_crop[0], random_crop[1], patch_X.shape[2]), dtype=np.uint8) # ...generate a blank background image to place the patch onto,...
                             canvas[crop_ymin:crop_ymin+img_height, crop_xmin:crop_xmin+img_width] = patch_X # ...and place the patch onto the canvas at the random `(crop_ymin, crop_xmin)` position computed above.
                             patch_X = canvas
+                            # Add the parameters to reverse this transformation.
+                            patch_y_inverse_y = -crop_ymin
+                            patch_y_inverse_x = -crop_xmin
                             if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                                 # Translate the box coordinates into the new coordinate system: In this case, the origin is shifted by `(-crop_ymin, -crop_xmin)`
                                 patch_y = np.copy(batch_y[i])
                                 patch_y[:,[ymin,ymax]] += crop_ymin
                                 patch_y[:,[xmin,xmax]] += crop_xmin
-                                # Add the parameters to reverse this transformation.
-                                patch_y_inverse_y = -crop_ymin
-                                patch_y_inverse_x = -crop_xmin
                                 # Note that no limiting is necessary in this case
                         if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                             # Some objects might have gotten pushed so far outside the image boundaries in the transformation
@@ -1104,6 +1104,8 @@ class BatchGenerator:
                                 batch_items_to_remove.append(i)
                         else: # If `batch_y` is `None`, i.e. if we don't have ground truth data, any crop is a valid crop.
                             batch_X[i] = patch_X # The cropped patch becomes our new batch item
+                            batch_inverse_coord_transform[i,[ymin-ios,ymax-ios],0] += patch_y_inverse_y
+                            batch_inverse_coord_transform[i,[xmin-ios,xmax-ios],0] += patch_y_inverse_x
                             break
                     # Update the image size so that subsequent transformations can work correctly.
                     img_height = random_crop[0]
@@ -1154,11 +1156,11 @@ class BatchGenerator:
 
                 if resize:
                     batch_X[i] = cv2.resize(batch_X[i], dsize=(resize[1], resize[0]))
+                    batch_inverse_coord_transform[i,[ymin-ios,ymax-ios],1] *= (img_height / resize[0])
+                    batch_inverse_coord_transform[i,[xmin-ios,xmax-ios],1] *= (img_width / resize[1])
                     if not ((batch_y is None) or (len(batch_y[i]) == 0)):
                         batch_y[i][:,[ymin,ymax]] = batch_y[i][:,[ymin,ymax]] * (resize[0] / img_height)
                         batch_y[i][:,[xmin,xmax]] = batch_y[i][:,[xmin,xmax]] * (resize[1] / img_width)
-                        batch_inverse_coord_transform[i,[ymin-ios,ymax-ios],1] *= (img_height / resize[0])
-                        batch_inverse_coord_transform[i,[xmin-ios,xmax-ios],1] *= (img_width / resize[1])
                     img_width, img_height = resize # Updating these at this point is unnecessary, but it's one fewer source of error if this method gets expanded in the future.
 
                 if gray:
