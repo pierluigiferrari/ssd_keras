@@ -362,8 +362,8 @@ class BatchGenerator:
 
     def parse_xml(self,
                   images_dirs,
-                  annotations_dirs,
                   image_set_filenames,
+                  annotations_dirs=[],
                   classes=['background',
                            'aeroplane', 'bicycle', 'bird', 'boat',
                            'bottle', 'bus', 'car', 'cat',
@@ -383,14 +383,14 @@ class BatchGenerator:
                 contains images that are to be part of the dataset. This allows you to aggregate multiple datasets
                 into one (e.g. one directory that contains the images for Pascal VOC 2007, another that contains
                 the images for Pascal VOC 2012, etc.).
-            annotations_dirs (list): A list of strings, where each string is the path of a directory that
-                contains the annotations (XML files) that belong to the images in the respective image directories given.
-                The directories must contain one XML file per image and the name of an XML file must be the image ID
-                of the image it belongs to. The content of the XML files must be in the Pascal VOC format.
             image_set_filenames (list): A list of strings, where each string is the path of the text file with the image
                 set to be loaded. Must be one file per image directory given. These text files define what images in the
                 respective image directories are to be part of the dataset and simply contains one image ID per line
                 and nothing else.
+            annotations_dirs (list, optional): A list of strings, where each string is the path of a directory that
+                contains the annotations (XML files) that belong to the images in the respective image directories given.
+                The directories must contain one XML file per image and the name of an XML file must be the image ID
+                of the image it belongs to. The content of the XML files must be in the Pascal VOC format.
             classes (list, optional): A list containing the names of the object classes as found in the
                 `name` XML tags. Must include the class `background` as the first list item. The order of this list
                 defines the class IDs. Defaults to the list of Pascal VOC classes in alphabetical order.
@@ -411,63 +411,70 @@ class BatchGenerator:
         self.classes = classes
         self.include_classes = include_classes
 
-        # Erase data that might have been parsed before
+        # Erase data that might have been parsed before.
         self.filenames = []
         self.image_ids = []
         self.labels = []
+        if not annotations_dirs:
+            self.labels = None
+            annotations_dirs = [None] * len(images_dirs)
 
-        for images_dir, image_set_filename, annotations_dir in zip(self.images_dirs, self.image_set_filenames, self.annotations_dirs):
-            # Parse the image set that so that we know all the IDs of all the images to be included in the dataset
+        for images_dir, image_set_filename, annotations_dir in zip(images_dirs, image_set_filenames, annotations_dirs):
+            # Read the image set file that so that we know all the IDs of all the images to be included in the dataset.
             with open(image_set_filename) as f:
-                image_ids = [line.strip() for line in f]
+                image_ids = [line.strip() for line in f] # Note: These are strings, not integers.
                 self.image_ids += image_ids
 
-            # Parse the labels for each image ID from its respective XML file
+            # Loop over all images in this dataset.
             for image_id in image_ids:
-                # Open the XML file for this image
-                with open(os.path.join(annotations_dir, image_id+'.xml')) as f:
-                    soup = BeautifulSoup(f, 'xml')
 
-                folder = soup.folder.text # In case we want to return the folder in addition to the image file name. Relevant for determining which dataset an image belongs to.
-                filename = soup.filename.text
+                filename = '{}'.format(image_id) + '.jpg'
                 self.filenames.append(os.path.join(images_dir, filename))
 
-                boxes = [] # We'll store all boxes for this image here
-                objects = soup.find_all('object') # Get a list of all objects in this image
+                if not annotations_dir is None:
+                    # Parse the XML file for this image.
+                    with open(os.path.join(annotations_dir, image_id + '.xml')) as f:
+                        soup = BeautifulSoup(f, 'xml')
 
-                # Parse the data for each object
-                for obj in objects:
-                    class_name = obj.find('name').text
-                    class_id = self.classes.index(class_name)
-                    # Check if this class is supposed to be included in the dataset
-                    if (not self.include_classes == 'all') and (not class_id in self.include_classes): continue
-                    pose = obj.pose.text
-                    truncated = int(obj.truncated.text)
-                    if exclude_truncated and (truncated == 1): continue
-                    difficult = int(obj.difficult.text)
-                    if exclude_difficult and (difficult == 1): continue
-                    xmin = int(obj.bndbox.xmin.text)
-                    ymin = int(obj.bndbox.ymin.text)
-                    xmax = int(obj.bndbox.xmax.text)
-                    ymax = int(obj.bndbox.ymax.text)
-                    item_dict = {'folder': folder,
-                                 'image_name': filename,
-                                 'image_id': image_id,
-                                 'class_name': class_name,
-                                 'class_id': class_id,
-                                 'pose': pose,
-                                 'truncated': truncated,
-                                 'difficult': difficult,
-                                 'xmin': xmin,
-                                 'ymin': ymin,
-                                 'xmax': xmax,
-                                 'ymax': ymax}
-                    box = []
-                    for item in self.box_output_format:
-                        box.append(item_dict[item])
-                    boxes.append(box)
+                    folder = soup.folder.text # In case we want to return the folder in addition to the image file name. Relevant for determining which dataset an image belongs to.
+                    #filename = soup.filename.text
 
-                self.labels.append(boxes)
+                    boxes = [] # We'll store all boxes for this image here
+                    objects = soup.find_all('object') # Get a list of all objects in this image
+
+                    # Parse the data for each object
+                    for obj in objects:
+                        class_name = obj.find('name').text
+                        class_id = self.classes.index(class_name)
+                        # Check if this class is supposed to be included in the dataset
+                        if (not self.include_classes == 'all') and (not class_id in self.include_classes): continue
+                        pose = obj.pose.text
+                        truncated = int(obj.truncated.text)
+                        if exclude_truncated and (truncated == 1): continue
+                        difficult = int(obj.difficult.text)
+                        if exclude_difficult and (difficult == 1): continue
+                        xmin = int(obj.bndbox.xmin.text)
+                        ymin = int(obj.bndbox.ymin.text)
+                        xmax = int(obj.bndbox.xmax.text)
+                        ymax = int(obj.bndbox.ymax.text)
+                        item_dict = {'folder': folder,
+                                     'image_name': filename,
+                                     'image_id': image_id,
+                                     'class_name': class_name,
+                                     'class_id': class_id,
+                                     'pose': pose,
+                                     'truncated': truncated,
+                                     'difficult': difficult,
+                                     'xmin': xmin,
+                                     'ymin': ymin,
+                                     'xmax': xmax,
+                                     'ymax': ymax}
+                        box = []
+                        for item in self.box_output_format:
+                            box.append(item_dict[item])
+                        boxes.append(box)
+
+                    self.labels.append(boxes)
 
         if ret:
             return self.filenames, self.labels, self.image_ids
