@@ -9,7 +9,8 @@
 5. [Download the convolutionalized VGG-16 weights](#download-the-convolutionalized-vgg-16-weights)
 6. [Download the original trained model weights](#download-the-original-trained-model-weights)
 7. [ToDo](#todo)
-8. [Terminology](#terminology)
+8. [Important notes](#important-notes)
+9. [Terminology](#terminology)
 
 ### Overview
 
@@ -90,7 +91,7 @@ To train the original SSD300 model on Pascal VOC:
 2. Download the weights for the convolutionalized VGG-16 or for one of the trained original models provided below.
 3. Set the file paths for the datasets and model weights accordingly in [`ssd300_training.ipynb`](./ssd300_training.ipynb) and execute the cells.
 
-It is strongly recommended that you load the pre-trained VGG-16 weights when attempting to train SSD300, otherwise your training will almost certainly be unsuccessful. Note that the original VGG-16 was trained layer-wise, so trying to train the even deeper SSD300 all at once from scratch would very likely fail. Also note that even with the pre-trained VGG-16 weights it will take at least 20,000 training steps to get a half-decent performance out of SSD300.
+The procedure for training SSD512 is the same of course. It is strongly recommended that you load the pre-trained VGG-16 weights when attempting to train an SSD300 or SSD512, otherwise your training will almost certainly be unsuccessful. Note that the original VGG-16 was trained layer-wise, so trying to train the even deeper SSD300 all at once from scratch will very likely fail. Also note that even with the pre-trained VGG-16 weights it will take at least ~20,000 training steps to get a half-decent performance out of SSD300.
 
 #### Working with the generator
 
@@ -125,7 +126,7 @@ If you want to build a different base network architecture, you could use [`kera
 
 ### Download the convolutionalized VGG-16 weights
 
-In order to train an SSD300 from scratch, download the weights of the fully convolutionalized VGG-16 model trained to convergence on ImageNet classification here:
+In order to train an SSD300 or SSD512 from scratch, download the weights of the fully convolutionalized VGG-16 model trained to convergence on ImageNet classification here:
 
 [`vgg-16_ssd-fcn_ILSVRC-CLS-LOC.h5`](https://drive.google.com/open?id=0B0WbA4IemlxlbFZZaURkMTl2NVU).
 
@@ -160,6 +161,11 @@ The following things are still on the to-do list and contributions are welcome:
 * Write an mAP evaluation module
 * Write a `DetectionOutput` layer to move the computation of the decoder function into TensorFlow for faster forward passes
 * Support the Theano and CNTK backends
+
+### Important notes
+
+* The original Caffe models use a learning rate multiplier of 2 for the bias terms. Keras currently doesn't provide the option for per-weight learning rate multipliers, so this implementation differs from the Caffe implementation in this regard. This difference isn't relevant if you're using the trained models, but you should keep it in mind if you want to reproduce the training of the original models.
+* The provided `BatchGenerator` cannot replicate the exact data augmentation procedure of the original Caffe implementation. It provides data augmentation options that can be combined to produce similar effects (e.g. combining random image scaling and translation with random cropping to get crops that contain the original objects to varying degrees), but if you want to reproduce the exact data augmentation procedure of the original implementation, you will have to build that yourself.
 
 ### Terminology
 
