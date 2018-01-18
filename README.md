@@ -30,7 +30,7 @@ If you want to build an arbitrary SSD model architecture, you can use [`keras_ss
 
 ### Evaluation results
 
-<table>
+<table width="70%">
   <tr>
     <td>evaluated on</td>
     <td colspan=2 align=center>VOC2007 test</td>
