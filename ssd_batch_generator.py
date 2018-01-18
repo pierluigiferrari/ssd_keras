@@ -1177,21 +1177,21 @@ class BatchGenerator:
                     else:
                         batch_X[i] = np.expand_dims(batch_X[i], axis=-1)
 
+            # CAUTION: Converting `batch_X` into an array will result in an empty batch if the images have varying sizes.
+            #          At this point, all images must have the same size, otherwise you will get an error during training.
+            batch_X = np.array(batch_X)
+
             if not keep_images_without_gt:
                 # If any batch items need to be removed because of failed random cropping, remove them now.
+                batch_inverse_coord_transform = np.delete(batch_inverse_coord_transform, batch_items_to_remove, axis=0)
+                batch_X = np.delete(batch_X, batch_items_to_remove, axis=0)
                 for j in sorted(batch_items_to_remove, reverse=True):
                     # This isn't efficient, but it hopefully should not need to be done often anyway.
-                    batch_X.pop(j)
                     batch_filenames.pop(j)
-                    batch_inverse_coord_transform.pop(j)
                     if not batch_y is None: batch_y.pop(j)
                     if not batch_imgage_ids is None: batch_image_ids.pop(j)
                     if 'original_images' in returns: batch_original_images.pop(j)
                     if 'original_labels' in returns and not batch_y is None: batch_original_labels.pop(j)
-
-            # CAUTION: Converting `batch_X` into an array will result in an empty batch if the images have varying sizes.
-            #          At this point, all images must have the same size, otherwise you will get an error during training.
-            batch_X = np.array(batch_X)
 
             # Perform image transformations that can be bulk-applied to the whole batch.
             if not (subtract_mean is None):
