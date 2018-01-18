@@ -41,7 +41,11 @@ try:
     import pickle
 except ImportError:
     warnings.warn("'pickle' module is missing. You won't be able to save parsed file lists and annotations as pickled files.")
-
+try:
+    from tqdm import tqdm
+except ImportError:
+    warnings.warn("'tqdm' module is missing. You won't be able to enumerate lists with progress.")
+    
 # Image processing functions used by the generator to perform the following image manipulations:
 # - Translation
 # - Horizontal flip
@@ -426,7 +430,7 @@ class BatchGenerator:
                 self.image_ids += image_ids
 
             # Loop over all images in this dataset.
-            for image_id in image_ids:
+            for image_id in tqdm(image_ids, desc=os.path.basename(image_set_filename)):
 
                 filename = '{}'.format(image_id) + '.jpg'
                 self.filenames.append(os.path.join(images_dir, filename))
