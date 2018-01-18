@@ -46,7 +46,7 @@ def ssd_512(image_size,
             variances=[0.1, 0.1, 0.2, 0.2],
             coords='centroids',
             normalize_coords=False,
-            subtract_mean=[104, 117, 123],
+            subtract_mean=[123, 117, 104],
             divide_by_stddev=None,
             swap_channels=True,
             return_predictor_sizes=False):
