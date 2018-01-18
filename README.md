@@ -3,14 +3,15 @@
 ### Contents
 
 1. [Overview](#overview)
-2. [Examples](#examples)
-3. [Dependencies](#dependencies)
-4. [How to use it](#how-to-use-it)
-5. [Download the convolutionalized VGG-16 weights](#download-the-convolutionalized-vgg-16-weights)
-6. [Download the original trained model weights](#download-the-original-trained-model-weights)
-7. [ToDo](#todo)
-8. [Important notes](#important-notes)
-9. [Terminology](#terminology)
+2. [Evaluation results](#evaluation-results)
+3. [Examples](#examples)
+4. [Dependencies](#dependencies)
+5. [How to use it](#how-to-use-it)
+6. [Download the convolutionalized VGG-16 weights](#download-the-convolutionalized-vgg-16-weights)
+7. [Download the original trained model weights](#download-the-original-trained-model-weights)
+8. [ToDo](#todo)
+9. [Important notes](#important-notes)
+10. [Terminology](#terminology)
 
 ### Overview
 
@@ -26,6 +27,32 @@ There are currently the following network architectures in this repository:
 * SSD7: [`keras_ssd7.py`](./keras_ssd7.py) - a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough for less complex object detection tasks and testing. You're obviously not going to get state-of-the-art results with that one.
 
 If you want to build an arbitrary SSD model architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you adapt it for an arbitrary base network.
+
+### Evaluation results
+
+<table>
+  <tr>
+    <td>evaluated on</td>
+    <td colspan=2 align=center>VOC2007 test</td>
+  </tr>
+  <tr>
+    <td>trained on<br>IoU rule</td>
+    <td align=center style="width:35%">07+12<br>0.5</td>
+    <td align=center style="width:35%">07+12+COCO<br>0.5</td>
+  </tr>
+  <tr>
+    <td><b>SSD300</td>
+    <td align=center><b>77.6</td>
+    <td align=center><b>81.2</td>
+  </tr>
+  <tr>
+    <td><b>SSD512</td>
+    <td align=center><b>79.8</td>
+    <td align=center><b>83.2</td>
+  </tr>
+</table>
+
+The results above were measured using the official Pascal VOC Matlab evaluation script.
 
 ### Examples
 
@@ -158,12 +185,14 @@ Here are the ported weights for all the original trained models. The filenames c
 
 The following things are still on the to-do list and contributions are welcome:
 
-* Write an mAP evaluation module
+* Recreate the data augmentation pipeline of the Caffe implementation
 * Write a `DetectionOutput` layer to move the computation of the decoder function into TensorFlow for faster forward passes
+* Write an mAP evaluation Python module for Pascal VOC (use the official Matlab evaluation code in the meantime)
 * Support the Theano and CNTK backends
 
 ### Important notes
 
+* All trained models that were trained on MS COCO use the smaller anchor box scaling factors provided in all of the Jupyter notebooks. In particular, note that the '07+12+COCO' and '07++12+COCO' models use the smaller scaling factors.
 * The original Caffe models use a learning rate multiplier of 2 for the bias terms. Keras currently doesn't provide the option for per-weight learning rate multipliers, so this implementation differs from the Caffe implementation in this regard. This difference isn't relevant if you're using the trained models, but you should keep it in mind if you want to reproduce the training of the original models.
 * The provided `BatchGenerator` cannot replicate the exact data augmentation procedure of the original Caffe implementation. It provides data augmentation options that can be combined to produce similar effects (e.g. combining random image scaling and translation with random cropping to get crops that contain the original objects to varying degrees), but if you want to reproduce the exact data augmentation procedure of the original implementation, you will have to build that yourself.
 
