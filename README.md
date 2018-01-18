@@ -37,8 +37,8 @@ If you want to build an arbitrary SSD model architecture, you can use [`keras_ss
   </tr>
   <tr>
     <td>trained on<br>IoU rule</td>
-    <td align=center style="width:35%">07+12<br>0.5</td>
-    <td align=center style="width:35%">07+12+COCO<br>0.5</td>
+    <td align=center width="35%">07+12<br>0.5</td>
+    <td align=center width="35%">07+12+COCO<br>0.5</td>
   </tr>
   <tr>
     <td><b>SSD300</td>
