@@ -30,7 +30,7 @@ If you want to build an arbitrary SSD model architecture, you can use [`keras_ss
 
 ### Evaluation results
 
-Below you find the mAP values measured using the official Pascal VOC Matlab evaluation script. In all cases the results are either identical to those of the original Caffe implementation or surpass them slightly.
+Below you find the mAP values measured using the official Pascal VOC Matlab evaluation script. In all cases the results are either identical to those of the original Caffe models or surpass them slightly.
 
 <table width="70%">
   <tr>
@@ -92,7 +92,7 @@ The Theano and CNTK backends are currently not supported.
 
 This repository provides Jupyter notebooks that explain training, inference and evaluation, and there are a bunch of explanations in the subsequent sections that complement the notebooks.
 
-How to use one of the trained original models for inference:
+How to use a trained model for inference:
 * [`ssd300_inference.ipynb`](./ssd300_inference.ipynb)
 * [`ssd512_inference.ipynb`](./ssd512_inference.ipynb)
 
@@ -100,8 +100,9 @@ How to train a model:
 * [`ssd300_training.ipynb`](./ssd300_training.ipynb)
 * [`ssd7_training.ipynb`](./ssd7_training.ipynb)
 
-How to evaluate a trained model on MS COCO:
-* [`ssd300_evaluation_COCO.ipynb`](./ssd300_evaluation_COCO.ipynb)
+How to evaluate a trained model:
+* On MS COCO: [`ssd300_evaluation_COCO.ipynb`](./ssd300_evaluation_COCO.ipynb)
+* On Pascal VOC: [`ssd300_evaluation_Pascal_VOC.ipynb`](./ssd300_evaluation_Pascal_VOC.ipynb)
 
 #### Training details
 
