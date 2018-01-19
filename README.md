@@ -40,9 +40,9 @@ Below you find the mAP values measured using the official Pascal VOC Matlab eval
   </tr>
   <tr>
     <td>trained on<br>IoU rule</td>
-    <td align=center width="35%">07+12<br>0.5</td>
-    <td align=center width="35%">07+12+COCO<br>0.5</td>
-    <td align=center width="35%">07++12+COCO<br>0.5</td>
+    <td align=center width="25%">07+12<br>0.5</td>
+    <td align=center width="25%">07+12+COCO<br>0.5</td>
+    <td align=center width="25%">07++12+COCO<br>0.5</td>
   </tr>
   <tr>
     <td><b>SSD300</td>
