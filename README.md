@@ -30,7 +30,7 @@ If you want to build an arbitrary SSD model architecture, you can use [`keras_ss
 
 ### Evaluation results
 
-Below you find the mAP values measured using the official Pascal VOC Matlab evaluation script. In all cases the results are either identical to those of the original Caffe models or surpass them slightly.
+Below you find the mAP evaluation results from the official Pascal VOC Matlab evaluation script (for 2007 test) and the official test server (for 2012 test). In all cases the results are either identical to those of the original Caffe models or surpass them slightly.
 
 <table width="70%">
   <tr>
