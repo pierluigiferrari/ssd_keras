@@ -29,6 +29,7 @@ from copy import deepcopy
 from PIL import Image
 import csv
 import os
+from tqdm import tqdm
 try:
     import json
 except ImportError:
@@ -426,7 +427,8 @@ class BatchGenerator:
                 self.image_ids += image_ids
 
             # Loop over all images in this dataset.
-            for image_id in image_ids:
+            #for image_id in image_ids:
+            for image_id in tqdm(image_ids, desc=os.path.basename(image_set_filename)):
 
                 filename = '{}'.format(image_id) + '.jpg'
                 self.filenames.append(os.path.join(images_dir, filename))
@@ -867,9 +869,13 @@ class BatchGenerator:
 
                 # From here on, perform some optional image transformations.
 
-                if (batch_X[i].ndim == 2) and convert_to_3_channels:
-                    # Convert the 1-channel image into a 3-channel image.
-                    batch_X[i] = np.stack([batch_X[i]] * 3, axis=-1)
+                if (batch_X[i].ndim == 2):
+                    if convert_to_3_channels:
+                        # Convert the 1-channel image into a 3-channel image.
+                        batch_X[i] = np.stack([batch_X[i]] * 3, axis=-1)
+                    else:
+                        # batch_X[i].ndim must always be 3, even for single-channel images.
+                        batch_X[i] = np.expand_dims(batch_X[i], axis=-1)
 
                 if equalize:
                     batch_X[i] = histogram_eq(batch_X[i])
