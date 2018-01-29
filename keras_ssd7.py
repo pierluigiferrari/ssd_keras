@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
+from __future__ import division
 import numpy as np
 from keras.models import Model
 from keras.layers import Input, Lambda, Conv2D, MaxPooling2D, BatchNormalization, ELU, Reshape, Concatenate, Activation
@@ -35,7 +36,7 @@ def build_model(image_size,
                 two_boxes_for_ar1=True,
                 steps=None,
                 offsets=None,
-                limit_boxes=True,
+                limit_boxes=False,
                 variances=[1.0, 1.0, 1.0, 1.0],
                 coords='centroids',
                 normalize_coords=False,
@@ -225,10 +226,10 @@ def build_model(image_size,
 
     x = Input(shape=(img_height, img_width, img_channels))
 
-    # The following identity layer is only needed so that subsequent lambda layers can be optional.
+    # The following identity layer is only needed so that the subsequent lambda layers can be optional.
     x1 = Lambda(lambda z: z,
                 output_shape=(img_height, img_width, img_channels),
-                name='idendity_layer')(x)
+                name='identity_layer')(x)
     if not (subtract_mean is None):
         x1 = Lambda(lambda z: z - np.array(subtract_mean),
                    output_shape=(img_height, img_width, img_channels),
@@ -288,15 +289,15 @@ def build_model(image_size,
     # We precidt `n_classes` confidence values for each box, hence the `classes` predictors have depth `n_boxes * n_classes`
     # We predict 4 box coordinates for each box, hence the `boxes` predictors have depth `n_boxes * 4`
     # Output shape of `classes`: `(batch, height, width, n_boxes * n_classes)`
-    classes4 = Conv2D(n_boxes[0] * n_classes, (3, 3), strides=(1, 1), padding="valid", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='classes4')(conv4)
-    classes5 = Conv2D(n_boxes[1] * n_classes, (3, 3), strides=(1, 1), padding="valid", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='classes5')(conv5)
-    classes6 = Conv2D(n_boxes[2] * n_classes, (3, 3), strides=(1, 1), padding="valid", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='classes6')(conv6)
-    classes7 = Conv2D(n_boxes[3] * n_classes, (3, 3), strides=(1, 1), padding="valid", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='classes7')(conv7)
+    classes4 = Conv2D(n_boxes[0] * n_classes, (3, 3), strides=(1, 1), padding="same", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='classes4')(conv4)
+    classes5 = Conv2D(n_boxes[1] * n_classes, (3, 3), strides=(1, 1), padding="same", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='classes5')(conv5)
+    classes6 = Conv2D(n_boxes[2] * n_classes, (3, 3), strides=(1, 1), padding="same", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='classes6')(conv6)
+    classes7 = Conv2D(n_boxes[3] * n_classes, (3, 3), strides=(1, 1), padding="same", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='classes7')(conv7)
     # Output shape of `boxes`: `(batch, height, width, n_boxes * 4)`
-    boxes4 = Conv2D(n_boxes[0] * 4, (3, 3), strides=(1, 1), padding="valid", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='boxes4')(conv4)
-    boxes5 = Conv2D(n_boxes[1] * 4, (3, 3), strides=(1, 1), padding="valid", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='boxes5')(conv5)
-    boxes6 = Conv2D(n_boxes[2] * 4, (3, 3), strides=(1, 1), padding="valid", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='boxes6')(conv6)
-    boxes7 = Conv2D(n_boxes[3] * 4, (3, 3), strides=(1, 1), padding="valid", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='boxes7')(conv7)
+    boxes4 = Conv2D(n_boxes[0] * 4, (3, 3), strides=(1, 1), padding="same", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='boxes4')(conv4)
+    boxes5 = Conv2D(n_boxes[1] * 4, (3, 3), strides=(1, 1), padding="same", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='boxes5')(conv5)
+    boxes6 = Conv2D(n_boxes[2] * 4, (3, 3), strides=(1, 1), padding="same", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='boxes6')(conv6)
+    boxes7 = Conv2D(n_boxes[3] * 4, (3, 3), strides=(1, 1), padding="same", kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='boxes7')(conv7)
 
     # Generate the anchor boxes
     # Output shape of `anchors`: `(batch, height, width, n_boxes, 8)`
@@ -334,19 +335,19 @@ def build_model(image_size,
     # Concatenate the predictions from the different layers and the assosciated anchor box tensors
     # Axis 0 (batch) and axis 2 (n_classes or 4, respectively) are identical for all layer predictions,
     # so we want to concatenate along axis 1
-    # Output shape of `classes_merged`: (batch, n_boxes_total, n_classes)
+    # Output shape of `classes_concat`: (batch, n_boxes_total, n_classes)
     classes_concat = Concatenate(axis=1, name='classes_concat')([classes4_reshaped,
                                                                  classes5_reshaped,
                                                                  classes6_reshaped,
                                                                  classes7_reshaped])
 
-    # Output shape of `boxes_final`: (batch, n_boxes_total, 4)
+    # Output shape of `boxes_concat`: (batch, n_boxes_total, 4)
     boxes_concat = Concatenate(axis=1, name='boxes_concat')([boxes4_reshaped,
                                                              boxes5_reshaped,
                                                              boxes6_reshaped,
                                                              boxes7_reshaped])
 
-    # Output shape of `anchors_final`: (batch, n_boxes_total, 8)
+    # Output shape of `anchors_concat`: (batch, n_boxes_total, 8)
     anchors_concat = Concatenate(axis=1, name='anchors_concat')([anchors4_reshaped,
                                                                  anchors5_reshaped,
                                                                  anchors6_reshaped,
