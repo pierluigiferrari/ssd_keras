@@ -19,6 +19,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
+from __future__ import division
 from collections import defaultdict
 import warnings
 import numpy as np
@@ -1195,7 +1196,7 @@ class BatchGenerator:
                     # This isn't efficient, but it hopefully should not need to be done often anyway.
                     batch_filenames.pop(j)
                     if not batch_y is None: batch_y.pop(j)
-                    if not batch_imgage_ids is None: batch_image_ids.pop(j)
+                    if not batch_image_ids is None: batch_image_ids.pop(j)
                     if 'original_images' in returns: batch_original_images.pop(j)
                     if 'original_labels' in returns and not batch_y is None: batch_original_labels.pop(j)
 

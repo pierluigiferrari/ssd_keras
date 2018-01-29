@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
+from __future__ import division
 import numpy as np
 from keras.models import Model
 from keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, ZeroPadding2D, Reshape, Concatenate
@@ -228,10 +229,10 @@ def ssd_300(image_size,
 
     x = Input(shape=(img_height, img_width, img_channels))
 
-    # The following identity layer is only needed so that subsequent lambda layers can be optional.
+    # The following identity layer is only needed so that the subsequent lambda layers can be optional.
     x1 = Lambda(lambda z: z,
                 output_shape=(img_height, img_width, img_channels),
-                name='idendity_layer')(x)
+                name='identity_layer')(x)
     if not (subtract_mean is None):
         x1 = Lambda(lambda z: z - np.array(subtract_mean),
                    output_shape=(img_height, img_width, img_channels),

@@ -17,10 +17,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
+from __future__ import division
+import numpy as np
 import keras.backend as K
 from keras.engine.topology import InputSpec
 from keras.engine.topology import Layer
-import numpy as np
 
 class L2Normalization(Layer):
     '''
