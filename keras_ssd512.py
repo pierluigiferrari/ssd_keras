@@ -57,12 +57,11 @@ def ssd_512(image_size,
     The base network is a reduced atrous VGG-16, extended by the SSD architecture,
     as described in the paper.
 
-    In case you're wondering why this function has so many arguments: All arguments except
-    the first two (`image_size` and `n_classes`) are only needed so that the anchor box
-    layers can produce the correct anchor boxes. In case you're training the network, the
-    parameters passed here must be the same as the ones used to set up `SSDBoxEncoder`.
-    In case you're loading trained weights, the parameters passed here must be the same
-    as the ones used to produce the trained weights.
+    Most of the arguments that this function takes are only needed for the anchor
+    box layers. In case you're training the network, the parameters passed here must
+    be the same as the ones used to set up `SSDBoxEncoder`. In case you're loading
+    trained weights, the parameters passed here must be the same as the ones used
+    to produce the trained weights.
 
     Some of these arguments are explained in more detail in the documentation of the
     `SSDBoxEncoder` class.
@@ -165,10 +164,14 @@ def ssd_512(image_size,
     '''
 
     n_predictor_layers = 7 # The number of predictor conv layers in the network is 7 for the original SSD512
-
     n_classes += 1 # Account for the background class.
+    l2_reg = l2_regularization # Make the internal name shorter.
+    img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
 
-    # Get a few exceptions out of the way first.
+    ############################################################################
+    # Get a few exceptions out of the way.
+    ############################################################################
+
     if aspect_ratios_global is None and aspect_ratios_per_layer is None:
         raise ValueError("`aspect_ratios_global` and `aspect_ratios_per_layer` cannot both be None. At least one needs to be specified.")
     if aspect_ratios_per_layer:
@@ -194,6 +197,10 @@ def ssd_512(image_size,
 
     if (not (offsets is None)) and (len(offsets) != n_predictor_layers):
         raise ValueError("You must provide at least one offset value per predictor layer.")
+
+    ############################################################################
+    # Compute the anchor box parameters.
+    ############################################################################
 
     # Set the aspect ratios for each predictor layer. These are only needed for the anchor box layers.
     if aspect_ratios_per_layer:
@@ -222,31 +229,20 @@ def ssd_512(image_size,
     if offsets is None:
         offsets = [None] * n_predictor_layers
 
-    l2_reg = l2_regularization
-
-    # Input image format
-    img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]
-
-    ### Build the actual network.
+    ############################################################################
+    # Build the network.
+    ############################################################################
 
     x = Input(shape=(img_height, img_width, img_channels))
 
     # The following identity layer is only needed so that the subsequent lambda layers can be optional.
-    x1 = Lambda(lambda z: z,
-                output_shape=(img_height, img_width, img_channels),
-                name='identity_layer')(x)
+    x1 = Lambda(lambda z: z, output_shape=(img_height, img_width, img_channels), name='identity_layer')(x)
     if not (subtract_mean is None):
-        x1 = Lambda(lambda z: z - np.array(subtract_mean),
-                   output_shape=(img_height, img_width, img_channels),
-                   name='input_mean_normalization')(x1)
+        x1 = Lambda(lambda z: z - np.array(subtract_mean), output_shape=(img_height, img_width, img_channels), name='input_mean_normalization')(x1)
     if not (divide_by_stddev is None):
-        x1 = Lambda(lambda z: z / np.array(divide_by_stddev),
-                   output_shape=(img_height, img_width, img_channels),
-                   name='input_stddev_normalization')(x1)
+        x1 = Lambda(lambda z: z / np.array(divide_by_stddev), output_shape=(img_height, img_width, img_channels), name='input_stddev_normalization')(x1)
     if swap_channels and (img_channels == 3):
-        x1 = Lambda(lambda z: z[...,::-1],
-                   output_shape=(img_height, img_width, img_channels),
-                   name='input_channel_swap')(x1)
+        x1 = Lambda(lambda z: z[...,::-1], output_shape=(img_height, img_width, img_channels), name='input_channel_swap')(x1)
 
     conv1_1 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='conv1_1')(x1)
     conv1_2 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='conv1_2')(conv1_1)
