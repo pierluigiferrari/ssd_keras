@@ -86,7 +86,7 @@ Finally, some prediction examples of an SSD7 (i.e. the small 7-layer version) pa
 
 ### Dependencies
 
-* Python 3.x
+* Python 3.x (Python 2.7 seems to work, but isn't actively supported)
 * Numpy
 * TensorFlow 1.x
 * Keras 2.x
@@ -94,6 +94,8 @@ Finally, some prediction examples of an SSD7 (i.e. the small 7-layer version) pa
 * Beautiful Soup 4.x (to parse XML files)
 
 The Theano and CNTK backends are currently not supported.
+
+Python 2 compatibility: This implementation seems to work with Python 2.7, but I don't test on Py2, so use it with Py2 at your own risk. I explicitly don't provide any support for Py2. Anyways, it's 2018 and nobody should be using Python 2 anymore.
 
 ### How to use it
 
@@ -106,6 +108,9 @@ How to use a trained model for inference:
 How to train a model:
 * [`ssd300_training.ipynb`](./ssd300_training.ipynb)
 * [`ssd7_training.ipynb`](./ssd7_training.ipynb)
+
+How to use one of the provided trained models for transfer learning on your own dataset:
+* [Read below](#how-to-fine-tune-one-of-the-trained-models-on-your-own-dataset)
 
 How to evaluate a trained model:
 * On MS COCO: [`ssd300_evaluation_COCO.ipynb`](./ssd300_evaluation_COCO.ipynb)
