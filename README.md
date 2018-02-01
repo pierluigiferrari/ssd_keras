@@ -9,9 +9,10 @@
 5. [How to use it](#how-to-use-it)
 6. [Download the convolutionalized VGG-16 weights](#download-the-convolutionalized-vgg-16-weights)
 7. [Download the original trained model weights](#download-the-original-trained-model-weights)
-8. [ToDo](#todo)
-9. [Important notes](#important-notes)
-10. [Terminology](#terminology)
+8. [How to fine-tune one of the trained models on your own dataset](#how-to-fine-tune-one-of-the-trained-models-on-your-own-dataset)
+9. [ToDo](#todo)
+10. [Important notes](#important-notes)
+11. [Terminology](#terminology)
 
 ### Overview
 
@@ -25,6 +26,8 @@ There are currently the following network architectures in this repository:
 * SSD300: [`keras_ssd300.py`](./keras_ssd300.py)
 * SSD512: [`keras_ssd512.py`](./keras_ssd512.py)
 * SSD7: [`keras_ssd7.py`](./keras_ssd7.py) - a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough for less complex object detection tasks and testing. You're obviously not going to get state-of-the-art results with that one.
+
+If you want to use one of the provided trained models for transfer learning (i.e. fine-tune one of the trained models on your own dataset), there is a [Jupyter notebook tutorial]((weight_sampling_tutorial.ipynb)) that helps you sub-sample the trained weights so that they are compatible with your dataset, see further below.
 
 If you want to build an arbitrary SSD model architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you adapt it for an arbitrary base network.
 
@@ -185,6 +188,12 @@ Here are the ported weights for all the original trained models. The filenames c
 3. ILSVRC models:
 
     * trainval1: [SSD300*](https://drive.google.com/open?id=1VWkj1oQS2RUhyJXckx3OaDYs5fx2mMCq), [SSD500](https://drive.google.com/open?id=1LcBPsd9CJbuBw4KiSuE1o1fMA-Pz2Zvw)
+
+### How to fine-tune one of the trained models on your own dataset
+
+If you want to fine-tune one of the provided trained models on your own dataset, chances are your dataset doesn't have the same number of classes as the trained model. The following tutorial explains how to deal with this problem:
+
+[`weight_sampling_tutorial.ipynb`](weight_sampling_tutorial.ipynb)
 
 ### ToDo
 
