@@ -251,7 +251,7 @@ def decode_y(y_pred,
              iou_threshold=0.45,
              top_k=200,
              input_coords='centroids',
-             normalize_coords=False,
+             normalize_coords=True,
              img_height=None,
              img_width=None):
     '''
@@ -360,7 +360,7 @@ def decode_y2(y_pred,
               iou_threshold=0.45,
               top_k='all',
               input_coords='centroids',
-              normalize_coords=False,
+              normalize_coords=True,
               img_height=None,
               img_width=None):
     '''
@@ -487,7 +487,7 @@ class SSDBoxEncoder:
                  pos_iou_threshold=0.5,
                  neg_iou_threshold=0.3,
                  coords='centroids',
-                 normalize_coords=False):
+                 normalize_coords=True):
         '''
         Arguments:
             img_height (int): The height of the input images.
@@ -986,7 +986,7 @@ def decode_y_debug(y_pred,
                    iou_threshold=0.45,
                    top_k=200,
                    input_coords='centroids',
-                   normalize_coords=False,
+                   normalize_coords=True,
                    img_height=None,
                    img_width=None,
                    variance_encoded_in_target=False):
