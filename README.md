@@ -18,7 +18,7 @@
 
 This is a Keras implementation of the SSD model architecture introduced by Wei Liu et al. in the paper [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325).
 
-Ports of the trained weights of all the original models are provided below, as are convolutionalized VGG-16 weights in case you would like to train from scratch. The performance of the ported models matches or slightly surpasses that of the original Caffe models, see below.
+Ports of the trained weights of all the original models are provided below, as are convolutionalized VGG-16 weights. The performance of the ported models matches or slightly surpasses that of the original Caffe models, see below.
 
 The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
 
