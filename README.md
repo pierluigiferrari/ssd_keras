@@ -18,22 +18,22 @@
 
 This is a Keras implementation of the SSD model architecture introduced by Wei Liu et al. in the paper [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325).
 
-The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
+Ports of the trained weights of all the original models are provided below, as are convolutionalized VGG-16 weights in case you would like to train from scratch. The performance of the ported models matches or slightly surpasses that of the original Caffe models, see below.
 
-Ports of the trained weights of all the original models are provided below, as are convolutionalized VGG-16 weights in case you would like to train from scratch.
+The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
 
 There are currently the following network architectures in this repository:
 * SSD300: [`keras_ssd300.py`](./keras_ssd300.py)
 * SSD512: [`keras_ssd512.py`](./keras_ssd512.py)
-* SSD7: [`keras_ssd7.py`](./keras_ssd7.py) - a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough for less complex object detection tasks and testing. You're obviously not going to get state-of-the-art results with that one.
+* SSD7: [`keras_ssd7.py`](./keras_ssd7.py) - a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough for less complex object detection tasks and testing. You're obviously not going to get state-of-the-art results with that one, but it's fast.
 
-If you want to use one of the provided trained models for transfer learning (i.e. fine-tune one of the trained models on your own dataset), there is a [Jupyter notebook tutorial](weight_sampling_tutorial.ipynb) that helps you sub-sample the trained weights so that they are compatible with your dataset, see further below.
+If you would like to use one of the provided trained models for transfer learning (i.e. fine-tune one of the trained models on your own dataset), there is a [Jupyter notebook tutorial](weight_sampling_tutorial.ipynb) that helps you sub-sample the trained weights so that they are compatible with your dataset, see further below.
 
-If you want to build an arbitrary SSD model architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you adapt it for an arbitrary base network.
+If you would like to build an SSD with your own base network architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template, it provides documentation and comments to help you.
 
 ### Evaluation results
 
-Below you find the mAP evaluation results from the official Pascal VOC Matlab evaluation script (for 2007 test) and the official test server (for 2012 test). In all cases the results are either identical to those of the original Caffe models or surpass them slightly.
+Here are the mAP evaluation results from the official Pascal VOC Matlab evaluation script (for 2007 test) and the official test server (for 2012 test). In all cases the results are either identical to those of the original Caffe models or surpass them slightly.
 
 <table width="70%">
   <tr>
