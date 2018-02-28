@@ -115,7 +115,10 @@ def sample_tensors(weights_list, sampling_instructions, axes=None, init=None, me
                 sampling_slices.append(sampling_slice)
             elif sampling_inst < first_tensor.shape[i]:
                 # We want to SUB-sample this dimension. Randomly pick `sample_inst` many elements from it.
-                sampling_slice = sorted(np.random.choice(first_tensor.shape[i], sampling_inst, replace=False))
+                sampling_slice1 = np.array([0]) # We will always sample class 0, the background class.
+                # Sample the rest of the classes.
+                sampling_slice2 = np.sort(np.random.choice(np.arange(1, first_tensor.shape[i]), sampling_inst - 1, replace=False))
+                sampling_slice = np.concatenate([sampling_slice1, sampling_slice2])
                 sampling_slices.append(sampling_slice)
             else:
                 # We want to UP-sample. Pick all elements from this dimension.
@@ -151,7 +154,9 @@ def sample_tensors(weights_list, sampling_instructions, axes=None, init=None, me
         up_sample_slices = [np.arange(k) for k in subsampled_first_tensor.shape]
         for i in up_sample:
             # Randomly select across which indices of this dimension to scatter the elements of `new_weights_tensor` in this dimension.
-            up_sample_slices[i] = sorted(np.random.choice(upsampled_first_tensor.shape[i], subsampled_first_tensor.shape[i], replace=False))
+            up_sample_slice1 = np.array([0])
+            up_sample_slice2 = np.sort(np.random.choice(np.arange(1, upsampled_first_tensor.shape[i]), subsampled_first_tensor.shape[i] - 1, replace=False))
+            up_sample_slices[i] = np.concatenate([up_sample_slice1, up_sample_slice2])
         upsampled_first_tensor[np.ix_(*up_sample_slices)] = subsampled_first_tensor
         upsampled_weights_list.append(upsampled_first_tensor)
 
