@@ -1,0 +1,257 @@
+'''
+A custom Keras layer to decode the raw SSD prediction output. Corresponds to the
+`DetectionOutput` layer type in the original Caffe implementation of SSD.
+
+Copyright (C) 2018 Pierluigi Ferrari
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'''
+
+from __future__ import division
+import numpy as np
+import tensorflow as tf
+import keras.backend as K
+from keras.engine.topology import InputSpec
+from keras.engine.topology import Layer
+
+class DecodeDetections(Layer):
+    '''
+    A Keras layer to decode the raw SSD prediction output.
+
+    Input shape:
+        3D tensor of shape `(batch, n_boxes, n_classes + 12)`.
+
+    Output shape:
+        5D tensor of shape `(batch, height, width, n_boxes, 8)`. The last axis contains
+        the four anchor box coordinates and the four variance values for each box.
+    '''
+
+    def __init__(self,
+                 confidence_thresh=0.01,
+                 iou_threshold=0.45,
+                 top_k=200,
+                 coords='centroids',
+                 normalize_coords=True,
+                 img_height=None,
+                 img_width=None,
+                 **kwargs):
+        '''
+        All default argument values follow the Caffe implementation.
+
+        Arguments:
+            confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence in a specific
+                positive class in order to be considered for the non-maximum suppression stage for the respective class.
+                A lower value will result in a larger part of the selection process being done by the non-maximum suppression
+                stage, while a larger value will result in a larger part of the selection process happening in the confidence
+                thresholding stage.
+            iou_threshold (float, optional): A float in [0,1]. All boxes with a Jaccard similarity of greater than `iou_threshold`
+                with a locally maximal box will be removed from the set of predictions for a given class, where 'maximal' refers
+                to the box score.
+            top_k (int, optional): The number of highest scoring predictions to be kept for each batch item after the
+                non-maximum suppression stage.
+            input_coords (str, optional): The box coordinate format that the model outputs. Can be either 'centroids'
+                for the format `(cx, cy, w, h)` (box center coordinates, width, and height), 'minmax' for the format
+                `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`.
+            normalize_coords (bool, optional): Set to `True` if the model outputs relative coordinates (i.e. coordinates in [0,1])
+                and you wish to transform these relative coordinates back to absolute coordinates. If the model outputs
+                relative coordinates, but you do not want to convert them back to absolute coordinates, set this to `False`.
+                Do not set this to `True` if the model already outputs absolute coordinates, as that would result in incorrect
+                coordinates. Requires `img_height` and `img_width` if set to `True`.
+            img_height (int, optional): The height of the input images. Only needed if `normalize_coords` is `True`.
+            img_width (int, optional): The width of the input images. Only needed if `normalize_coords` is `True`.
+        '''
+        if K.backend() != 'tensorflow':
+            raise TypeError("This layer only supports TensorFlow at the moment, but you are using the {} backend.".format(K.backend()))
+
+        if normalize_coords and ((img_height is None) or (img_width is None)):
+            raise ValueError("If relative box coordinates are supposed to be converted to absolute coordinates, the decoder needs the image size in order to decode the predictions, but `img_height == {}` and `img_width == {}`".format(img_height, img_width))
+
+        if coords != 'centroids':
+            raise ValueError("The DetectionOutput layer currently only supports the 'centroids' coordinate format as input.")
+
+        self.confidence_thresh = tf.constant(confidence_thresh)
+        self.iou_threshold = tf.constant(iou_threshold)
+        self.top_k = tf.constant(top_k)
+        self.normalize_coords = tf.constant(normalize_coords)
+        self.img_height = tf.constant(img_height, dtype=tf.float32)
+        self.img_width = tf.constant(img_width, dtype=tf.float32)
+        self.coords = coords
+
+        super(DecodeDetections, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        self.input_spec = [InputSpec(shape=input_shape)]
+        super(DecodeDetections, self).build(input_shape)
+
+    def call(self, y_pred, mask=None):
+        '''
+        Input shape:
+            3D tensor of shape `(batch, n_boxes, n_classes + 12)`.
+
+        [classes, 4 box coords, 4 anchor box coords, 4 variances]
+        [classes, -12:-8,       -8:-4,               -4:        ]
+        cx, cy, w, h
+        '''
+
+        #####################################################################################
+        # 1. Convert the box coordinates from predicted anchor box offsets to predicted
+        #    absolute coordinates
+        #####################################################################################
+
+        # Convert anchor box offsets to image offsets.
+        cx = y_pred[...,-12] * y_pred[...,-4] * y_pred[...,-6] + y_pred[...,-8] # cx = cx_pred * cx_variance * w_anchor + cx_anchor
+        cy = y_pred[...,-11] * y_pred[...,-3] * y_pred[...,-5] + y_pred[...,-7] # cy = cy_pred * cy_variance * h_anchor + cy_anchor
+        w = tf.exp(y_pred[...,-10] * y_pred[...,-2]) * y_pred[...,-6] # w = exp(w_pred * variance_w) * w_anchor
+        h = tf.exp(y_pred[...,-9] * y_pred[...,-1]) * y_pred[...,-5] # h = exp(h_pred * variance_h) * h_anchor
+
+        # Convert 'centroids' to 'corners'.
+        xmin = cx - 0.5 * w
+        ymin = cy - 0.5 * h
+        xmax = cx + 0.5 * w
+        ymax = cx + 0.5 * h
+
+        # If the model predicts box coordinates relative to the image dimensions and they are supposed
+        # to be converted back to absolute coordinates, do that.
+        def normalized_coords():
+            xmin1 = tf.expand_dims(xmin * self.img_width, axis=-1)
+            ymin1 = tf.expand_dims(ymin * self.img_height, axis=-1)
+            xmax1 = tf.expand_dims(xmax * self.img_width, axis=-1)
+            ymax1 = tf.expand_dims(ymax * self.img_height, axis=-1)
+            return xmin1, ymin1, xmax1, ymax1
+        def non_normalized_coords():
+            return tf.expand_dims(xmin, axis=-1), tf.expand_dims(ymin, axis=-1), tf.expand_dims(xmax, axis=-1), tf.expand_dims(ymax, axis=-1)
+
+        xmin, ymin, xmax, ymax = tf.cond(self.normalize_coords, normalized_coords, non_normalized_coords)
+
+        # Concatenate the one-hot class confidences and the converted box coordinates to form the decoded predictions tensor.
+        y_pred = tf.concat(values=[y_pred[...,:-12], xmin, ymin, xmax, ymax], axis=-1)
+
+        #####################################################################################
+        # 2. Perform confidence thresholding, per-class non-maximum suppression, and
+        #    top-k filtering.
+        #####################################################################################
+
+        batch_size = tf.shape(y_pred)[0] # Output dtype: tf.int32
+        n_boxes = tf.shape(y_pred)[1]
+        n_classes = tf.shape(y_pred)[2] - 12
+        class_indices = tf.range(1, n_classes)
+
+        # Create a function that filters the predictions for the given batch item. Specifically, performs:
+        # - confidence thresholding
+        # - non-maximum suppression (NMS)
+        # - top-k filtering
+        def filter_predictions(batch_item):
+
+            # Create a function that filters the predictions for one single class.
+            def filter_single_class(index):
+
+                # From a tensor of shape (n_boxes, n_classes + 4 coordinates) extract
+                # a tensor of shape (n_boxes, 1 + 4 coordinates) that contains the
+                # confidnece values for just one class, determined by `index`.
+                single_class = tf.gather(params=batch_item,
+                                         indices=[index, index, -4, -3, -2, -1],
+                                         axis=-1)
+
+                # Apply confidence thresholding with respect to the class defined by `index`.
+                single_class = single_class[:,1] > self.confidence_thresh
+
+                # Set the class ID as the first element for every box.
+                single_class[:,0] = index
+
+                # If any boxes made the threshold, perform NMS.
+                def perform_nms():
+                    scores, _, boxes = tf.split(single_class, num_or_size_splits=[1, 1, 4], axis=-1)
+                    maxima_indices = tf.image.non_max_suppression(boxes=boxes,
+                                                                  scores=scores,
+                                                                  max_output_size=400,
+                                                                  iou_threshold=self.iou_threshold,
+                                                                  name='non_maximum_suppresion')
+                    maxima = tf.gather(params=single_class,
+                                       indices=maxima_indices,
+                                       axis=0)
+                    return maxima
+
+                def return_empty_tensor():
+                    return single_class
+
+                return tf.cond(tf.equals(single_class.size(),0), return_empty_tensor(), perform_nms())
+
+            # Iterate `filter_single_class()` over all class indices.
+            filtered_single_classes = tf.map_fn(fn=lambda x: filter_single_class(x),
+                                                elems=class_indices,
+                                                dtype=[batch_item.dtype],
+                                                parallel_iterations=10,
+                                                back_prop=False,
+                                                swap_memory=False,
+                                                infer_shape=True)
+
+            # Concatenate the filtered results for all individual classes to one tensor.
+            filtered_predictions = tf.concat(values=filtered_single_classes, axis=0)
+
+            # Perform top-k filtering for this batch item or pad it in case there are
+            # fewer than `self.top_k` boxes left at this point. Either way, produce a
+            # tensor of length `self.top_k`. By the time we return the final results tensor
+            # for the whole batch, all batch items must have the same number of predicted
+            # boxes so that the tensor dimensions are homogenous. If fewer than `self.top_k`
+            # predictions are left after the filtering process above, we pad the missing
+            # predictions with zeros as dummy entries.
+            def top_k():
+                return tf.gather(params=filtered_predictions,
+                                 indices=tf.nn.top_k(filtered_predictions[:, 1], k=self.top_k).indices,
+                                 axis=0)
+            def pad_and_top_k():
+                padded_predictions = tf.pad(tensor=filtered_predictions,
+                                            paddings=[[0, self.top_k - filtered_predictions.shape[0]], [0, 0]],
+                                            mode='CONSTANT',
+                                            constant_values=0)
+                return tf.gather(params=padded_predictions,
+                                 indices=tf.nn.top_k(padded_predictions[:, 1], k=self.top_k).indices,
+                                 axis=0)
+
+            top_k_boxes = tf.cond(tf.greater_equal(filtered_boxes.shape[0], self.top_k), top_k(), pad_and_top_k())
+
+            return top_k_boxes
+
+        # We need to split `y_pred` by batch items and process to every batch item separately.
+        batch_items = tf.split(y_pred, num_or_size_splits=batch_size, axis=0)
+
+        # Iterate `filter_predictions()` over all batch items.
+        filtered_batch_items = tf.map_fn(fn=lambda x: filter_predictions(x),
+                                         elems=batch_items,
+                                         dtype=None,
+                                         parallel_iterations=10,
+                                         back_prop=False,
+                                         swap_memory=False,
+                                         infer_shape=True)
+
+        output_tensor = tf.concat(values=filtered_batch_items, axis=0)
+
+        return output_tensor
+
+    def compute_output_shape(self, input_shape):
+        batch_size, n_boxes, last_axis = input_shape
+        return (batch_size, self.top_k, 6) # Last axis: (class_ID, confidence, 4 box coordinates)
+
+    def get_config(self):
+        config = {
+            'confidence_thresh': self.confidence_thresh,
+            'iou_threshold': self.iou_threshold,
+            'top_k': self.top_k,
+            'coords': self.coords,
+            'normalize_coords': self.normalize_coords,
+            'img_height': self.img_height,
+            'img_width': self.img_width,
+        }
+        base_config = super(DecodeDetections, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
