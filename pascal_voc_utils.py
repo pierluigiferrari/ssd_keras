@@ -64,8 +64,9 @@ def predict_all_to_txt(model,
         out_file_prefix (str, optional): A prefix for the output text file names. The suffix to each output text file name will
             be the respective class name followed by the `.txt` file extension. This string is also how you specify the directory
             in which the results are to be saved.
-        model_mode (str, optional): The mode in which the model was created, i.e. 'training' or 'inference'. This is needed in
-            order to know whether the model output is already decoded or still needs to be decoded.
+        model_mode (str, optional): The mode in which the model was created, i.e. 'training', 'inference' or 'inference_fast'.
+            This is needed in order to know whether the model output is already decoded or still needs to be decoded. Refer to
+            the model documentation for the meaning of the individual modes.
         confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence in a specific
             positive class in order to be considered for the non-maximum suppression stage for the respective class.
             A lower value will result in a larger part of the selection process being done by the non-maximum suppression
