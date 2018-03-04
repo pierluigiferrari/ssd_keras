@@ -193,10 +193,10 @@ class DecodeDetections(Layer):
                                        axis=0)
                     return maxima
 
-                def return_empty_tensor():
+                def no_confident_predictions():
                     return tf.constant(value=0.0, shape=(1,6))
 
-                single_class_nms = tf.cond(tf.equal(tf.size(single_class), 0), return_empty_tensor, perform_nms)
+                single_class_nms = tf.cond(tf.equal(tf.size(single_class), 0), no_confident_predictions, perform_nms)
 
                 # Make sure `single_class` is exactly `self.nms_max_output_size` elements long.
                 padded_single_class = tf.pad(tensor=single_class_nms,
@@ -228,7 +228,7 @@ class DecodeDetections(Layer):
             # predictions with zeros as dummy entries.
             def top_k():
                 return tf.gather(params=filtered_predictions,
-                                 indices=tf.nn.top_k(filtered_predictions[:, 1], k=self.top_k).indices,
+                                 indices=tf.nn.top_k(filtered_predictions[:, 1], k=self.top_k, sorted=True).indices,
                                  axis=0)
             def pad_and_top_k():
                 padded_predictions = tf.pad(tensor=filtered_predictions,
@@ -244,16 +244,14 @@ class DecodeDetections(Layer):
             return top_k_boxes
 
         # Iterate `filter_predictions()` over all batch items.
-        filtered_batch_items = tf.map_fn(fn=lambda x: filter_predictions(x),
-                                         elems=y_pred,
-                                         dtype=None,
-                                         parallel_iterations=128,
-                                         back_prop=False,
-                                         swap_memory=False,
-                                         infer_shape=True,
-                                         name='loop_over_batch')
-
-        output_tensor = tf.concat(values=filtered_batch_items, axis=0)
+        output_tensor = tf.map_fn(fn=lambda x: filter_predictions(x),
+                                  elems=y_pred,
+                                  dtype=None,
+                                  parallel_iterations=128,
+                                  back_prop=False,
+                                  swap_memory=False,
+                                  infer_shape=True,
+                                  name='loop_over_batch')
 
         return output_tensor
 
@@ -266,6 +264,7 @@ class DecodeDetections(Layer):
             'confidence_thresh': self.confidence_thresh,
             'iou_threshold': self.iou_threshold,
             'top_k': self.top_k,
+            'nms_max_output_size': self.nms_max_output_size,
             'coords': self.coords,
             'normalize_coords': self.normalize_coords,
             'img_height': self.img_height,
