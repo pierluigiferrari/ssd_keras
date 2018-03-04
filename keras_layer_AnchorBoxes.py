@@ -82,23 +82,22 @@ class AnchorBoxes(Layer):
             next_scale (float): A float in [0, 1], the next larger scaling factor. Only relevant if
                 `self.two_boxes_for_ar1 == True`.
             aspect_ratios (list, optional): The list of aspect ratios for which default boxes are to be
-                generated for this layer. Defaults to [0.5, 1.0, 2.0].
+                generated for this layer.
             two_boxes_for_ar1 (bool, optional): Only relevant if `aspect_ratios` contains 1.
                 If `True`, two default boxes will be generated for aspect ratio 1. The first will be generated
                 using the scaling factor for the respective layer, the second one will be generated using
-                geometric mean of said scaling factor and next bigger scaling factor. Defaults to `True`.
+                geometric mean of said scaling factor and next bigger scaling factor.
             limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
-                Defaults to `True`.
             variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
                 to be precise) for the encoded predicted box coordinates. A variance value of 1.0 would apply
                 no scaling at all to the predictions, while values in (0,1) upscale the encoded predictions and values greater
                 than 1.0 downscale the encoded predictions. If you want to reproduce the configuration of the original SSD,
-                set this to `[0.1, 0.1, 0.2, 0.2]`, provided the coordinate format is 'centroids'. Defaults to `[1.0, 1.0, 1.0, 1.0]`.
+                set this to `[0.1, 0.1, 0.2, 0.2]`, provided the coordinate format is 'centroids'.
             coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
-                `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
-                `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids'.
+                `(cx, cy, w, h)` (box center coordinates, width, and height), 'corners' for the format `(xmin, ymin, xmax,  ymax)`,
+                or 'minmax' for the format `(xmin, xmax, ymin, ymax)`.
             normalize_coords (bool, optional): Set to `True` if the model uses relative instead of absolute coordinates,
-                i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates. Defaults to `False`.
+                i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates.
         '''
         if K.backend() != 'tensorflow':
             raise TypeError("This layer only supports TensorFlow at the moment, but you are using the {} backend.".format(K.backend()))
