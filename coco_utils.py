@@ -64,6 +64,7 @@ def predict_all_to_json(out_file,
                         batch_generator,
                         batch_size,
                         batch_generator_mode='resize',
+                        model_mode='training',
                         confidence_thresh=0.01,
                         iou_threshold=0.45,
                         top_k=200,
@@ -86,6 +87,9 @@ def predict_all_to_json(out_file,
             be resized (i.e. warped) to `(img_height, img_width)`. This mode does not preserve the aspect ratios of the images.
             If 'pad', the input images will be first padded so that they have the aspect ratio defined by `img_height`
             and `img_width` and then resized to `(img_height, img_width)`. This mode preserves the aspect ratios of the images.
+        model_mode (str, optional): The mode in which the model was created, i.e. 'training', 'inference' or 'inference_fast'.
+            This is needed in order to know whether the model output is already decoded or still needs to be decoded. Refer to
+            the model documentation for the meaning of the individual modes.
         confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence in a specific
             positive class in order to be considered for the non-maximum suppression stage for the respective class.
             A lower value will result in a larger part of the selection process being done by the non-maximum suppression
@@ -142,17 +146,20 @@ def predict_all_to_json(out_file,
         batch_X, batch_image_ids, batch_inverse_coord_transform = next(generator)
         # Predict.
         y_pred = model.predict(batch_X)
-        # Decode.
-        y_pred_decoded = decode_y(y_pred,
-                                  confidence_thresh=confidence_thresh,
-                                  iou_threshold=iou_threshold,
-                                  top_k=top_k,
-                                  input_coords=pred_coords,
-                                  normalize_coords=normalize_coords,
-                                  img_height=img_height,
-                                  img_width=img_width)
+        # If the model was created in 'training' mode, the raw predictions need to
+        # be decoded and filtered, otherwise that's already taken care of.
+        if model_mode == 'training':
+            # Decode.
+            y_pred = decode_y(y_pred,
+                              confidence_thresh=confidence_thresh,
+                              iou_threshold=iou_threshold,
+                              top_k=top_k,
+                              input_coords=pred_coords,
+                              normalize_coords=normalize_coords,
+                              img_height=img_height,
+                              img_width=img_width)
         # Convert each predicted box into the results format.
-        for k, batch_item in enumerate(y_pred_decoded):
+        for k, batch_item in enumerate(y_pred):
             # The box coordinates were predicted for the transformed
             # (resized, cropped, padded, etc.) image. We now have to
             # transform these coordinates back to what they would be
