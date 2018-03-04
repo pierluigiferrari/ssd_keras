@@ -82,14 +82,24 @@ class DecodeDetections(Layer):
         if coords != 'centroids':
             raise ValueError("The DetectionOutput layer currently only supports the 'centroids' coordinate format.")
 
-        self.confidence_thresh = tf.constant(confidence_thresh, name='confidence_thresh')
-        self.iou_threshold = tf.constant(iou_threshold, name='iou_threshold')
-        self.top_k = tf.constant(top_k, name='top_k')
-        self.normalize_coords = tf.constant(normalize_coords, name='normalize_coords')
-        self.img_height = tf.constant(img_height, dtype=tf.float32, name='img_height')
-        self.img_width = tf.constant(img_width, dtype=tf.float32, name='img_width')
+        # We need these members for the config.
+        self.confidence_thresh = confidence_thresh
+        self.iou_threshold = iou_threshold
+        self.top_k = top_k
+        self.normalize_coords = normalize_coords
+        self.img_height = img_height
+        self.img_width = img_width
         self.coords = coords
-        self.nms_max_output_size = tf.constant(nms_max_output_size, name='nms_max_output_size')
+        self.nms_max_output_size = nms_max_output_size
+
+        # We need these members for TensorFlow.
+        self.tf_confidence_thresh = tf.constant(self.confidence_thresh, name='confidence_thresh')
+        self.tf_iou_threshold = tf.constant(self.iou_threshold, name='iou_threshold')
+        self.tf_top_k = tf.constant(self.top_k, name='top_k')
+        self.tf_normalize_coords = tf.constant(self.normalize_coords, name='normalize_coords')
+        self.tf_img_height = tf.constant(self.img_height, dtype=tf.float32, name='img_height')
+        self.tf_img_width = tf.constant(self.img_width, dtype=tf.float32, name='img_width')
+        self.tf_nms_max_output_size = tf.constant(self.nms_max_output_size, name='nms_max_output_size')
 
         super(DecodeDetections, self).__init__(**kwargs)
 
@@ -126,15 +136,15 @@ class DecodeDetections(Layer):
         # If the model predicts box coordinates relative to the image dimensions and they are supposed
         # to be converted back to absolute coordinates, do that.
         def normalized_coords():
-            xmin1 = tf.expand_dims(xmin * self.img_width, axis=-1)
-            ymin1 = tf.expand_dims(ymin * self.img_height, axis=-1)
-            xmax1 = tf.expand_dims(xmax * self.img_width, axis=-1)
-            ymax1 = tf.expand_dims(ymax * self.img_height, axis=-1)
+            xmin1 = tf.expand_dims(xmin * self.tf_img_width, axis=-1)
+            ymin1 = tf.expand_dims(ymin * self.tf_img_height, axis=-1)
+            xmax1 = tf.expand_dims(xmax * self.tf_img_width, axis=-1)
+            ymax1 = tf.expand_dims(ymax * self.tf_img_height, axis=-1)
             return xmin1, ymin1, xmax1, ymax1
         def non_normalized_coords():
             return tf.expand_dims(xmin, axis=-1), tf.expand_dims(ymin, axis=-1), tf.expand_dims(xmax, axis=-1), tf.expand_dims(ymax, axis=-1)
 
-        xmin, ymin, xmax, ymax = tf.cond(self.normalize_coords, normalized_coords, non_normalized_coords)
+        xmin, ymin, xmax, ymax = tf.cond(self.tf_normalize_coords, normalized_coords, non_normalized_coords)
 
         # Concatenate the one-hot class confidences and the converted box coordinates to form the decoded predictions tensor.
         y_pred = tf.concat(values=[y_pred[...,:-12], xmin, ymin, xmax, ymax], axis=-1)
@@ -168,7 +178,7 @@ class DecodeDetections(Layer):
                 single_class = tf.concat([class_id, confidences, box_coordinates], axis=-1)
 
                 # Apply confidence thresholding with respect to the class defined by `index`.
-                threshold_met = single_class[:,1] > self.confidence_thresh
+                threshold_met = single_class[:,1] > self.tf_confidence_thresh
                 single_class = tf.boolean_mask(tensor=single_class,
                                                mask=threshold_met)
 
@@ -185,8 +195,8 @@ class DecodeDetections(Layer):
 
                     maxima_indices = tf.image.non_max_suppression(boxes=boxes,
                                                                   scores=scores,
-                                                                  max_output_size=self.nms_max_output_size,
-                                                                  iou_threshold=self.iou_threshold,
+                                                                  max_output_size=self.tf_nms_max_output_size,
+                                                                  iou_threshold=self.tf_iou_threshold,
                                                                   name='non_maximum_suppresion')
                     maxima = tf.gather(params=single_class,
                                        indices=maxima_indices,
@@ -200,7 +210,7 @@ class DecodeDetections(Layer):
 
                 # Make sure `single_class` is exactly `self.nms_max_output_size` elements long.
                 padded_single_class = tf.pad(tensor=single_class_nms,
-                                             paddings=[[0, self.nms_max_output_size - tf.shape(single_class_nms)[0]], [0, 0]],
+                                             paddings=[[0, self.tf_nms_max_output_size - tf.shape(single_class_nms)[0]], [0, 0]],
                                              mode='CONSTANT',
                                              constant_values=0.0)
 
@@ -228,18 +238,18 @@ class DecodeDetections(Layer):
             # predictions with zeros as dummy entries.
             def top_k():
                 return tf.gather(params=filtered_predictions,
-                                 indices=tf.nn.top_k(filtered_predictions[:, 1], k=self.top_k, sorted=True).indices,
+                                 indices=tf.nn.top_k(filtered_predictions[:, 1], k=self.tf_top_k, sorted=True).indices,
                                  axis=0)
             def pad_and_top_k():
                 padded_predictions = tf.pad(tensor=filtered_predictions,
-                                            paddings=[[0, self.top_k - tf.shape(filtered_predictions)[0]], [0, 0]],
+                                            paddings=[[0, self.tf_top_k - tf.shape(filtered_predictions)[0]], [0, 0]],
                                             mode='CONSTANT',
                                             constant_values=0.0)
                 return tf.gather(params=padded_predictions,
-                                 indices=tf.nn.top_k(padded_predictions[:, 1], k=self.top_k, sorted=True).indices,
+                                 indices=tf.nn.top_k(padded_predictions[:, 1], k=self.tf_top_k, sorted=True).indices,
                                  axis=0)
 
-            top_k_boxes = tf.cond(tf.greater_equal(tf.shape(filtered_predictions)[0], self.top_k), top_k, pad_and_top_k)
+            top_k_boxes = tf.cond(tf.greater_equal(tf.shape(filtered_predictions)[0], self.tf_top_k), top_k, pad_and_top_k)
 
             return top_k_boxes
 
@@ -257,7 +267,7 @@ class DecodeDetections(Layer):
 
     def compute_output_shape(self, input_shape):
         batch_size, n_boxes, last_axis = input_shape
-        return (batch_size, self.top_k, 6) # Last axis: (class_ID, confidence, 4 box coordinates)
+        return (batch_size, self.tf_top_k, 6) # Last axis: (class_ID, confidence, 4 box coordinates)
 
     def get_config(self):
         config = {
