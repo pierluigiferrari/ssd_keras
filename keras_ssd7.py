@@ -24,9 +24,12 @@ from keras.layers import Input, Lambda, Conv2D, MaxPooling2D, BatchNormalization
 from keras.regularizers import l2
 
 from keras_layer_AnchorBoxes import AnchorBoxes
+from keras_layer_DecodeDetections import DecodeDetections
+from keras_layer_DecodeDetections2 import DecodeDetections2
 
 def build_model(image_size,
                 n_classes,
+                mode='training',
                 l2_regularization=0.0,
                 min_scale=0.1,
                 max_scale=0.9,
@@ -43,6 +46,10 @@ def build_model(image_size,
                 subtract_mean=None,
                 divide_by_stddev=None,
                 swap_channels=False,
+                confidence_thresh=0.01,
+                iou_threshold=0.45,
+                top_k=200,
+                nms_max_output_size=400,
                 return_predictor_sizes=False):
     '''
     Build a Keras model with SSD architecture, see references.
@@ -73,6 +80,12 @@ def build_model(image_size,
     Arguments:
         image_size (tuple): The input image size in the format `(height, width, channels)`.
         n_classes (int): The number of positive classes, e.g. 20 for Pascal VOC, 80 for MS COCO.
+        mode (str, optional): One of 'training', 'inference' and 'inference_fast'. In 'training' mode,
+            the model outputs the raw prediction tensor, while in 'inference' and 'inference_fast' modes,
+            the raw predictions are decoded into absolute coordinates and filtered via confidence thresholding,
+            non-maximum suppression, and top-k filtering. The difference between latter two modes is that
+            'inference' follows the exact procedure of the original Caffe implementation, while
+            'inference_fast' uses a faster prediction decoding procedure.
         l2_regularization (float, optional): The L2-regularization rate. Applies to all convolutional layers.
         min_scale (float, optional): The smallest scaling factor for the size of the anchor boxes as a fraction
             of the shorter side of the input images.
@@ -139,6 +152,17 @@ def build_model(image_size,
             of three integers to perform per-channel standard deviation normalization for color images.
         swap_channels (bool, optional): If `True`, the color channel order of the input images will be reversed,
             i.e. if the input color channel order is RGB, the color channels will be swapped to BGR.
+        confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence in a specific
+            positive class in order to be considered for the non-maximum suppression stage for the respective class.
+            A lower value will result in a larger part of the selection process being done by the non-maximum suppression
+            stage, while a larger value will result in a larger part of the selection process happening in the confidence
+            thresholding stage.
+        iou_threshold (float, optional): A float in [0,1]. All boxes that have a Jaccard similarity of greater than `iou_threshold`
+            with a locally maximal box will be removed from the set of predictions for a given class, where 'maximal' refers
+            to the box's confidence score.
+        top_k (int, optional): The number of highest scoring predictions to be kept for each batch item after the
+            non-maximum suppression stage.
+        nms_max_output_size (int, optional): The maximal number of predictions that will be left over after the NMS stage.
         return_predictor_sizes (bool, optional): If `True`, this function not only returns the model, but also
             a list containing the spatial dimensions of the predictor layers. This isn't strictly necessary since
             you can always get their sizes easily via the Keras API, but it's convenient and less error-prone
@@ -357,7 +381,32 @@ def build_model(image_size,
     # Output shape of `predictions`: (batch, n_boxes_total, n_classes + 4 + 8)
     predictions = Concatenate(axis=2, name='predictions')([classes_softmax, boxes_concat, anchors_concat])
 
-    model = Model(inputs=x, outputs=predictions)
+    if mode == 'training':
+        model = Model(inputs=x, outputs=predictions)
+    elif mode == 'inference':
+        decoded_predictions = DecodeDetections(confidence_thresh=confidence_thresh,
+                                               iou_threshold=iou_threshold,
+                                               top_k=top_k,
+                                               nms_max_output_size=nms_max_output_size,
+                                               coords=coords,
+                                               normalize_coords=normalize_coords,
+                                               img_height=img_height,
+                                               img_width=img_width,
+                                               name='decoded_predictions')(predictions)
+        model = Model(inputs=x, outputs=decoded_predictions)
+    elif mode == 'inference_fast':
+        decoded_predictions = DecodeDetections2(confidence_thresh=confidence_thresh,
+                                                iou_threshold=iou_threshold,
+                                                top_k=top_k,
+                                                nms_max_output_size=nms_max_output_size,
+                                                coords=coords,
+                                                normalize_coords=normalize_coords,
+                                                img_height=img_height,
+                                                img_width=img_width,
+                                                name='decoded_predictions')(predictions)
+        model = Model(inputs=x, outputs=decoded_predictions)
+    else:
+        raise ValueError("`mode` must be one of 'training', 'inference' or 'inference_fast', but received '{}'.".format(mode))
 
     if return_predictor_sizes:
         # Get the spatial dimensions (height, width) of the convolutional predictor layers, we need them to generate the default boxes
