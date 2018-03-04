@@ -36,6 +36,7 @@ def predict_all_to_txt(model,
                                 'horse', 'motorbike', 'person', 'pottedplant',
                                 'sheep', 'sofa', 'train', 'tvmonitor'],
                        out_file_prefix='comp3_det_test_',
+                       model_mode='training',
                        confidence_thresh=0.01,
                        iou_threshold=0.45,
                        top_k=200,
@@ -63,6 +64,8 @@ def predict_all_to_txt(model,
         out_file_prefix (str, optional): A prefix for the output text file names. The suffix to each output text file name will
             be the respective class name followed by the `.txt` file extension. This string is also how you specify the directory
             in which the results are to be saved.
+        model_mode (str, optional): The mode in which the model was created, i.e. 'training' or 'inference'. This is needed in
+            order to know whether the model output is already decoded or still needs to be decoded.
         confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence in a specific
             positive class in order to be considered for the non-maximum suppression stage for the respective class.
             A lower value will result in a larger part of the selection process being done by the non-maximum suppression
@@ -118,23 +121,26 @@ def predict_all_to_txt(model,
     n_batches = int(ceil(n_images / batch_size))
     # Loop over all batches.
     tr = trange(n_batches, file=sys.stdout)
-    tr.set_description('Producing results file')
+    tr.set_description('Producing results files')
     for j in tr:
         # Generate batch.
         batch_X, batch_image_ids, batch_inverse_coord_transform = next(generator)
         # Predict.
         y_pred = model.predict(batch_X)
-        # Decode.
-        y_pred_decoded = decode_y(y_pred,
-                                  confidence_thresh=confidence_thresh,
-                                  iou_threshold=iou_threshold,
-                                  top_k=top_k,
-                                  input_coords=pred_coords,
-                                  normalize_coords=normalize_coords,
-                                  img_height=img_height,
-                                  img_width=img_width)
+        # If the model was created in 'training' mode, the raw predictions need to
+        # be decoded and filtered, otherwise that's already taken care of.
+        if model_mode == 'training':
+            # Decode.
+            y_pred = decode_y(y_pred,
+                              confidence_thresh=confidence_thresh,
+                              iou_threshold=iou_threshold,
+                              top_k=top_k,
+                              input_coords=pred_coords,
+                              normalize_coords=normalize_coords,
+                              img_height=img_height,
+                              img_width=img_width)
         # Convert each predicted box into the results format.
-        for k, batch_item in enumerate(y_pred_decoded):
+        for k, batch_item in enumerate(y_pred):
             # The box coordinates were predicted for the transformed
             # (resized, cropped, padded, etc.) image. We now have to
             # transform these coordinates back to what they would be
