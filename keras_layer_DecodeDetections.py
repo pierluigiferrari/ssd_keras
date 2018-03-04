@@ -30,11 +30,10 @@ class DecodeDetections(Layer):
     A Keras layer to decode the raw SSD prediction output.
 
     Input shape:
-        3D tensor of shape `(batch, n_boxes, n_classes + 12)`.
+        3D tensor of shape `(batch_size, n_boxes, n_classes + 12)`.
 
     Output shape:
-        5D tensor of shape `(batch, height, width, n_boxes, 8)`. The last axis contains
-        the four anchor box coordinates and the four variance values for each box.
+        3D tensor of shape `(batch_size, top_k, 6)`.
     '''
 
     def __init__(self,
@@ -61,9 +60,11 @@ class DecodeDetections(Layer):
                 to the box score.
             top_k (int, optional): The number of highest scoring predictions to be kept for each batch item after the
                 non-maximum suppression stage.
-            input_coords (str, optional): The box coordinate format that the model outputs. Can be either 'centroids'
-                for the format `(cx, cy, w, h)` (box center coordinates, width, and height), 'minmax' for the format
-                `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`.
+            nms_max_output_size (int, optional): The maximum number of predictions that will be left after performing non-maximum
+                suppression.
+            coords (str, optional): The box coordinate format that the model outputs. Must be 'centroids'
+                i.e. the format `(cx, cy, w, h)` (box center coordinates, width, and height). Other coordinate formats are
+                currently not supported.
             normalize_coords (bool, optional): Set to `True` if the model outputs relative coordinates (i.e. coordinates in [0,1])
                 and you wish to transform these relative coordinates back to absolute coordinates. If the model outputs
                 relative coordinates, but you do not want to convert them back to absolute coordinates, set this to `False`.
@@ -79,7 +80,7 @@ class DecodeDetections(Layer):
             raise ValueError("If relative box coordinates are supposed to be converted to absolute coordinates, the decoder needs the image size in order to decode the predictions, but `img_height == {}` and `img_width == {}`".format(img_height, img_width))
 
         if coords != 'centroids':
-            raise ValueError("The DetectionOutput layer currently only supports the 'centroids' coordinate format as input.")
+            raise ValueError("The DetectionOutput layer currently only supports the 'centroids' coordinate format.")
 
         self.confidence_thresh = tf.constant(confidence_thresh, name='confidence_thresh')
         self.iou_threshold = tf.constant(iou_threshold, name='iou_threshold')
@@ -98,9 +99,6 @@ class DecodeDetections(Layer):
 
     def call(self, y_pred, mask=None):
         '''
-        Input shape:
-            3D tensor of shape `(batch_size, n_boxes, n_classes + 12)`.
-
         Returns:
             3D tensor of shape `(batch_size, top_k, 6)`. The second axis is zero-padded
             to always yield `top_k` predictions per batch item. The last axis contains
