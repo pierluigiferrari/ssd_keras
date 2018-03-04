@@ -175,7 +175,13 @@ class DecodeDetections(Layer):
                 # If any boxes made the threshold, perform NMS.
                 def perform_nms():
                     scores = single_class[...,1]
-                    boxes = single_class[...,-4:]
+
+                    # `tf.image.non_max_suppression()` needs the box coordinates in the format `(ymin, xmin, ymax, xmax)`.
+                    xmin = tf.expand_dims(single_class[...,-4], axis=-1)
+                    ymin = tf.expand_dims(single_class[...,-3], axis=-1)
+                    xmax = tf.expand_dims(single_class[...,-2], axis=-1)
+                    ymax = tf.expand_dims(single_class[...,-1], axis=-1)
+                    boxes = tf.concat(values=[ymin, xmin, ymax, xmax], axis=-1)
 
                     maxima_indices = tf.image.non_max_suppression(boxes=boxes,
                                                                   scores=scores,
