@@ -22,7 +22,7 @@ from tqdm import trange
 from math import ceil
 import sys
 
-from ssd_box_encode_decode_utils import decode_y
+from ssd_box_utils.ssd_box_encode_decode_utils import decode_y
 
 def get_coco_category_maps(annotations_file):
     '''

@@ -44,13 +44,6 @@ try:
 except ImportError:
     warnings.warn("'pickle' module is missing. You won't be able to save parsed file lists and annotations as pickled files.")
 
-# Image processing functions used by the generator to perform the following image manipulations:
-# - Translation
-# - Horizontal flip
-# - Scaling
-# - Brightness change
-# - Histogram contrast equalization
-
 def _translate(image, horizontal=(0,40), vertical=(0,10)):
     '''
     Randomly translate the input image horizontally and vertically.
@@ -143,10 +136,10 @@ class BatchGenerator:
 
     Can shuffle the dataset consistently after each complete pass.
 
-    Currently provides two methods to parse annotation data: A general-purpose CSV parser
-    and an XML parser for the Pascal VOC datasets. If the annotations of your dataset are
-    in a format that is not supported by these parsers, you could just add another parser
-    method and still use this generator.
+    Currently provides three methods to parse annotation data: A general-purpose CSV parser,
+    an XML parser for the Pascal VOC datasets, and a JSON parser for the MS COCO datasets.
+    If the annotations of your dataset are in a format that is not supported by these parsers,
+    you could just add another parser method and still use this generator.
 
     Can perform image transformations for data conversion and data augmentation,
     for details please refer to the documentation of the `generate()` method.

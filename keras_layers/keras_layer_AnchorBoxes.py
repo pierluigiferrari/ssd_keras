@@ -23,7 +23,7 @@ import keras.backend as K
 from keras.engine.topology import InputSpec
 from keras.engine.topology import Layer
 
-from ssd_box_encode_decode_utils import convert_coordinates
+from ssd_box_utils.ssd_box_encode_decode_utils import convert_coordinates
 
 class AnchorBoxes(Layer):
     '''

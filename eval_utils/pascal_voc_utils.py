@@ -21,7 +21,7 @@ from math import ceil
 from tqdm import trange
 import sys
 
-from ssd_box_encode_decode_utils import decode_y
+from ssd_box_utils.ssd_box_encode_decode_utils import decode_y
 
 def predict_all_to_txt(model,
                        img_height,
