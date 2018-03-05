@@ -23,10 +23,10 @@ from keras.models import Model
 from keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, ZeroPadding2D, Reshape, Concatenate
 from keras.regularizers import l2
 
-from keras_layer_AnchorBoxes import AnchorBoxes
-from keras_layer_L2Normalization import L2Normalization
-from keras_layer_DecodeDetections import DecodeDetections
-from keras_layer_DecodeDetections2 import DecodeDetections2
+from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
+from keras_layers.keras_layer_L2Normalization import L2Normalization
+from keras_layers.keras_layer_DecodeDetections import DecodeDetections
+from keras_layers.keras_layer_DecodeDetections2 import DecodeDetections2
 
 def ssd_512(image_size,
             n_classes,
