@@ -23,13 +23,13 @@ Ports of the trained weights of all the original models are provided below, as a
 The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
 
 There are currently the following network architectures in this repository:
-* SSD300: [`keras_ssd300.py`](./keras_ssd300.py)
-* SSD512: [`keras_ssd512.py`](./keras_ssd512.py)
-* SSD7: [`keras_ssd7.py`](./keras_ssd7.py) - a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough for less complex object detection tasks and testing. You're obviously not going to get state-of-the-art results with that one, but it's fast.
+* SSD300: [`keras_ssd300.py`](models/keras_ssd300.py)
+* SSD512: [`keras_ssd512.py`](models/keras_ssd512.py)
+* SSD7: [`keras_ssd7.py`](models/keras_ssd7.py) - a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough for less complex object detection tasks and testing. You're obviously not going to get state-of-the-art results with that one, but it's fast.
 
 If you would like to use one of the provided trained models for transfer learning (i.e. fine-tune one of the trained models on your own dataset), there is a [Jupyter notebook tutorial](weight_sampling_tutorial.ipynb) that helps you sub-sample the trained weights so that they are compatible with your dataset, see further below.
 
-If you would like to build an SSD with your own base network architecture, you can use [`keras_ssd7.py`](./keras_ssd7.py) as a template, it provides documentation and comments to help you.
+If you would like to build an SSD with your own base network architecture, you can use [`keras_ssd7.py`](models/keras_ssd7.py) as a template, it provides documentation and comments to help you.
 
 ### Evaluation results
 
@@ -102,7 +102,7 @@ Next, some prediction examples of an SSD300 partially trained (20,000 steps at b
 | ![img01](./examples/ssd300_pascalVOC_pred_01.png) | ![img01](./examples/ssd300_pascalVOC_pred_02.png) |
 | ![img01](./examples/ssd300_pascalVOC_pred_03.png) | ![img01](./examples/ssd300_pascalVOC_pred_04.png) |
 
-Finally, some prediction examples of an SSD7 (i.e. the small 7-layer version) partially trained on two road traffic datasets released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations) with roughly 20,000 images in total and 5 object categories (more info in [`ssd7_training.ipynb`](./ssd7_training.ipynb)). The predictions you see below were made after 10,000 training steps at batch size 32. Admittedly, cars are comparatively easy objects to detect and I picked a few of the better examples, but it is nonetheless remarkable what such a small model can do after only 10,000 training iterations.
+Finally, some prediction examples of an SSD7 (i.e. the small 7-layer version) partially trained on two road traffic datasets released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations) with roughly 20,000 images in total and 5 object categories (more info in [`ssd7_training.ipynb`](ssd7_training.ipynb)). The predictions you see below were made after 10,000 training steps at batch size 32. Admittedly, cars are comparatively easy objects to detect and I picked a few of the better examples, but it is nonetheless remarkable what such a small model can do after only 10,000 training iterations.
 
 | | |
 |---|---|
@@ -127,23 +127,23 @@ Python 2 compatibility: This implementation seems to work with Python 2.7, but I
 This repository provides Jupyter notebooks that explain training, inference and evaluation, and there are a bunch of explanations in the subsequent sections that complement the notebooks.
 
 How to use a trained model for inference:
-* [`ssd300_inference.ipynb`](./ssd300_inference.ipynb)
-* [`ssd512_inference.ipynb`](./ssd512_inference.ipynb)
+* [`ssd300_inference.ipynb`](ssd300_inference.ipynb)
+* [`ssd512_inference.ipynb`](ssd512_inference.ipynb)
 
 How to train a model:
-* [`ssd300_training.ipynb`](./ssd300_training.ipynb)
-* [`ssd7_training.ipynb`](./ssd7_training.ipynb)
+* [`ssd300_training.ipynb`](ssd300_training.ipynb)
+* [`ssd7_training.ipynb`](ssd7_training.ipynb)
 
 How to use one of the provided trained models for transfer learning on your own dataset:
 * [Read below](#how-to-fine-tune-one-of-the-trained-models-on-your-own-dataset)
 
 How to evaluate a trained model:
-* On MS COCO: [`ssd300_evaluation_COCO.ipynb`](./ssd300_evaluation_COCO.ipynb)
-* On Pascal VOC: [`ssd300_evaluation_Pascal_VOC.ipynb`](./ssd300_evaluation_Pascal_VOC.ipynb)
+* On MS COCO: [`ssd300_evaluation_COCO.ipynb`](ssd300_evaluation_COCO.ipynb)
+* On Pascal VOC: [`ssd300_evaluation_Pascal_VOC.ipynb`](ssd300_evaluation_Pascal_VOC.ipynb)
 
 #### Training details
 
-The general training setup is layed out and explained in [`ssd7_training.ipynb`](./ssd7_training.ipynb) and in [`ssd300_training.ipynb`](./ssd300_training.ipynb). The setup and explanations are similar in both notebooks for the most part, so it doesn't matter which one you look at to understand the general training setup, but the parameters in [`ssd300_training.ipynb`](./ssd300_training.ipynb) are preset to copy the setup of the original Caffe implementation for training on Pascal VOC, while the parameters in [`ssd7_training.ipynb`](./ssd7_training.ipynb) are preset to train on the [Udacity traffic datasets](https://github.com/udacity/self-driving-car/tree/master/annotations). If your goal isn't to train the original SSD300, then I would recommend reading [`ssd7_training.ipynb`](./ssd7_training.ipynb), which contains slightly more general explanations.
+The general training setup is layed out and explained in [`ssd7_training.ipynb`](ssd7_training.ipynb) and in [`ssd300_training.ipynb`](ssd300_training.ipynb). The setup and explanations are similar in both notebooks for the most part, so it doesn't matter which one you look at to understand the general training setup, but the parameters in [`ssd300_training.ipynb`](ssd300_training.ipynb) are preset to copy the setup of the original Caffe implementation for training on Pascal VOC, while the parameters in [`ssd7_training.ipynb`](ssd7_training.ipynb) are preset to train on the [Udacity traffic datasets](https://github.com/udacity/self-driving-car/tree/master/annotations). If your goal isn't to train the original SSD300, then I would recommend reading [`ssd7_training.ipynb`](ssd7_training.ipynb), which contains slightly more general explanations.
 
 To train the original SSD300 model on Pascal VOC:
 
@@ -154,7 +154,7 @@ To train the original SSD300 model on Pascal VOC:
   wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar
   ```
 2. Download the weights for the convolutionalized VGG-16 or for one of the trained original models provided below.
-3. Set the file paths for the datasets and model weights accordingly in [`ssd300_training.ipynb`](./ssd300_training.ipynb) and execute the cells.
+3. Set the file paths for the datasets and model weights accordingly in [`ssd300_training.ipynb`](ssd300_training.ipynb) and execute the cells.
 
 The procedure for training SSD512 is the same of course. It is strongly recommended that you load the pre-trained VGG-16 weights when attempting to train an SSD300 or SSD512, otherwise your training will almost certainly be unsuccessful. Note that the original VGG-16 was trained layer-wise, so trying to train the even deeper SSD300 all at once from scratch will very likely fail. Also note that even with the pre-trained VGG-16 weights it will take at least ~20,000 training steps to get a half-decent performance out of SSD300.
 
@@ -167,15 +167,15 @@ The generator can handle the following annotation formats out of the box:
 * MS COCO (`parse_json()`)
 * Quite a range of CSV formats (`parse_csv()`)
 
-The generator class `BatchGenerator` is in the module [`ssd_batch_generator.py`](./ssd_batch_generator.py) and using it consists of three steps:
+The generator class `BatchGenerator` is in the module [`ssd_batch_generator.py`](data_generator/ssd_batch_generator.py) and using it consists of three steps:
 
 1. Create an instance using the constructor. The constructor mainly just sets the desired order in which the generator yields the ground truth box coordinates and class ID, but you can also pass it filename and ground truth lists as described in step 2. Even though different output coordinate orders are theoretically possible, `SSDBoxEncoder` currently requires the generator to pass ground truth box coordinates to it in the format `[class_id, xmin, ymin, xmax, ymax]`, which is also the constructor's default setting for this parameter.
 2. Next, lists of image names and annotations (labels, targets, call them whatever you like) need to be parsed from one or multiple source files such as CSV, XML or JSON files by calling one of the parser methods that `BatchGenerator` provides. The generator object stores the data that is later used to generate the batches in two Python lists: `filenames` and `labels`. The former contains just the file paths of the images to be included, e.g. "some_dataset/001934375.png". The latter contains for each image a Numpy array with the bounding box coordinates and object class ID of each labeled object in the image. The job of the parse methods that the generator provides is to create these two lists. `parse_xml()` does this for the Pascal VOC data format, `parse_json()` does it for the MS COCO format, and `parse_csv()` does it for any CSV file in which the image names, class IDs and box coordinates make up the first six columns of the file. If you have a dataset that stores its annotations in a format that is not compatible with one of the existing parser methods, you can just write an additional parser method that can parse whatever format your annotations are in. As long as that parser method creates the two lists `filenames` and `labels` (and optionally a third list, `image_ids`) as described in the documentation, you can use this generator with an arbitrary dataset without having to change anything else.
-3. Finally, in order to actually generate a batch, call the `generate()` method. You have to set the desired batch size and whether or not to generate batches in training mode. If batches are generated in training mode, `generate()` calls the `encode_y()` method of `SSDBoxEncoder` from the module [`ssd_box_encode_decode_utils.py`](./ssd_box_encode_decode_utils.py) to convert the ground truth labels into the big tensor that the cost function needs. This is why you need to pass an `SSDBoxEncoder` instance to `generate()` in training mode. Inside `encode_y()` is where the anchor box matching and box coordinate conversion happens. If batches are not generated in training mode, then any ground truth labels that there may be are just returned in their regular format along with the images. The remaining arguments of `generate()` are mainly image manipulation features for ad-hoc data augmentation and to get the images into the size you need. The documentation describes them in detail.
+3. Finally, in order to actually generate a batch, call the `generate()` method. You have to set the desired batch size and whether or not to generate batches in training mode. If batches are generated in training mode, `generate()` calls the `encode_y()` method of `SSDBoxEncoder` from the module [`ssd_box_encode_decode_utils.py`](ssd_box_utils/ssd_box_encode_decode_utils.py) to convert the ground truth labels into the big tensor that the cost function needs. This is why you need to pass an `SSDBoxEncoder` instance to `generate()` in training mode. Inside `encode_y()` is where the anchor box matching and box coordinate conversion happens. If batches are not generated in training mode, then any ground truth labels that there may be are just returned in their regular format along with the images. The remaining arguments of `generate()` are mainly image manipulation features for ad-hoc data augmentation and to get the images into the size you need. The documentation describes them in detail.
 
 #### Encoding and decoding boxes
 
-The module [`ssd_box_encode_decode_utils.py`](./ssd_box_encode_decode_utils.py) contains all functions and classes related to encoding and decoding boxes. Encoding boxes means converting ground truth labels into the target format that the loss function needs during training. It is this encoding process in which the matching of ground truth boxes to anchor boxes (the paper calls them default boxes and in the original C++ code they are called priors - all the same thing) happens. Decoding boxes means converting raw model output back to the input label format, which entails various conversion and filtering processes such as non-maximum suppression (NMS).
+The module [`ssd_box_encode_decode_utils.py`](ssd_box_utils/ssd_box_encode_decode_utils.py) contains all functions and classes related to encoding and decoding boxes. Encoding boxes means converting ground truth labels into the target format that the loss function needs during training. It is this encoding process in which the matching of ground truth boxes to anchor boxes (the paper calls them default boxes and in the original C++ code they are called priors - all the same thing) happens. Decoding boxes means converting raw model output back to the input label format, which entails various conversion and filtering processes such as non-maximum suppression (NMS).
 
 In order to train the model, you need to create an instance of `SSDBoxEncoder` that needs to be passed to the batch generator. The batch generator does the rest, so you don't usually need to call any of `SSDBoxEncoder`'s methods manually. If you choose to use your own generator, here is very briefly how the `SSDBoxEncoder` class is set up: In order to produce a tensor for training you only need to call `encode_y()` (performs the matching). You won't have to call the methods `generate_anchor_boxes_for_layer()` (computes the anchor box coordinates for a given predictor layer) and `generate_encode_template()` (builds a template full of anchor boxes computed by `generate_anchor_boxes_for_layer()`).
 
@@ -187,7 +187,7 @@ A note on the anchor box offset coordinates used internally by the model: This m
 
 #### Using a different base network architecture
 
-If you want to build a different base network architecture, you could use [`keras_ssd7.py`](./keras_ssd7.py) as a template. It provides documentation and comments to help you turn it into a different base network. Put together the base network you want and add a predictor layer on top of each network layer from which you would like to make predictions. Create two predictor heads for each, one for localization, one for classification. Create an anchor box layer for each predictor layer and set the respective localization head's output as the input for the anchor box layer. The structure of all tensor reshaping and concatenation operations remains the same, you just have to make sure to include all of your predictor and anchor box layers of course.
+If you want to build a different base network architecture, you could use [`keras_ssd7.py`](models/keras_ssd7.py) as a template. It provides documentation and comments to help you turn it into a different base network. Put together the base network you want and add a predictor layer on top of each network layer from which you would like to make predictions. Create two predictor heads for each, one for localization, one for classification. Create an anchor box layer for each predictor layer and set the respective localization head's output as the input for the anchor box layer. The structure of all tensor reshaping and concatenation operations remains the same, you just have to make sure to include all of your predictor and anchor box layers of course.
 
 ### Download the convolutionalized VGG-16 weights
 
