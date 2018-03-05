@@ -61,6 +61,31 @@ Here are the mAP evaluation results from the official Pascal VOC Matlab evaluati
   </tr>
 </table>
 
+The models achieve the following average number of frames per second (FPS) on Pascal VOC on an NVIDIA GeForce GTX1070. Note that the benchmark prediction speeds of the original Caffe implementation were achieved using a faster TitanX GPU. The first number (FPS) is the prediction speed using the same process as the original Caffe implementation for decoding and filtering the raw model output, while the second number (FPS Fast Mode) is the prediction speed using a more efficient filtering process.
+
+<table width="50%">
+  <tr>
+    <td>Model</td>
+    <td align=center>FPS</td>
+    <td align=center>FPS (Fast Mode)</td>
+  </tr>
+  <tr>
+    <td><b>SSD300</td>
+    <td align=center width="40%"><b>40</td>
+    <td align=center width="40%"><b>45</td>
+  </tr>
+  <tr>
+    <td><b>SSD512</td>
+    <td align=center><b>18</td>
+    <td align=center><b>23</td>
+  </tr>
+  <tr>
+    <td><b>SSD7</td>
+    <td align=center><b>105</td>
+    <td align=center><b>131</td>
+  </tr>
+</table>
+
 ### Examples
 
 Below are some prediction examples of the fully trained original SSD300 "07+12" model (i.e. trained on Pascal VOC2007 `trainval` and VOC2012 `trainval`). The predictions were made on Pascal VOC2007 `test`.
@@ -154,7 +179,7 @@ The module [`ssd_box_encode_decode_utils.py`](./ssd_box_encode_decode_utils.py) 
 
 In order to train the model, you need to create an instance of `SSDBoxEncoder` that needs to be passed to the batch generator. The batch generator does the rest, so you don't usually need to call any of `SSDBoxEncoder`'s methods manually. If you choose to use your own generator, here is very briefly how the `SSDBoxEncoder` class is set up: In order to produce a tensor for training you only need to call `encode_y()` (performs the matching). You won't have to call the methods `generate_anchor_boxes_for_layer()` (computes the anchor box coordinates for a given predictor layer) and `generate_encode_template()` (builds a template full of anchor boxes computed by `generate_anchor_boxes_for_layer()`).
 
-To decode the raw model output, call either `decode_y()` or `decode_y2()`. The former follows the original implementation, which entails performing NMS per object class, while the latter performs NMS globally across all object classes and is thus slightly more efficient, but also behaves slightly differently. Read the documentation for details about both functions.
+Model can be created in 'training' or 'inference' mode. In 'training' mode, the model outputs the raw prediction tensor that still needs to be post-processed with coordinate conversion, confidence thresholding, non-maximum suppression, etc. `decode_y()` and `decode_y2()` are responsible for that. The former follows the original implementation, which entails performing NMS per object class, while the latter performs NMS globally across all object classes and is thus slightly more efficient, but also behaves slightly differently. Read the documentation for details about both functions. If a model is created in 'inference' mode, its last layer is the `DecodeDetections` layer, which performs all the post-processing that `decode_y()` does, but in TensorFlow. That means, the output of the model is already the post-processed output. In order to be trainable, a model must be created in 'training' mode. The trained weights can then later be loaded into a model that was created in 'inference' mode.
 
 A note on the `SSDBoxEncoder` constructor: The `coords` argument lets you choose what coordinate format the model will learn. In the default 'centroids' format, the targets will be converted to the `(cx, cy, w, h)` coordinate format used in the original implementation.
 
@@ -205,7 +230,6 @@ If you want to fine-tune one of the provided trained models on your own dataset,
 The following things are still on the to-do list and contributions are welcome:
 
 * Recreate the data augmentation pipeline of the Caffe implementation
-* Write a `DetectionOutput` layer to move the computation of the decoder function into TensorFlow for faster forward passes
 * Write an mAP evaluation Python module for Pascal VOC (use the official Matlab evaluation code in the meantime)
 * Support the Theano and CNTK backends
 
