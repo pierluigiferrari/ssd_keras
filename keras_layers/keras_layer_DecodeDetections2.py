@@ -201,7 +201,7 @@ class DecodeDetections2(Layer):
                 maxima_indices = tf.image.non_max_suppression(boxes=boxes,
                                                               scores=scores,
                                                               max_output_size=self.tf_nms_max_output_size,
-                                                              iou_threshold=self.tf_iou_threshold,
+                                                              iou_threshold=self.iou_threshold,
                                                               name='non_maximum_suppresion')
                 maxima = tf.gather(params=predictions_conf_thresh,
                                    indices=maxima_indices,
