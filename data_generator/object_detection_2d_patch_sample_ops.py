@@ -1,9 +1,7 @@
 '''
-Includes:
-* A batch generator for SSD model training and inference which can perform online data agumentation
-* An offline image processor that saves processed images and adjusted labels to disk
+Various patch sampling operations for data augmentation in 2D object detection.
 
-Copyright (C) 2017 Pierluigi Ferrari
+Copyright (C) 2018 Pierluigi Ferrari
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -520,7 +518,8 @@ class RandomPatch:
                  box_filter=None,
                  patch_validator=None,
                  n_trials_max=3,
-                 clip_boxes=False):
+                 clip_boxes=False,
+                 prob=1.0):
         '''
         Arguments:
             patch_coord_generator (PatchCoordinateGenerator): A `PatchCoordinateGenerator` object
@@ -537,6 +536,8 @@ class RandomPatch:
             clip_boxes (bool, optional): Only relevant if ground truth bounding boxes are given.
                 If `True`, any ground truth bounding boxes will be clipped to lie entirely within the
                 sampled patch.
+            prob (float, optional): `(1 - prob)` determines the probability with which the original,
+                unaltered image is returned.
         '''
         if not isinstance(patch_coord_generator, PatchCoordinateGenerator):
             raise ValueError("`patch_coord_generator` must be an instance of `PatchCoordinateGenerator`.")
@@ -549,36 +550,29 @@ class RandomPatch:
         self.patch_validator = patch_validator
         self.n_trials_max = n_trials_max
         self.clip_boxes = clip_boxes
+        self.prob = prob
 
     def __call__(self, image, labels=None):
 
-        img_height, img_width = image.shape[:2]
-        self.patch_coord_generator.img_height = img_height
-        self.patch_coord_generator.img_width = img_width
+        p = np.random.uniform(0,1)
+        if p >= (1.0-self.prob):
 
-        # Coordinates are expected to be in the 'corners' format.
-        xmin = 1
-        ymin = 2
-        xmax = 3
-        ymax = 4
+            img_height, img_width = image.shape[:2]
+            self.patch_coord_generator.img_height = img_height
+            self.patch_coord_generator.img_width = img_width
 
-        for _ in range(max(1, self.n_trials_max)):
+            # Coordinates are expected to be in the 'corners' format.
+            xmin = 1
+            ymin = 2
+            xmax = 3
+            ymax = 4
 
-            # Generate patch coordinates.
-            patch_ymin, patch_xmin, patch_height, patch_width = self.patch_coord_generator()
+            for _ in range(max(1, self.n_trials_max)):
 
-            if labels is None:
-                # Create a patch sampler object.
-                sample_patch = CropPad(patch_ymin=patch_ymin,
-                                       patch_xmin=patch_xmin,
-                                       patch_height=patch_height,
-                                       patch_width=patch_width,
-                                       clip_boxes=self.clip_boxes,
-                                       box_filter=self.box_filter)
-                # Sample the patch.
-                return sample_patch(image)
-            else:
-                if self.patch_validator is None: # We will accept any patch as valid.
+                # Generate patch coordinates.
+                patch_ymin, patch_xmin, patch_height, patch_width = self.patch_coord_generator()
+
+                if labels is None:
                     # Create a patch sampler object.
                     sample_patch = CropPad(patch_ymin=patch_ymin,
                                            patch_xmin=patch_xmin,
@@ -587,16 +581,9 @@ class RandomPatch:
                                            clip_boxes=self.clip_boxes,
                                            box_filter=self.box_filter)
                     # Sample the patch.
-                    return sample_patch(image, labels)
+                    return sample_patch(image)
                 else:
-                    # Translate the box coordinates to the patch's coordinate system.
-                    new_labels = np.copy(labels)
-                    new_labels[:, [ymin, ymax]] -= patch_ymin
-                    new_labels[:, [xmin, xmax]] -= patch_xmin
-                    # Check if the patch contains the minimum number of boxes we require.
-                    if self.patch_validator(patch_height=patch_height,
-                                            patch_width=patch_width,
-                                            labels=new_labels):
+                    if self.patch_validator is None: # We will accept any patch as valid.
                         # Create a patch sampler object.
                         sample_patch = CropPad(patch_ymin=patch_ymin,
                                                patch_xmin=patch_xmin,
@@ -606,8 +593,31 @@ class RandomPatch:
                                                box_filter=self.box_filter)
                         # Sample the patch.
                         return sample_patch(image, labels)
+                    else:
+                        # Translate the box coordinates to the patch's coordinate system.
+                        new_labels = np.copy(labels)
+                        new_labels[:, [ymin, ymax]] -= patch_ymin
+                        new_labels[:, [xmin, xmax]] -= patch_xmin
+                        # Check if the patch contains the minimum number of boxes we require.
+                        if self.patch_validator(patch_height=patch_height,
+                                                patch_width=patch_width,
+                                                labels=new_labels):
+                            # Create a patch sampler object.
+                            sample_patch = CropPad(patch_ymin=patch_ymin,
+                                                   patch_xmin=patch_xmin,
+                                                   patch_height=patch_height,
+                                                   patch_width=patch_width,
+                                                   clip_boxes=self.clip_boxes,
+                                                   box_filter=self.box_filter)
+                            # Sample the patch.
+                            return sample_patch(image, labels)
 
-        return None # If we weren't able to sample a valid patch, return `None`.
+            return None # If we weren't able to sample a valid patch, return `None`.
+
+        if labels is None:
+            return image
+        else:
+            return image, labels
 
 class RandomPatchInf:
     '''
@@ -795,12 +805,6 @@ class RandomMaxCropFixedAR:
 
         img_height, img_width = image.shape[:2]
 
-        # Coordinates are expected to be in the 'corners' format.
-        xmin = 1
-        ymin = 2
-        xmax = 3
-        ymax = 4
-
         # The ratio of the input image aspect ratio and patch aspect ratio determines the maximal possible crop.
         image_aspect_ratio = img_width / img_height
 
@@ -854,12 +858,6 @@ class RandomPadFixedAR:
     def __call__(self, image, labels=None):
 
         img_height, img_width = image.shape[:2]
-
-        # Coordinates are expected to be in the 'corners' format.
-        xmin = 1
-        ymin = 2
-        xmax = 3
-        ymax = 4
 
         if img_width < img_height:
             patch_height = img_height
