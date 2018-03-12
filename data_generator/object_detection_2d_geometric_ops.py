@@ -22,6 +22,38 @@ from __future__ import division
 import numpy as np
 import cv2
 
+class Resize:
+    '''
+    Resize an image to a specified height and width in pixels.
+    '''
+
+    def __init__(self, height, width, interpolation=cv2.INTER_LINEAR):
+        self.out_height = height
+        self.out_width = width
+        self.interpolation = interpolation
+
+    def __call__(self, image, labels=None):
+
+        img_height, img_width = image.shape[:2]
+
+        # Coordinates are expected to be in the 'corners' format.
+        xmin = 1
+        ymin = 2
+        xmax = 3
+        ymax = 4
+
+        image = cv2.resize(image,
+                           dsize=(self.out_width, self.out_height),
+                           interpolation=self.interpolation)
+
+        if labels is None:
+            return image
+        else:
+            labels = np.copy(labels)
+            labels[:, [ymin, ymax]] = labels[:, [ymin, ymax]] * (self.out_height / img_height)
+            labels[:, [xmin, xmax]] = labels[:, [xmin, xmax]] * (self.out_width / img_width)
+            return image, labels
+
 class Flip:
     '''
     Flips an image horizontally or vertically.
