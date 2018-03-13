@@ -23,7 +23,7 @@ import cv2
 
 class ConvertColor:
     '''
-    Converts an image between RGB, HSV and grayscale color spaces. This is just a wrapper
+    Converts images between RGB, HSV and grayscale color spaces. This is just a wrapper
     around `cv2.cvtColor()`.
     '''
     def __init__(self, current='RGB', to='HSV', keep_3ch=True):
@@ -62,20 +62,37 @@ class ConvertColor:
 
 class ConvertDataType:
     '''
-    Converts an image represented as a Numpy array between `uint8` and `float`.
+    Converts images represented as Numpy arrays between `uint8` and `float`.
     Serves as a helper for certain photometric distortions. This is just a wrapper
     around `np.ndarray.astype()`.
     '''
     def __init__(self, to='uint8'):
-        if not (to == 'uint8' or to == 'float'):
-            raise ValueError("`to` can be either of 'uint8' or 'float'.")
+        if not (to == 'uint8' or to == 'float32'):
+            raise ValueError("`to` can be either of 'uint8' or 'float32'.")
         self.to = to
 
     def __call__(self, image, labels=None):
         if self.to == 'uint8':
             image = image.astype(np.uint8)
         else:
-            image = image.astype(np.float)
+            image = image.astype(np.float32)
+        if labels is None:
+            return image
+        else:
+            return image, labels
+
+class ConvertTo3Channels:
+    '''
+    Converts images to 3-channel images if they aren't already.
+    '''
+    def __init__(self):
+        pass
+
+    def __call__(self, image, labels=None):
+        if image.ndim == 2:
+            image = np.stack([image] * 3, axis=-1)
+        elif image.ndim == 3 and image.shape[2] == 1:
+            image = np.concatenate([image] * 3, axis=-1)
         if labels is None:
             return image
         else:
@@ -83,14 +100,14 @@ class ConvertDataType:
 
 class Hue:
     '''
-    Changes the hue of an image.
+    Changes the hue of HSV images.
 
     Important:
         - Expects HSV input.
         - Expects input array to be of `dtype` `float`.
     '''
     def __init__(self, delta):
-        if not (0 <= delta <= 180): raise ValueError("`delta` must be in the closed interval `[0, 180]`.")
+        if not (-180 <= delta <= 180): raise ValueError("`delta` must be in the closed interval `[-180, 180]`.")
         self.delta = delta
 
     def __call__(self, image, labels=None):
@@ -102,7 +119,7 @@ class Hue:
 
 class RandomHue:
     '''
-    Randomly changes the hue of an image.
+    Randomly changes the hue of HSV images.
 
     Important:
         - Expects HSV input.
@@ -126,7 +143,7 @@ class RandomHue:
 
 class Saturation:
     '''
-    Changes the saturation of an image.
+    Changes the saturation of HSV images.
 
     Important:
         - Expects HSV input.
@@ -145,7 +162,7 @@ class Saturation:
 
 class RandomSaturation:
     '''
-    Randomly changes the saturation of an image.
+    Randomly changes the saturation of HSV images.
 
     Important:
         - Expects HSV input.
@@ -170,7 +187,7 @@ class RandomSaturation:
 
 class Brightness:
     '''
-    Changes the brightness of an image.
+    Changes the brightness of RGB images.
 
     Important:
         - Expects RGB input.
@@ -188,7 +205,7 @@ class Brightness:
 
 class RandomBrightness:
     '''
-    Randomly changes the brightness of an image.
+    Randomly changes the brightness of RGB images.
 
     Important:
         - Expects RGB input.
@@ -213,7 +230,7 @@ class RandomBrightness:
 
 class Contrast:
     '''
-    Changes the contrast of an image.
+    Changes the contrast of RGB images.
 
     Important:
         - Expects RGB input.
@@ -232,7 +249,7 @@ class Contrast:
 
 class RandomContrast:
     '''
-    Randomly changes the contrast of an image.
+    Randomly changes the contrast of RGB images.
 
     Important:
         - Expects RGB input.
@@ -257,7 +274,7 @@ class RandomContrast:
 
 class Gamma:
     '''
-    Changes the gamma value of an image.
+    Changes the gamma value of RGB images.
 
     Important: Expects RGB input.
     '''
@@ -265,19 +282,19 @@ class Gamma:
         self.gamma = gamma
         self.gamma_inv = 1.0 / gamma
         # Build a lookup table mapping the pixel values [0, 255] to
-    	# their adjusted gamma values.
-    	self.table = np.array([((i / 255.0) ** self.gamma_inv) * 255 for i in np.arange(0, 256)]).astype("uint8")
+        # their adjusted gamma values.
+        self.table = np.array([((i / 255.0) ** self.gamma_inv) * 255 for i in np.arange(0, 256)]).astype("uint8")
 
     def __call__(self, image, labels=None):
         image = cv2.LUT(image, table)
-    	if labels is None:
+        if labels is None:
             return image
         else:
             return image, labels
 
 class RandomGamma:
     '''
-    Randomly changes the gamma value of an image.
+    Randomly changes the gamma value of RGB images.
 
     Important: Expects RGB input.
     '''
@@ -300,7 +317,7 @@ class RandomGamma:
 
 class HistogramEqualization:
     '''
-    Performs histogram equalization on an image.
+    Performs histogram equalization on HSV images.
 
     Importat: Expects HSV input.
     '''
@@ -316,7 +333,7 @@ class HistogramEqualization:
 
 class RandomHistogramEqualization:
     '''
-    Randomly performs histogram equalization on an image. The randomness only refers
+    Randomly performs histogram equalization on HSV images. The randomness only refers
     to whether or not the equalization is performed.
 
     Importat: Expects HSV input.
@@ -336,7 +353,7 @@ class RandomHistogramEqualization:
 
 class ChannelSwap:
     '''
-    Swaps the channels of an image.
+    Swaps the channels of RGB images.
 
     Important: Expects RGB input.
     '''
@@ -352,7 +369,7 @@ class ChannelSwap:
 
 class RandomChannelSwap:
     '''
-    Randomly swaps the channels of an image.
+    Randomly swaps the channels of RGB images.
 
     Important: Expects RGB input.
     '''
