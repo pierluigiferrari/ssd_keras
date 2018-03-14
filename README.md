@@ -81,7 +81,7 @@ The models achieve the following average number of frames per second (FPS) on Pa
   </tr>
   <tr>
     <td><b>SSD7</td>
-    <td align=center><b>112</td>
+    <td align=center><b>105</td>
     <td align=center><b>131</td>
   </tr>
 </table>
@@ -227,16 +227,11 @@ If you want to fine-tune one of the provided trained models on your own dataset,
 
 ### ToDo
 
-The following things are on the to-do list, ranked by priority. Contributions are welcome.
+The following things are still on the to-do list and contributions are welcome:
 
-1. Add model definitions and trained weights for SSDs based on other base networks such as MobileNet, InceptionResNetV2, or DenseNet.
-2. Add support for the Theano and CNTK backends. Probably easy to do: Just requires porting the custom layers and the loss function from TensorFlow to the abstract Keras backend.
-3. Write an mAP evaluation Python module for Pascal VOC. Use the official Matlab evaluation code from the Pascal VOC development kit in the meantime.
-
-Currently in the works:
-
-* A new data generator that can replicate the exact data augmentation pipeline of the original Caffe implementation of SSD. It will also be more flexible and more modular.
-* A new [Focal Loss](https://arxiv.org/abs/1708.02002) loss function.
+* Recreate the data augmentation pipeline of the Caffe implementation
+* Write an mAP evaluation Python module for Pascal VOC (use the official Matlab evaluation code in the meantime)
+* Support the Theano and CNTK backends
 
 ### Important notes
 
