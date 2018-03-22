@@ -85,7 +85,8 @@ class BoxFilter:
 
     def __init__(self,
                  overlap_criterion='center_point',
-                 bounds=(0.3, 1.0)):
+                 bounds=(0.3, 1.0),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             overlap_criterion (str, optional): Can be either of 'center_point', 'iou', or 'area'. Determines
@@ -107,6 +108,7 @@ class BoxFilter:
             raise ValueError("`overlap_criterion` must be one of 'iou', 'area', or 'center_point'.")
         self.overlap_criterion = overlap_criterion
         self.bounds = bounds
+        self.labels_format = labels_format
 
     def __call__(self,
                  image_height,
@@ -125,11 +127,10 @@ class BoxFilter:
 
         labels = np.copy(labels)
 
-        # Coordinates are expected to be in the 'corners' format.
-        xmin = 1
-        ymin = 2
-        xmax = 3
-        ymax = 4
+        xmin = self.labels_format['xmin']
+        ymin = self.labels_format['ymin']
+        xmax = self.labels_format['xmax']
+        ymax = self.labels_format['ymax']
 
         # Get the lower and upper bounds.
         if isinstance(self.bounds, BoundGenerator):
@@ -143,7 +144,7 @@ class BoxFilter:
             # Compute the patch coordinates.
             image_coords = np.array([0, 0, image_width, image_height])
             # Compute the IoU between the patch and all of the ground truth boxes.
-            image_boxes_iou = iou(image_coords, labels[:, 1:], coords='corners')
+            image_boxes_iou = iou(image_coords, labels[:, [xmin, ymin, xmax, ymax]], coords='corners')
             requirements_met = (image_boxes_iou > lower) * (image_boxes_iou <= upper)
 
         elif self.overlap_criterion == 'area':
@@ -180,7 +181,8 @@ class ImageValidator:
     def __init__(self,
                  overlap_criterion='center_point',
                  bounds=(0.3, 1.0),
-                 n_boxes_min=1):
+                 n_boxes_min=1,
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             overlap_criterion (str, optional): Can be either of 'center_point', 'iou', or 'area'. Determines
@@ -203,6 +205,7 @@ class ImageValidator:
         self.overlap_criterion = overlap_criterion
         self.bounds = bounds
         self.n_boxes_min = n_boxes_min
+        self.labels_format = labels_format
 
     def __call__(self,
                  image_height,
@@ -221,7 +224,8 @@ class ImageValidator:
         '''
 
         box_filter = BoxFilter(overlap_criterion=self.overlap_criterion,
-                               bounds=self.bounds)
+                               bounds=self.bounds,
+                               labels_format=self.labels_format)
 
         # Get all boxes that meet the overlap requirements.
         valid_labels = box_filter(image_height=image_height,
