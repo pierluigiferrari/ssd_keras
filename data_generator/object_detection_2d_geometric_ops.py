@@ -29,40 +29,57 @@ class Resize:
     Resizes images to a specified height and width in pixels.
     '''
 
-    def __init__(self, height, width, interpolation_mode=cv2.INTER_LINEAR):
+    def __init__(self,
+                 height,
+                 width,
+                 interpolation_mode=cv2.INTER_LINEAR,
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
+        '''
+        Arguments:
+            height (int): The desired height of the output images in pixels.
+            width (int): The desired width of the output images in pixels.
+            interpolation_mode (int, optional): An integer that denotes a valid
+                OpenCV interpolation mode. For example, integers 0 through 5 are
+                valid interpolation modes.
+        '''
         self.out_height = height
         self.out_width = width
         self.interpolation_mode = interpolation_mode
-    '''
-    Arguments:
-        height (int): The desired height of the output images in pixels.
-        width (int): The desired width of the output images in pixels.
-        interpolation_mode (int, optional): An integer that denotes a valid
-            OpenCV interpolation mode. For example, integers 0 through 5 are
-            valid interpolation modes.
-    '''
+        self.labels_format = labels_format
 
-    def __call__(self, image, labels=None):
+    def __call__(self, image, labels=None, return_inverter=False):
 
         img_height, img_width = image.shape[:2]
 
-        # Coordinates are expected to be in the 'corners' format.
-        xmin = 1
-        ymin = 2
-        xmax = 3
-        ymax = 4
+        xmin = self.labels_format['xmin']
+        ymin = self.labels_format['ymin']
+        xmax = self.labels_format['xmax']
+        ymax = self.labels_format['ymax']
 
         image = cv2.resize(image,
                            dsize=(self.out_width, self.out_height),
                            interpolation=self.interpolation_mode)
 
+        if return_inverter:
+            def inverter(labels):
+                labels = np.copy(labels)
+                labels[:, [ymin, ymax]] = labels[:, [ymin, ymax]] * (img_height / self.out_height)
+                labels[:, [xmin, xmax]] = labels[:, [xmin, xmax]] * (img_width / self.out_width)
+                return labels
+
         if labels is None:
-            return image
+            if return_inverter:
+                return image, inverter
+            else:
+                return image
         else:
             labels = np.copy(labels)
             labels[:, [ymin, ymax]] = labels[:, [ymin, ymax]] * (self.out_height / img_height)
             labels[:, [xmin, xmax]] = labels[:, [xmin, xmax]] * (self.out_width / img_width)
-            return image, labels
+            if return_inverter:
+                return image, labels, inverter
+            else:
+                return image, labels
 
 class ResizeRandomInterp:
     '''
@@ -77,7 +94,8 @@ class ResizeRandomInterp:
                                       cv2.INTER_LINEAR,
                                       cv2.INTER_CUBIC,
                                       cv2.INTER_AREA,
-                                      cv2.INTER_LANCZOS4]):
+                                      cv2.INTER_LANCZOS4],
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             height (int): The desired height of the output image in pixels.
@@ -91,17 +109,23 @@ class ResizeRandomInterp:
         self.height = height
         self.width = width
         self.interpolation_modes = interpolation_modes
+        self.labels_format = labels_format
 
-    def __call__(self, image, labels=None):
+    def __call__(self, image, labels=None, return_inverter=False):
         mode = np.random.choice(self.interpolation_modes)
-        resize = Resize(height=self.height, width=self.width, interpolation_mode=mode)
-        return resize(image, labels)
+        resize = Resize(height=self.height,
+                        width=self.width,
+                        interpolation_mode=mode,
+                        labels_format=self.labels_format)
+        return resize(image, labels, return_inverter)
 
 class Flip:
     '''
     Flips images horizontally or vertically.
     '''
-    def __init__(self, dim='horizontal'):
+    def __init__(self,
+                 dim='horizontal',
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             dim (str, optional): Can be either of 'horizontal' and 'vertical'.
@@ -111,16 +135,16 @@ class Flip:
         '''
         if not (dim in {'horizontal', 'vertical'}): raise ValueError("`dim` can be one of 'horizontal' and 'vertical'.")
         self.dim = dim
+        self.labels_format = labels_format
 
-    def __call__(self, image, labels=None):
+    def __call__(self, image, labels=None, return_inverter=False):
 
         img_height, img_width = image.shape[:2]
 
-        # Coordinates are expected to be in the 'corners' format.
-        xmin = 1
-        ymin = 2
-        xmax = 3
-        ymax = 4
+        xmin = self.labels_format['xmin']
+        ymin = self.labels_format['ymin']
+        xmax = self.labels_format['xmax']
+        ymax = self.labels_format['ymax']
 
         if self.dim == 'horizontal':
             image = image[:,::-1]
@@ -144,7 +168,10 @@ class RandomFlip:
     Randomly flips images horizontally or vertically. The randomness only refers
     to whether or not the image will be flipped.
     '''
-    def __init__(self, dim='horizontal', prob=0.5):
+    def __init__(self,
+                 dim='horizontal',
+                 prob=0.5,
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             dim (str, optional): Can be either of 'horizontal' and 'vertical'.
@@ -156,11 +183,12 @@ class RandomFlip:
         '''
         self.dim = dim
         self.prob = prob
+        self.labels_format = labels_format
 
     def __call__(self, image, labels=None):
         p = np.random.uniform(0,1)
         if p >= (1.0-self.prob):
-            flip = Flip(dim=self.dim)
+            flip = Flip(dim=self.dim, labels_format=self.labels_format)
             return flip(image, labels)
         elif labels is None:
             return image
@@ -177,7 +205,8 @@ class Translate:
                  dx,
                  clip_boxes=False,
                  box_filter=None,
-                 background=(0,0,0)):
+                 background=(0,0,0),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             dy (float): The fraction of the image height by which to translate images along the
@@ -204,18 +233,11 @@ class Translate:
         self.clip_boxes = clip_boxes
         self.box_filter = box_filter
         self.background = background
+        self.labels_format = labels_format
 
     def __call__(self, image, labels=None):
 
         img_height, img_width = image.shape[:2]
-
-        labels = np.copy(labels)
-
-        # Coordinates are expected to be in the 'corners' format.
-        xmin = 1
-        ymin = 2
-        xmax = 3
-        ymax = 4
 
         # Compute the translation matrix.
         dy_abs = int(round(img_height * self.dy_rel))
@@ -233,12 +255,19 @@ class Translate:
         if labels is None:
             return image
         else:
+            xmin = self.labels_format['xmin']
+            ymin = self.labels_format['ymin']
+            xmax = self.labels_format['xmax']
+            ymax = self.labels_format['ymax']
+
+            labels = np.copy(labels)
             # Translate the box coordinates to the translated image's coordinate system.
             labels[:,[xmin,xmax]] += dx_abs
             labels[:,[ymin,ymax]] += dy_abs
 
             # Compute all valid boxes for this patch.
             if not (self.box_filter is None):
+                self.box_filter.labels_format = self.labels_format
                 labels = self.box_filter(image_height=img_height,
                                          image_width=img_width,
                                          labels=labels)
@@ -262,7 +291,8 @@ class RandomTranslate:
                  box_filter=None,
                  image_validator=None,
                  n_trials_max=3,
-                 background=(0,0,0)):
+                 background=(0,0,0),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             dy_minmax (list/tuple, optional): A 2-tuple `(min, max)` of non-negative floats that
@@ -311,6 +341,7 @@ class RandomTranslate:
         self.image_validator = image_validator
         self.n_trials_max = n_trials_max
         self.background = background
+        self.labels_format = labels_format
 
     def __call__(self, image, labels=None):
 
@@ -319,11 +350,16 @@ class RandomTranslate:
 
             img_height, img_width = image.shape[:2]
 
-            # Coordinates are expected to be in the 'corners' format.
-            xmin = 1
-            ymin = 2
-            xmax = 3
-            ymax = 4
+            xmin = self.labels_format['xmin']
+            ymin = self.labels_format['ymin']
+            xmax = self.labels_format['xmax']
+            ymax = self.labels_format['ymax']
+
+            # Override the preset labels formats in the box filter and image validator.
+            if not self.box_filter is None:
+                self.box_filter.labels_format = self.labels_format
+            if not self.image_validator is None:
+                self.image_validator.labels_format = self.labels_format
 
             for _ in range(max(1, self.n_trials_max)):
 
@@ -340,7 +376,8 @@ class RandomTranslate:
                                           dx=dx,
                                           clip_boxes=self.clip_boxes,
                                           box_filter=self.box_filter,
-                                          background=self.background)
+                                          background=self.background,
+                                          labels_format=self.labels_format)
 
                     return translate(image, labels)
                 else:
@@ -358,7 +395,8 @@ class RandomTranslate:
                                               dx=dx,
                                               clip_boxes=self.clip_boxes,
                                               box_filter=self.box_filter,
-                                              background=self.background)
+                                              background=self.background,
+                                              labels_format=self.labels_format)
 
                         return translate(image, labels)
 
@@ -384,7 +422,8 @@ class Scale:
                  factor,
                  clip_boxes=False,
                  box_filter=None,
-                 background=(0,0,0)):
+                 background=(0,0,0),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             factor (float): The fraction of the image size by which to scale images. Must be positive.
@@ -407,18 +446,11 @@ class Scale:
         self.clip_boxes = clip_boxes
         self.box_filter = box_filter
         self.background = background
+        self.labels_format = labels_format
 
     def __call__(self, image, labels=None):
 
         img_height, img_width = image.shape[:2]
-
-        labels = np.copy(labels)
-
-        # Coordinates are expected to be in the 'corners' format.
-        xmin = 1
-        ymin = 2
-        xmax = 3
-        ymax = 4
 
         # Compute the rotation matrix.
         M = cv2.getRotationMatrix2D(center=(img_width / 2, img_height / 2),
@@ -435,6 +467,12 @@ class Scale:
         if labels is None:
             return image
         else:
+            xmin = self.labels_format['xmin']
+            ymin = self.labels_format['ymin']
+            xmax = self.labels_format['xmax']
+            ymax = self.labels_format['ymax']
+
+            labels = np.copy(labels)
             # Scale the bounding boxes accordingly.
             # Transform two opposite corner points of the rectangular boxes using the rotation matrix `M`.
             toplefts = np.array([labels[:,xmin], labels[:,ymin], np.ones(labels.shape[0])])
@@ -446,6 +484,7 @@ class Scale:
 
             # Compute all valid boxes for this patch.
             if not (self.box_filter is None):
+                self.box_filter.labels_format = self.labels_format
                 labels = self.box_filter(image_height=img_height,
                                          image_width=img_width,
                                          labels=labels)
@@ -469,7 +508,8 @@ class RandomScale:
                  box_filter=None,
                  image_validator=None,
                  n_trials_max=3,
-                 background=(0,0,0)):
+                 background=(0,0,0),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             min_factor (float, optional): The minimum fraction of the image size by which to scale images.
@@ -507,6 +547,7 @@ class RandomScale:
         self.image_validator = image_validator
         self.n_trials_max = n_trials_max
         self.background = background
+        self.labels_format = labels_format
 
     def __call__(self, image, labels=None):
 
@@ -515,11 +556,16 @@ class RandomScale:
 
             img_height, img_width = image.shape[:2]
 
-            # Coordinates are expected to be in the 'corners' format.
-            xmin = 1
-            ymin = 2
-            xmax = 3
-            ymax = 4
+            xmin = self.labels_format['xmin']
+            ymin = self.labels_format['ymin']
+            xmax = self.labels_format['xmax']
+            ymax = self.labels_format['ymax']
+
+            # Override the preset labels formats in the box filter and image validator.
+            if not self.box_filter is None:
+                self.box_filter.labels_format = self.labels_format
+            if not self.image_validator is None:
+                self.image_validator.labels_format = self.labels_format
 
             for _ in range(max(1, self.n_trials_max)):
 
@@ -531,7 +577,8 @@ class RandomScale:
                     scale = Scale(factor=factor,
                                   clip_boxes=self.clip_boxes,
                                   box_filter=self.box_filter,
-                                  background=self.background)
+                                  background=self.background,
+                                  labels_format=self.labels_format)
 
                     return scale(image, labels)
                 else:
@@ -560,7 +607,8 @@ class RandomScale:
                         scale = Scale(factor=factor,
                                       clip_boxes=self.clip_boxes,
                                       box_filter=self.box_filter,
-                                      background=self.background)
+                                      background=self.background,
+                                      labels_format=self.labels_format)
 
                         return scale(image, labels)
 
