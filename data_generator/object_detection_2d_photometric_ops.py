@@ -62,11 +62,16 @@ class ConvertColor:
 
 class ConvertDataType:
     '''
-    Converts images represented as Numpy arrays between `uint8` and `float`.
+    Converts images represented as Numpy arrays between `uint8` and `float32`.
     Serves as a helper for certain photometric distortions. This is just a wrapper
     around `np.ndarray.astype()`.
     '''
     def __init__(self, to='uint8'):
+        '''
+        Arguments:
+            to (string, optional): To which datatype to convert the input images.
+                Can be either of 'uint8' and 'float32'.
+        '''
         if not (to == 'uint8' or to == 'float32'):
             raise ValueError("`to` can be either of 'uint8' or 'float32'.")
         self.to = to
@@ -112,6 +117,12 @@ class Hue:
         - Expects input array to be of `dtype` `float`.
     '''
     def __init__(self, delta):
+        '''
+        Arguments:
+            delta (int): An integer in the closed interval `[-180, 180]` that determines the hue change, where
+                a change by integer `delta` means a change by `2 * delta` degrees. Read up on the HSV color format
+                if you need more information.
+        '''
         if not (-180 <= delta <= 180): raise ValueError("`delta` must be in the closed interval `[-180, 180]`.")
         self.delta = delta
 
@@ -131,6 +142,13 @@ class RandomHue:
         - Expects input array to be of `dtype` `float`.
     '''
     def __init__(self, max_delta=18, prob=0.5):
+        '''
+        Arguments:
+            max_delta (int): An integer in the closed interval `[0, 180]` that determines the maximal absolute
+                hue change.
+            prob (float, optional): `(1 - prob)` determines the probability with which the original,
+                unaltered image is returned.
+        '''
         if not (0 <= max_delta <= 180): raise ValueError("`max_delta` must be in the closed interval `[0, 180]`.")
         self.max_delta = max_delta
         self.prob = prob
@@ -155,6 +173,12 @@ class Saturation:
         - Expects input array to be of `dtype` `float`.
     '''
     def __init__(self, factor):
+        '''
+        Arguments:
+            factor (float): A float greater than zero that determines saturation change, where
+                values less than one result in less saturation and values greater than one result
+                in more saturation.
+        '''
         if factor <= 0.0: raise ValueError("It must be `factor > 0`.")
         self.factor = factor
 
@@ -174,6 +198,15 @@ class RandomSaturation:
         - Expects input array to be of `dtype` `float`.
     '''
     def __init__(self, lower=0.3, upper=2.0, prob=0.5):
+        '''
+        Arguments:
+            lower (float, optional): A float greater than zero, the lower bound for the random
+                saturation change.
+            upper (float, optional): A float greater than zero, the upper bound for the random
+                saturation change. Must be greater than `lower`.
+            prob (float, optional): `(1 - prob)` determines the probability with which the original,
+                unaltered image is returned.
+        '''
         if lower >= upper: raise ValueError("`upper` must be greater than `lower`.")
         self.lower = lower
         self.upper = upper
@@ -199,6 +232,11 @@ class Brightness:
         - Expects input array to be of `dtype` `float`.
     '''
     def __init__(self, delta):
+        '''
+        Arguments:
+            delta (int): An integer, the amount to add to or subtract from the intensity
+                of every pixel.
+        '''
         self.delta = delta
 
     def __call__(self, image, labels=None):
@@ -217,6 +255,14 @@ class RandomBrightness:
         - Expects input array to be of `dtype` `float`.
     '''
     def __init__(self, lower=-84, upper=84, prob=0.5):
+        '''
+        Arguments:
+            lower (int, optional): An integer, the lower bound for the random brightness change.
+            upper (int, optional): An integer, the upper bound for the random brightness change.
+                Must be greater than `lower`.
+            prob (float, optional): `(1 - prob)` determines the probability with which the original,
+                unaltered image is returned.
+        '''
         if lower >= upper: raise ValueError("`upper` must be greater than `lower`.")
         self.lower = float(lower)
         self.upper = float(upper)
@@ -242,6 +288,12 @@ class Contrast:
         - Expects input array to be of `dtype` `float`.
     '''
     def __init__(self, factor):
+        '''
+        Arguments:
+            factor (float): A float greater than zero that determines contrast change, where
+                values less than one result in less contrast and values greater than one result
+                in more contrast.
+        '''
         if factor <= 0.0: raise ValueError("It must be `factor > 0`.")
         self.factor = factor
 
@@ -261,6 +313,15 @@ class RandomContrast:
         - Expects input array to be of `dtype` `float`.
     '''
     def __init__(self, lower=0.5, upper=1.5, prob=0.5):
+        '''
+        Arguments:
+            lower (float, optional): A float greater than zero, the lower bound for the random
+                contrast change.
+            upper (float, optional): A float greater than zero, the upper bound for the random
+                contrast change. Must be greater than `lower`.
+            prob (float, optional): `(1 - prob)` determines the probability with which the original,
+                unaltered image is returned.
+        '''
         if lower >= upper: raise ValueError("`upper` must be greater than `lower`.")
         self.lower = lower
         self.upper = upper
@@ -284,6 +345,11 @@ class Gamma:
     Important: Expects RGB input.
     '''
     def __init__(self, gamma):
+        '''
+        Arguments:
+            gamma (float): A float greater than zero that determines gamma change.
+        '''
+        if gamma <= 0.0: raise ValueError("It must be `gamma > 0`.")
         self.gamma = gamma
         self.gamma_inv = 1.0 / gamma
         # Build a lookup table mapping the pixel values [0, 255] to
@@ -304,6 +370,15 @@ class RandomGamma:
     Important: Expects RGB input.
     '''
     def __init__(self, lower=0.25, upper=2.0, prob=0.5):
+        '''
+        Arguments:
+            lower (float, optional): A float greater than zero, the lower bound for the random
+                gamma change.
+            upper (float, optional): A float greater than zero, the upper bound for the random
+                gamma change. Must be greater than `lower`.
+            prob (float, optional): `(1 - prob)` determines the probability with which the original,
+                unaltered image is returned.
+        '''
         if lower >= upper: raise ValueError("`upper` must be greater than `lower`.")
         self.lower = lower
         self.upper = upper
@@ -344,6 +419,11 @@ class RandomHistogramEqualization:
     Importat: Expects HSV input.
     '''
     def __init__(self, prob=0.5):
+        '''
+        Arguments:
+            prob (float, optional): `(1 - prob)` determines the probability with which the original,
+                unaltered image is returned.
+        '''
         self.prob = prob
 
     def __call__(self, image, labels=None):
@@ -361,6 +441,11 @@ class ChannelSwap:
     Swaps the channels of images.
     '''
     def __init__(self, order):
+        '''
+        Arguments:
+            order (tuple): A tuple of integers that defines the desired channel order
+                of the input images after the channel swap.
+        '''
         self.order = order
 
     def __call__(self, image, labels=None):
@@ -377,6 +462,11 @@ class RandomChannelSwap:
     Important: Expects RGB input.
     '''
     def __init__(self, prob=0.5):
+        '''
+        Arguments:
+            prob (float, optional): `(1 - prob)` determines the probability with which the original,
+                unaltered image is returned.
+        '''
         self.prob = prob
         # All possible permutations of the three image channels except the original order.
         self.permutations = ((0, 2, 1),
