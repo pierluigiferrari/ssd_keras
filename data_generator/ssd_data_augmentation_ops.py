@@ -36,6 +36,12 @@ class SSDRandomCrop:
     '''
 
     def __init__(self, labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
+        '''
+        Arguments:
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
+        '''
 
         self.labels_format = labels_format
 
@@ -103,6 +109,14 @@ class SSDExpand:
     '''
 
     def __init__(self, background=(123, 117, 104), labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
+        '''
+        Arguments:
+            background (list/tuple, optional): A 3-tuple specifying the RGB color value of the
+                background pixels of the translated images.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
+        '''
 
         self.labels_format = labels_format
 
@@ -202,6 +216,16 @@ class SSDDataAugmentation:
                  img_width=300,
                  background=(123, 117, 104),
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
+        '''
+        Arguments:
+            height (int): The desired height of the output images in pixels.
+            width (int): The desired width of the output images in pixels.
+            background (list/tuple, optional): A 3-tuple specifying the RGB color value of the
+                background pixels of the translated images.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
+        '''
 
         self.labels_format = labels_format
 
