@@ -141,7 +141,7 @@ class PatchCoordinateGenerator:
                 patch_height = int(scaling_factor * self.img_height)
                 patch_width = int(scaling_factor * self.img_width)
 
-        if self.must_match == 'h_ar': # Width is the dependent variable.
+        elif self.must_match == 'h_ar': # Width is the dependent variable.
             # Get the height.
             if self.patch_height is None:
                 patch_height = int(np.random.uniform(self.min_scale, self.max_scale) * self.img_height)
@@ -155,7 +155,7 @@ class PatchCoordinateGenerator:
             # Get the width.
             patch_width = int(patch_height * patch_aspect_ratio)
 
-        if self.must_match == 'w_ar': # Height is the dependent variable.
+        elif self.must_match == 'w_ar': # Height is the dependent variable.
             # Get the width.
             if self.patch_width is None:
                 patch_width = int(np.random.uniform(self.min_scale, self.max_scale) * self.img_width)
@@ -221,7 +221,8 @@ class CropPad:
                  patch_width,
                  clip_boxes=False,
                  box_filter=None,
-                 background=(0,0,0)):
+                 background=(0,0,0),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             patch_ymin (int, optional): The vertical coordinate of the top left corner of the output
@@ -258,8 +259,9 @@ class CropPad:
         self.clip_boxes = clip_boxes
         self.box_filter = box_filter
         self.background = background
+        self.labels_format = labels_format
 
-    def __call__(self, image, labels=None):
+    def __call__(self, image, labels=None, return_inverter=False):
 
         img_height, img_width = image.shape[:2]
 
@@ -268,11 +270,10 @@ class CropPad:
 
         labels = np.copy(labels)
 
-        # Coordinates are expected to be in the 'corners' format.
-        xmin = 1
-        ymin = 2
-        xmax = 3
-        ymax = 4
+        xmin = self.labels_format['xmin']
+        ymin = self.labels_format['ymin']
+        xmax = self.labels_format['xmax']
+        ymax = self.labels_format['ymax']
 
         # Top left corner of the patch relative to the image coordinate system:
         patch_ymin = self.patch_ymin
@@ -309,6 +310,13 @@ class CropPad:
 
         image = canvas
 
+        if return_inverter:
+            def inverter(labels):
+                labels = np.copy(labels)
+                labels[:, [ymin, ymax]] += patch_ymin
+                labels[:, [xmin, xmax]] += patch_xmin
+                return labels
+
         if not (labels is None):
 
             # Translate the box coordinates to the patch's coordinate system.
@@ -317,6 +325,7 @@ class CropPad:
 
             # Compute all valid boxes for this patch.
             if not (self.box_filter is None):
+                self.box_filter.labels_format = self.labels_format
                 labels = self.box_filter(image_height=self.patch_height,
                                          image_width=self.patch_width,
                                          labels=labels)
@@ -325,10 +334,16 @@ class CropPad:
                 labels[:,[ymin,ymax]] = np.clip(labels[:,[ymin,ymax]], a_min=0, a_max=self.patch_height-1)
                 labels[:,[xmin,xmax]] = np.clip(labels[:,[xmin,xmax]], a_min=0, a_max=self.patch_width-1)
 
-            return image, labels
+            if return_inverter:
+                return image, labels, inverter
+            else:
+                return image, labels
 
         else:
-            return image
+            if return_inverter:
+                return image, inverter
+            else:
+                return image
 
 class Crop:
     '''
@@ -343,15 +358,17 @@ class Crop:
                  crop_left,
                  crop_right,
                  clip_boxes=False,
-                 box_filter=None):
+                 box_filter=None,
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         self.crop_top = crop_top
         self.crop_bottom = crop_bottom
         self.crop_left = crop_left
         self.crop_right = crop_right
         self.clip_boxes = clip_boxes
         self.box_filter = box_filter
+        self.labels_format = labels_format
 
-    def __call__(self, image, labels=None):
+    def __call__(self, image, labels=None, return_inverter=False):
 
         img_height, img_width = image.shape[:2]
 
@@ -363,9 +380,10 @@ class Crop:
                        patch_height=crop_height,
                        patch_width=crop_width,
                        clip_boxes=clip_boxes,
-                       box_filter=box_filter)
+                       box_filter=box_filter,
+                       labels_format=self.labels_format)
 
-        return crop(image, labels)
+        return crop(image, labels, return_inverter)
 
 class Pad:
     '''
@@ -381,7 +399,8 @@ class Pad:
                  pad_right,
                  clip_boxes=False,
                  box_filter=None,
-                 background=(0,0,0)):
+                 background=(0,0,0),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         self.pad_top = pad_top
         self.pad_bottom = pad_bottom
         self.pad_left = pad_left
@@ -389,8 +408,9 @@ class Pad:
         self.clip_boxes = clip_boxes
         self.box_filter = box_filter
         self.background = background
+        self.labels_format = labels_format
 
-    def __call__(self, image, labels=None):
+    def __call__(self, image, labels=None, return_inverter=False):
 
         img_height, img_width = image.shape[:2]
 
@@ -398,14 +418,15 @@ class Pad:
         pad_width = img_width + self.pad_left + self.pad_right
 
         pad = CropPad(patch_ymin=-self.pad_top,
-                       patch_xmin=-self.pad_left,
-                       patch_height=pad_height,
-                       patch_width=pad_width,
-                       clip_boxes=clip_boxes,
-                       box_filter=box_filter,
-                       background=self.background)
+                      patch_xmin=-self.pad_left,
+                      patch_height=pad_height,
+                      patch_width=pad_width,
+                      clip_boxes=clip_boxes,
+                      box_filter=box_filter,
+                      background=self.background,
+                      labels_format=self.labels_format)
 
-        return pad(image, labels)
+        return pad(image, labels, return_inverter)
 
 class RandomPatch:
     '''
@@ -415,6 +436,13 @@ class RandomPatch:
 
     Input images may be cropped and/or padded along either or both of the two
     spatial dimensions as necessary in order to obtain the required patch.
+
+    As opposed to `RandomPatchInf`, it is possible for this transform to fail to produce
+    an output image at all, in which case it will return `None`. This is useful, because
+    if this transform is used to generate patches of a fixed size or aspect ratio, then
+    the caller needs to be able to rely on the output image satisfying the set size or
+    aspect ratio. It might therefore not be an option to return the unaltered input image
+    as other random transforms do when they fail to produce a valid transformed image.
     '''
 
     def __init__(self,
@@ -424,7 +452,8 @@ class RandomPatch:
                  n_trials_max=3,
                  clip_boxes=False,
                  prob=1.0,
-                 background=(0,0,0)):
+                 background=(0,0,0),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             patch_coord_generator (PatchCoordinateGenerator): A `PatchCoordinateGenerator` object
@@ -438,7 +467,7 @@ class RandomPatch:
                 any outcome is valid.
             n_trials_max (int, optional): Only relevant if ground truth bounding boxes are given.
                 Determines the maxmial number of trials to sample a valid patch. If no valid patch could
-                be sampled in `n_trials_max` trials, returns `None`.
+                be sampled in `n_trials_max` trials, returns one `None` in place of each regular output.
             clip_boxes (bool, optional): Only relevant if ground truth bounding boxes are given.
                 If `True`, any ground truth bounding boxes will be clipped to lie entirely within the
                 sampled patch.
@@ -459,8 +488,9 @@ class RandomPatch:
         self.clip_boxes = clip_boxes
         self.prob = prob
         self.background = background
+        self.labels_format = labels_format
 
-    def __call__(self, image, labels=None):
+    def __call__(self, image, labels=None, return_inverter=False):
 
         p = np.random.uniform(0,1)
         if p >= (1.0-self.prob):
@@ -469,11 +499,16 @@ class RandomPatch:
             self.patch_coord_generator.img_height = img_height
             self.patch_coord_generator.img_width = img_width
 
-            # Coordinates are expected to be in the 'corners' format.
-            xmin = 1
-            ymin = 2
-            xmax = 3
-            ymax = 4
+            xmin = self.labels_format['xmin']
+            ymin = self.labels_format['ymin']
+            xmax = self.labels_format['xmax']
+            ymax = self.labels_format['ymax']
+
+            # Override the preset labels formats in the box filter and image validator.
+            if not self.box_filter is None:
+                self.box_filter.labels_format = self.labels_format
+            if not self.image_validator is None:
+                self.image_validator.labels_format = self.labels_format
 
             for _ in range(max(1, self.n_trials_max)):
 
@@ -488,9 +523,10 @@ class RandomPatch:
                                            patch_width=patch_width,
                                            clip_boxes=self.clip_boxes,
                                            box_filter=self.box_filter,
-                                           background=self.background)
+                                           background=self.background,
+                                           labels_format=self.labels_format)
 
-                    return sample_patch(image, labels)
+                    return sample_patch(image, labels, return_inverter)
                 else:
                     # Translate the box coordinates to the patch's coordinate system.
                     new_labels = np.copy(labels)
@@ -507,16 +543,38 @@ class RandomPatch:
                                                patch_width=patch_width,
                                                clip_boxes=self.clip_boxes,
                                                box_filter=self.box_filter,
-                                               background=self.background)
+                                               background=self.background,
+                                               labels_format=self.labels_format)
                         # Sample the patch.
-                        return sample_patch(image, labels)
+                        return sample_patch(image, labels, return_inverter)
 
-            return None # If we weren't able to sample a valid patch, return `None`.
+            # If we weren't able to sample a valid patch, return `None`.
+            if labels is None:
+                if return_inverter:
+                    return None, None
+                else:
+                    return None
+            else:
+                if return_inverter:
+                    return None, None, None
+                else:
+                    return None, None
 
-        if labels is None:
-            return image
         else:
-            return image, labels
+            if return_inverter:
+                def inverter(labels):
+                    return labels
+
+            if labels is None:
+                if return_inverter:
+                    return image, inverter
+                else:
+                    return image
+            else:
+                if return_inverter:
+                    return image, labels, inverter
+                else:
+                    return image, labels
 
 class RandomPatchInf:
     '''
@@ -542,7 +600,8 @@ class RandomPatchInf:
                  n_trials_max=50,
                  clip_boxes=False,
                  prob=0.857,
-                 background=(0,0,0)):
+                 background=(0,0,0),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             patch_coord_generator (PatchCoordinateGenerator): A `PatchCoordinateGenerator` object
@@ -586,18 +645,24 @@ class RandomPatchInf:
         self.clip_boxes = clip_boxes
         self.prob = prob
         self.background = background
+        self.labels_format = labels_format
 
-    def __call__(self, image, labels=None):
+    def __call__(self, image, labels=None, return_inverter=False):
 
         img_height, img_width = image.shape[:2]
         self.patch_coord_generator.img_height = img_height
         self.patch_coord_generator.img_width = img_width
 
-        # Coordinates are expected to be in the 'corners' format.
-        xmin = 1
-        ymin = 2
-        xmax = 3
-        ymax = 4
+        xmin = self.labels_format['xmin']
+        ymin = self.labels_format['ymin']
+        xmax = self.labels_format['xmax']
+        ymax = self.labels_format['ymax']
+
+        # Override the preset labels formats in the box filter and image validator.
+        if not self.box_filter is None:
+            self.box_filter.labels_format = self.labels_format
+        if not self.image_validator is None:
+            self.image_validator.labels_format = self.labels_format
 
         while True: # Keep going until we either find a valid patch or return the original image.
 
@@ -628,9 +693,10 @@ class RandomPatchInf:
                                                patch_width=patch_width,
                                                clip_boxes=self.clip_boxes,
                                                box_filter=self.box_filter,
-                                               background=self.background)
+                                               background=self.background,
+                                               labels_format=self.labels_format)
 
-                        return sample_patch(image, labels)
+                        return sample_patch(image, labels, return_inverter)
                     else:
                         # Translate the box coordinates to the patch's coordinate system.
                         new_labels = np.copy(labels)
@@ -647,15 +713,25 @@ class RandomPatchInf:
                                                    patch_width=patch_width,
                                                    clip_boxes=self.clip_boxes,
                                                    box_filter=self.box_filter,
-                                                   background=self.background)
+                                                   background=self.background,
+                                                   labels_format=self.labels_format)
                             # Sample the patch.
-                            return sample_patch(image, labels)
-
+                            return sample_patch(image, labels, return_inverter)
             else:
+                if return_inverter:
+                    def inverter(labels):
+                        return labels
+
                 if labels is None:
-                    return image
+                    if return_inverter:
+                        return image, inverter
+                    else:
+                        return image
                 else:
-                    return image, labels
+                    if return_inverter:
+                        return image, labels, inverter
+                    else:
+                        return image, labels
 
 class RandomMaxCropFixedAR:
     '''
@@ -671,7 +747,8 @@ class RandomMaxCropFixedAR:
                  box_filter=None,
                  image_validator=None,
                  n_trials_max=3,
-                 clip_boxes=False):
+                 clip_boxes=False,
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             patch_aspect_ratio (float): The fixed aspect ratio that all sampled patches will have.
@@ -695,8 +772,9 @@ class RandomMaxCropFixedAR:
         self.image_validator = image_validator
         self.n_trials_max = n_trials_max
         self.clip_boxes = clip_boxes
+        self.labels_format = labels_format
 
-    def __call__(self, image, labels=None):
+    def __call__(self, image, labels=None, return_inverter=False):
 
         img_height, img_width = image.shape[:2]
 
@@ -724,9 +802,10 @@ class RandomMaxCropFixedAR:
                                    image_validator=self.image_validator,
                                    n_trials_max=self.n_trials_max,
                                    clip_boxes=self.clip_boxes,
-                                   prob=1.0)
+                                   prob=1.0,
+                                   labels_format=self.labels_format)
 
-        return random_patch(image, labels)
+        return random_patch(image, labels, return_inverter)
 
 class RandomPadFixedAR:
     '''
@@ -740,7 +819,8 @@ class RandomPadFixedAR:
     def __init__(self,
                  patch_aspect_ratio,
                  clip_boxes=False,
-                 background=(0,0,0)):
+                 background=(0,0,0),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             patch_aspect_ratio (float): The fixed aspect ratio that all sampled patches will have.
@@ -755,8 +835,9 @@ class RandomPadFixedAR:
         self.patch_aspect_ratio = patch_aspect_ratio
         self.clip_boxes = clip_boxes
         self.background = background
+        self.labels_format = labels_format
 
-    def __call__(self, image, labels=None):
+    def __call__(self, image, labels=None, return_inverter=False):
 
         img_height, img_width = image.shape[:2]
 
@@ -782,6 +863,7 @@ class RandomPadFixedAR:
                                    n_trials_max=1,
                                    clip_boxes=self.clip_boxes,
                                    background=self.background,
-                                   prob=1.0,)
+                                   prob=1.0,
+                                   labels_format=self.labels_format)
 
-        return random_patch(image, labels)
+        return random_patch(image, labels, return_inverter)
