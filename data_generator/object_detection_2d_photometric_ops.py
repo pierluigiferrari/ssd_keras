@@ -83,7 +83,9 @@ class ConvertDataType:
 
 class ConvertTo3Channels:
     '''
-    Converts images to 3-channel images if they aren't already.
+    Converts 1-channel and 4-channel images to 3-channel images. Does nothing to images that
+    already have 3 channels. In the case of 4-channel images, the fourth channel will be
+    discarded.
     '''
     def __init__(self):
         pass
@@ -91,8 +93,11 @@ class ConvertTo3Channels:
     def __call__(self, image, labels=None):
         if image.ndim == 2:
             image = np.stack([image] * 3, axis=-1)
-        elif image.ndim == 3 and image.shape[2] == 1:
-            image = np.concatenate([image] * 3, axis=-1)
+        elif image.ndim == 3:
+            if image.shape[2] == 1:
+                image = np.concatenate([image] * 3, axis=-1)
+            elif image.shape[2] == 4:
+                image = image[:,:,:3]
         if labels is None:
             return image
         else:
@@ -353,9 +358,7 @@ class RandomHistogramEqualization:
 
 class ChannelSwap:
     '''
-    Swaps the channels of RGB images.
-
-    Important: Expects RGB input.
+    Swaps the channels of images.
     '''
     def __init__(self, order):
         self.order = order
