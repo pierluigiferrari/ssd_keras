@@ -34,7 +34,9 @@ class SSDRandomCrop:
     https://arxiv.org/abs/1512.02325
     '''
 
-    def __init__(self):
+    def __init__(self, labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
+
+        self.labels_format = labels_format
 
         # This randomly samples one of the lower IoU bounds defined
         # by the `sample_space` every time it is called.
@@ -59,14 +61,16 @@ class SSDRandomCrop:
 
         # Filters out boxes whose center point does not lie within the
         # chosen patches.
-        self.box_filter = BoxFilter(overlap_criterion='center_point')
+        self.box_filter = BoxFilter(overlap_criterion='center_point',
+                                    labels_format=self.labels_format)
 
         # Determines whether a given patch is considered a valid patch.
         # Defines a patch to be valid if at least one ground truth bounding box
         # (n_boxes_min == 1) has an IoU overlap with the patch that
         # meets the requirements defined by `bound_generator`.
         self.image_validator = ImageValidator(overlap_criterion='iou',
-                                              n_boxes_min=1)
+                                              n_boxes_min=1,
+                                              labels_format=self.labels_format)
 
         # Performs crops according to the parameters set in the objects above.
         # Runs until either a valid patch is found or the original input image
@@ -80,10 +84,14 @@ class SSDRandomCrop:
                                           bound_generator=self.bound_generator,
                                           n_trials_max=50,
                                           clip_boxes=False,
-                                          prob=0.857)
+                                          prob=0.857,
+                                          labels_format=self.labels_format)
 
-    def __call__(self, image, labels=None):
-        return self.random_crop(image, labels)
+    def __call__(self, image, labels=None, return_inverter=False):
+        self.box_filter.labels_format = self.labels_format
+        self.image_validator.labels_format = self.labels_format
+        self.random_crop.labels_format = self.labels_format
+        return self.random_crop(image, labels, return_inverter)
 
 class SSDExpand:
     '''
@@ -93,7 +101,9 @@ class SSDExpand:
     https://arxiv.org/abs/1512.02325
     '''
 
-    def __init__(self, background=(123, 117, 104)):
+    def __init__(self, background=(123, 117, 104), labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
+
+        self.labels_format = labels_format
 
         # Generate coordinates for patches that are between 1.0 and 4.0 times
         # the size of the input image in both spatial dimensions.
@@ -111,10 +121,12 @@ class SSDExpand:
                                   n_trials_max=1,
                                   clip_boxes=False,
                                   prob=0.5,
-                                  background=background)
+                                  background=background,
+                                  labels_format=self.labels_format)
 
-    def __call__(self, image, labels=None):
-        return self.expand(image, labels)
+    def __call__(self, image, labels=None, return_inverter=False):
+        self.expand.labels_format = self.labels_format
+        return self.expand(image, labels, return_inverter)
 
 class SSDPhotometricDistortions:
     '''
@@ -184,19 +196,26 @@ class SSDDataAugmentation:
     Caffe implementation of SSD.
     '''
 
-    def __init__(self, img_height=300, img_width=300, background=(123, 117, 104)):
+    def __init__(self,
+                 img_height=300,
+                 img_width=300,
+                 background=(123, 117, 104),
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
+
+        self.labels_format = labels_format
 
         self.photometric_distortions = SSDPhotometricDistortions()
-        self.expand = SSDExpand(background=background)
-        self.random_crop = SSDRandomCrop()
-        self.random_flip = RandomFlip(dim='horizontal', prob=0.5)
+        self.expand = SSDExpand(background=background, labels_format=self.labels_format)
+        self.random_crop = SSDRandomCrop(labels_format=self.labels_format)
+        self.random_flip = RandomFlip(dim='horizontal', prob=0.5, labels_format=self.labels_format)
         self.resize = ResizeRandomInterp(height=img_height,
                                          width=img_width,
                                          interpolation_modes=[cv2.INTER_NEAREST,
                                                               cv2.INTER_LINEAR,
                                                               cv2.INTER_CUBIC,
                                                               cv2.INTER_AREA,
-                                                              cv2.INTER_LANCZOS4])
+                                                              cv2.INTER_LANCZOS4],
+                                         labels_format=self.labels_format)
 
         self.sequence = [self.photometric_distortions,
                          self.expand,
@@ -204,8 +223,22 @@ class SSDDataAugmentation:
                          self.random_flip,
                          self.resize]
 
-    def __call__(self, image, labels):
+    def __call__(self, image, labels, return_inverter=False):
+        self.expand.labels_format = self.labels_format
+        self.random_crop.labels_format = self.labels_format
+        self.random_flip.labels_format = self.labels_format
+        self.resize.labels_format = self.labels_format
+
+        inverters = []
 
         for transform in self.sequence:
-            image, labels = transform(image, labels)
-        return image, labels
+            if return_inverter and ('return_inverter' in inspect.signature(transform).parameters):
+                image, labels, inverter = transform(image, labels, return_inverter=True)
+                inverters.append[inverter]
+            else:
+                image, labels = transform(image, labels)
+
+        if return_inverter:
+            return image, labels, inverters
+        else:
+            return image, labels
