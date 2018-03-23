@@ -18,11 +18,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
 from __future__ import division
+import numpy as np
 import inspect
 from collections import defaultdict
 import warnings
-import numpy as np
-import random
 import sklearn.utils
 from copy import deepcopy
 from PIL import Image
@@ -525,11 +524,14 @@ class DataGenerator:
             shuffle (bool, optional): Whether or not to shuffle the dataset before each pass.
                 This option should always be `True` during training, but it can be useful to turn shuffling off
                 for debugging or if you're using the generator for prediction.
-            train (bool, optional): Whether or not the generator is used in training mode. If `True`, then the labels
-                will be transformed into the format that the SSD cost function requires. Otherwise,
-                the output format of the labels is identical to the input format.
-            ssd_box_encoder (SSDBoxEncoder, optional): Only required if `train = True`. An SSDBoxEncoder object
-                to encode the ground truth labels to the required format for training an SSD model.
+            transformations (list, optional): A list of transformations that will be applied to the images and labels
+                in the given order. Each transformation is a callable that takes as input an image (as a Numpy array)
+                and optionally labels (also as a Numpy array) and returns an image and optionally labels in the same
+                format.
+            label_encoder (callable, optional): Only relevant if labels are given. A callable that takes as input the
+                labels of a batch (as a list of Numpy arrays) and returns some structure that represents those labels.
+                The general use case for this is to convert labels from their input format to a format that a given object
+                detection model needs as its training targets.
             returns (set, optional): A set of strings that determines what outputs the generator yields. The generator's output
                 is always a tuple with the processed images as its first element and, if in training mode, the encoded
                 labels as its second element. Apart from that, the output tuple can contain additional outputs according
@@ -564,11 +566,10 @@ class DataGenerator:
                 * 'original_labels': A list containing the original ground truth boxes for the images in this batch before any
                     processing. Only available if ground truth is available.
                 The order of the outputs in the tuple is the order of the list above. If `returns` contains a keyword for an
-                output that is unavailable, that output will simply be skipped and not be part of the yielded tuple.
-            keep_images_without_gt (bool, optional): If `True`, images for which there are no ground truth boxes
-                (either because there weren't any to begin with or because random cropping cropped out a patch that
-                doesn't contain any objects) will be kept in the batch. If `False`, such images will be removed
-                from the batch.
+                output that is unavailable, that output omitted in the yielded tuples and a warning will be raised.
+            keep_images_without_gt (bool, optional): If `False`, images for which there aren't any ground truth boxes before
+                any transformations have been applied will be removed from the batch. If `True`, such images will be kept
+                in the batch.
 
         Yields:
             The next batch as a tuple of items as defined by the `returns` argument. By default, this will be
@@ -766,3 +767,42 @@ class DataGenerator:
             if 'original_labels' in returns and not self.labels is None: ret.append(batch_original_labels)
 
             yield ret
+
+    def save_dataset(self,
+                     filenames_path='filenames.pkl',
+                     labels_path=None,
+                     image_ids_path=None):
+        '''
+        Writes the current `filenames`, `labels`, and `image_ids` lists to the specified files.
+        This is particularly useful for large datasets with annotations that are
+        parsed from XML files, which can take quite long. If you'll be using the
+        same dataset repeatedly, you don't want to have to parse the XML label
+        files every time.
+
+        Arguments:
+            filenames_path (str): The path under which to save the filenames pickle.
+            labels_path (str): The path under which to save the labels pickle.
+            image_ids_path (str, optional): The path under which to save the image IDs pickle.
+        '''
+        with open(filenames_path, 'wb') as f:
+            pickle.dump(self.filenames, f)
+        if not labels_path is None:
+            with open(labels_path, 'wb') as f:
+                pickle.dump(self.labels, f)
+        if not image_ids_path is None:
+            with open(image_ids_path, 'wb') as f:
+                pickle.dump(self.image_ids, f)
+
+    def get_dataset(self):
+        '''
+        Returns:
+            The list of filenames, the list of labels, and the list of image IDs.
+        '''
+        return self.filenames, self.labels, self.image_ids
+
+    def get_dataset_size(self):
+        '''
+        Returns:
+            The number of images in the dataset.
+        '''
+        return len(self.filenames)
