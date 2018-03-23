@@ -41,6 +41,9 @@ class Resize:
             interpolation_mode (int, optional): An integer that denotes a valid
                 OpenCV interpolation mode. For example, integers 0 through 5 are
                 valid interpolation modes.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
         self.out_height = height
         self.out_width = width
@@ -103,6 +106,9 @@ class ResizeRandomInterp:
             interpolation_modes (list/tuple, optional): A list/tuple of integers
                 that represent valid OpenCV interpolation modes. For example,
                 integers 0 through 5 are valid interpolation modes.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
         if not (isinstance(interpolation_modes, (list, tuple))):
             raise ValueError("`interpolation_mode` must be a list or tuple.")
@@ -132,6 +138,9 @@ class Flip:
                 If 'horizontal', images will be flipped horizontally, i.e. along
                 the vertical axis. If 'horizontal', images will be flipped vertically,
                 i.e. along the horizontal axis.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
         if not (dim in {'horizontal', 'vertical'}): raise ValueError("`dim` can be one of 'horizontal' and 'vertical'.")
         self.dim = dim
@@ -180,6 +189,9 @@ class RandomFlip:
                 i.e. along the horizontal axis.
             prob (float, optional): `(1 - prob)` determines the probability with which the original,
                 unaltered image is returned.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
         self.dim = dim
         self.prob = prob
@@ -224,6 +236,9 @@ class Translate:
                 boxes is not checked.
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the
                 background pixels of the translated images.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
 
         if not (isinstance(box_filter, BoxFilter) or box_filter is None):
@@ -324,6 +339,9 @@ class RandomTranslate:
                 be produced in `n_trials_max` trials, returns the unaltered input image.
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the
                 background pixels of the translated images.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
         if dy_minmax[0] > dy_minmax[1]:
             raise ValueError("It must be `dy_minmax[0] <= dy_minmax[1]`.")
@@ -436,6 +454,9 @@ class Scale:
                 boxes is not checked.
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the potential
                 background pixels of the scaled images.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
 
         if factor <= 0:
@@ -533,6 +554,9 @@ class RandomScale:
                 be produced in `n_trials_max` trials, returns the unaltered input image.
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the potential
                 background pixels of the scaled images.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
 
         if not (0 < min_factor <= max_factor):

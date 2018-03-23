@@ -245,6 +245,9 @@ class CropPad:
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the potential
                 background pixels of the scaled images. In the case of single-channel images,
                 the first element of `background` will be used as the background pixel value.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
         if (patch_height <= 0) or (patch_width <= 0):
             raise ValueError("Patch height and width must both be positive.")
@@ -476,6 +479,9 @@ class RandomPatch:
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the potential
                 background pixels of the scaled images. In the case of single-channel images,
                 the first element of `background` will be used as the background pixel value.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
         if not isinstance(patch_coord_generator, PatchCoordinateGenerator):
             raise ValueError("`patch_coord_generator` must be an instance of `PatchCoordinateGenerator`.")
@@ -629,6 +635,9 @@ class RandomPatchInf:
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the potential
                 background pixels of the scaled images. In the case of single-channel images,
                 the first element of `background` will be used as the background pixel value.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
 
         if not isinstance(patch_coord_generator, PatchCoordinateGenerator):
@@ -765,6 +774,9 @@ class RandomMaxCropFixedAR:
             clip_boxes (bool, optional): Only relevant if ground truth bounding boxes are given.
                 If `True`, any ground truth bounding boxes will be clipped to lie entirely within the
                 sampled patch.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
 
         self.patch_aspect_ratio = patch_aspect_ratio
@@ -830,6 +842,9 @@ class RandomPadFixedAR:
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the potential
                 background pixels of the scaled images. In the case of single-channel images,
                 the first element of `background` will be used as the background pixel value.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
 
         self.patch_aspect_ratio = patch_aspect_ratio

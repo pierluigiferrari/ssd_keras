@@ -99,6 +99,9 @@ class BoxFilter:
                 Determines the lower and upper bounds for `overlap_criterion`. Can be either a 2-tuple of scalars
                 representing a lower bound and an upper bound, or a `BoundGenerator` object, which provides
                 the possibility to generate bounds randomly.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
         if not isinstance(bounds, (list, tuple, BoundGenerator)):
             raise ValueError("`bounds` must be either a 2-tuple of scalars or a `BoundGenerator` object.")
@@ -199,6 +202,9 @@ class ImageValidator:
                 Determines the minimum number of boxes that must meet the `overlap_criterion` with respect to
                 an image of the given height and width in order for the image to be a valid image.
                 If set to 'all', an image is considered valid if all given boxes meet the `overlap_criterion`.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
         if not ((isinstance(n_boxes_min, int) and n_boxes_min > 0) or n_boxes_min == 'all'):
             raise ValueError("`n_boxes_min` must be a positive integer or 'all'.")
