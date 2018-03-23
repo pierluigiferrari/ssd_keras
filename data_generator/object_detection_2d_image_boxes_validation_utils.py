@@ -24,7 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import division
 import numpy as np
 
-from ssd_box_utils.ssd_box_encode_decode_utils import iou
+from bounding_box_utils.bounding_box_utils import iou
 
 class BoundGenerator:
     '''
