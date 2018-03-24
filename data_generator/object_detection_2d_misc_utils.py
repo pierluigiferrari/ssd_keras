@@ -24,9 +24,9 @@ def apply_inverse_transforms(y_pred_decoded, inverse_transforms):
     '''
     Takes a list or Numpy array of decoded predictions and applies a given list of
     transforms to them. The list of inverse transforms would usually contain the
-    inverter functions that some data transformations return. This function would
-    normally be used to transform predictions that were made on a transformed image
-    back to the original image.
+    inverter functions that some of the image transformations that come with this
+    data generator return. This function would normally be used to transform predictions
+    that were made on a transformed image back to the original image.
 
     Arguments:
         y_pred_decoded (list or array): Either a list of length `batch_size` that
