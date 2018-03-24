@@ -46,7 +46,7 @@ class SSDInputEncoder:
                  two_boxes_for_ar1=True,
                  steps=None,
                  offsets=None,
-                 limit_boxes=False,
+                 clip_boxes=False,
                  variances=[0.1, 0.1, 0.2, 0.2],
                  pos_iou_threshold=0.5,
                  neg_iou_limit=0.3,
@@ -106,7 +106,7 @@ class SSDInputEncoder:
                 of the step size specified in the `steps` argument. If the list contains floats, then that value will
                 be used for both spatial dimensions. If the list contains tuples of two floats, then they represent
                 `(vertical_offset, horizontal_offset)`. If no offsets are provided, then they will default to 0.5 of the step size.
-            limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
+            clip_boxes (bool, optional): If `True`, limits the anchor box coordinates to stay within image boundaries.
             variances (list, optional): A list of 4 floats >0. The anchor box offset for each coordinate will be divided by
                 its respective variance value.
             pos_iou_threshold (float, optional): The intersection-over-union similarity threshold that must be
@@ -114,7 +114,7 @@ class SSDInputEncoder:
             neg_iou_limit (float, optional): The maximum allowed intersection-over-union similarity of an
                 anchor box with any ground truth box to be labeled a negative (i.e. background) box. If an
                 anchor box is neither a positive, nor a negative box, it will be ignored during training.
-            coords (str, optional): The box coordinate format to be used internally in the model (i.e. this is not the input format
+            coords (str, optional): The box coordinate format to be used internally by the model (i.e. this is not the input format
                 of the ground truth labels). Can be either 'centroids' for the format `(cx, cy, w, h)` (box center coordinates, width,
                 and height), 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`.
             normalize_coords (bool, optional): If `True`, the encoder uses relative instead of absolute coordinates.
@@ -193,7 +193,7 @@ class SSDInputEncoder:
             self.offsets = offsets
         else:
             self.offsets = [None] * len(predictor_sizes)
-        self.limit_boxes = limit_boxes
+        self.clip_boxes = clip_boxes
         self.variances = variances
         self.pos_iou_threshold = pos_iou_threshold
         self.neg_iou_limit = neg_iou_limit
@@ -438,8 +438,8 @@ class SSDInputEncoder:
         # Convert `(cx, cy, w, h)` to `(xmin, ymin, xmax, ymax)`
         boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='centroids2corners')
 
-        # If `limit_boxes` is enabled, clip the coordinates to lie within the image boundaries
-        if self.limit_boxes:
+        # If `clip_boxes` is enabled, clip the coordinates to lie within the image boundaries
+        if self.clip_boxes:
             x_coords = boxes_tensor[:,:,:,[0, 2]]
             x_coords[x_coords >= self.img_width] = self.img_width - 1
             x_coords[x_coords < 0] = 0
