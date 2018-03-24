@@ -66,8 +66,8 @@ class Resize:
         if return_inverter:
             def inverter(labels):
                 labels = np.copy(labels)
-                labels[:, [ymin, ymax]] = labels[:, [ymin, ymax]] * (img_height / self.out_height)
-                labels[:, [xmin, xmax]] = labels[:, [xmin, xmax]] * (img_width / self.out_width)
+                labels[:, [ymin+1, ymax+1]] = labels[:, [ymin+1, ymax+1]] * (img_height / self.out_height)
+                labels[:, [xmin+1, xmax+1]] = labels[:, [xmin+1, xmax+1]] * (img_width / self.out_width)
                 return labels
 
         if labels is None:

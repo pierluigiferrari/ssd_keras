@@ -316,8 +316,8 @@ class CropPad:
         if return_inverter:
             def inverter(labels):
                 labels = np.copy(labels)
-                labels[:, [ymin, ymax]] += patch_ymin
-                labels[:, [xmin, xmax]] += patch_xmin
+                labels[:, [ymin+1, ymax+1]] += patch_ymin
+                labels[:, [xmin+1, xmax+1]] += patch_xmin
                 return labels
 
         if not (labels is None):
