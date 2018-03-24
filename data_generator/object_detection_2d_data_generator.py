@@ -41,6 +41,8 @@ try:
 except ImportError:
     warnings.warn("'pickle' module is missing. You won't be able to save parsed file lists and annotations as pickled files.")
 
+from ssd_encoder_decoder.ssd_input_encoder import SSDInputEncoder
+
 class DegenerateBatchError(Exception):
     '''
     An exception class to be raised if a generated batch ends up being degenerate,
@@ -533,35 +535,32 @@ class DataGenerator:
                 The general use case for this is to convert labels from their input format to a format that a given object
                 detection model needs as its training targets.
             returns (set, optional): A set of strings that determines what outputs the generator yields. The generator's output
-                is always a tuple with the processed images as its first element and, if in training mode, the encoded
-                labels as its second element. Apart from that, the output tuple can contain additional outputs according
-                to the keywords in `returns`. The possible keyword strings and their respective outputs are:
+                is always a tuple with the processed images as its first element and, if labels and a label encoder are given,
+                the encoded labels as its second element. Apart from that, the output tuple can contain additional outputs
+                according to the keywords specified here. The possible keyword strings and their respective outputs are:
                 * 'processed_images': An array containing the processed images. Will always be in the outputs, so it doesn't
                     matter whether or not you include this keyword in the set.
-                * 'encoded_labels': The encoded labels tensor. This is an array of shape `(batch_size, n_boxes, n_classes + 12)`
-                    that is the output of `SSDBoxEncoder.encode_y()`. Will always be in the outputs if in training mode,
-                    so it doesn't matter whether or not you include this keyword in the set if in training mode.
-                * 'matched_anchors': The same as 'encoded_labels', but containing anchor box coordinates for all matched
-                    anchor boxes instead of ground truth coordinates. The can be useful to visualize what anchor boxes
-                    are being matched to each ground truth box. Only available in training mode.
+                * 'encoded_labels': The encoded labels tensor. Will always be in the outputs if a label encoder is given,
+                    so it doesn't matter whether or not you include this keyword in the set if you pass a label encoder.
+                * 'matched_anchors': Only available if `labels_encoder` is an `SSDInputEncoder` object. The same as 'encoded_labels',
+                    but containing anchor box coordinates for all matched anchor boxes instead of ground truth coordinates.
+                    This can be useful to visualize what anchor boxes are being matched to each ground truth box. Only available
+                    in training mode.
                 * 'processed_labels': The processed, but not yet encoded labels. This is a list that contains for each
                     batch image a Numpy array with all ground truth boxes for that image. Only available if ground truth is available.
                 * 'filenames': A list containing the file names (full paths) of the images in the batch.
                 * 'image_ids': A list containing the integer IDs of the images in the batch. Only available if there
                     are image IDs available.
-                * 'inverse_transform': An array of shape `(batch_size, 4, 2)` that contains two coordinate conversion values for
-                    each image in the batch and for each of the four coordinates. These these coordinate conversion values makes
-                    it possible to convert the box coordinates that were predicted on a transformed image back to what those coordinates
-                    would be in the original image. This is mostly relevant for evaluation: If you want to evaluate your model on
-                    a dataset with varying image sizes, then you are forced to transform the images somehow (by resizing or cropping)
-                    to make them all the same size. Your model will then predict boxes for those transformed images, but for the
-                    evaluation you will need the box coordinates to be correct for the original images, not for the transformed
-                    images. This means you will have to transform the predicted box coordinates back to the original image sizes.
-                    Since the images have varying sizes, the function that transforms the coordinates is different for every image.
-                    This array contains the necessary conversion values for every coordinate of every image in the batch.
-                    In order to convert coordinates to the original image sizes, first multiply each coordinate by the second
-                    conversion value, then add the first conversion value to it. Note that the conversion will only be correct
-                    for the `resize`, `random_crop`, `max_crop_and_resize` and `random_pad_and_resize` transformations.
+                * 'inverse_transform': A nested list that contains a list of "inverter" functions for each item in the batch.
+                    These inverter functions take (predicted) labels for an image as input and apply the inverse of the transformations
+                    that were applied to the original image to them. This makes it possible to let the model make predictions on a
+                    transformed image and then convert these predictions back to the original image. This is mostly relevant for
+                    evaluation: If you want to evaluate your model on a dataset with varying image sizes, then you are forced to
+                    transform the images somehow (e.g. by resizing or cropping) to make them all the same size. Your model will then
+                    predict boxes for those transformed images, but for the evaluation you will need predictions with respect to the
+                    original images, not with respect to the transformed images. This means you will have to transform the predicted
+                    box coordinates back to the original image sizes. Note that for each image, the inverter functions for that
+                    image need to be applied in the order in which they are given in the respective list for that image.
                 * 'original_images': A list containing the original images in the batch before any processing.
                 * 'original_labels': A list containing the original ground truth boxes for the images in this batch before any
                     processing. Only available if ground truth is available.
@@ -604,9 +603,9 @@ class DataGenerator:
             if any([ret in returns for ret in ['encoded_labels', 'matched_anchors']]):
                 warnings.warn("Since no label encoder was given, 'encoded_labels' and 'matched_anchors' aren't possible returns," +
                               "but you set `returns = {}`. The impossible returns will be missing from the output".format(returns))
-        elif not isinstance(label_encoder, SSDBoxEncoder):
+        elif not isinstance(label_encoder, SSDInputEncoder):
             if 'matched_anchors' in returns:
-                warnings.warn("`label_encoder` is not an `SSDBoxEncoder` object, therefore 'matched_anchors' is not a possible return," +
+                warnings.warn("`label_encoder` is not an `SSDInputEncoder` object, therefore 'matched_anchors' is not a possible return," +
                               "but you set `returns = {}`. The impossible returns will be missing from the output".format(returns))
         if (self.image_ids is None) and ('image_ids' in returns):
             warnings.warn("No image IDs were given, therefore 'image_ids' is not a possible return," +
@@ -711,7 +710,7 @@ class DataGenerator:
                             else:
                                 batch_X[i] = transform(batch_X[i])
 
-                    batch_inverse_transforms.append(inverse_transforms)
+                    batch_inverse_transforms.append(inverse_transforms[::-1])
 
             #########################################################################################
             # Remove any items we might not want to keep from the batch.
@@ -745,7 +744,7 @@ class DataGenerator:
             #########################################################################################
 
             if not (label_encoder is None or self.labels is None):
-                if ('matched_anchors' in returns) and isinstance(label_encoder, SSDBoxEncoder):
+                if ('matched_anchors' in returns) and isinstance(label_encoder, SSDInputEncoder):
                     batch_y_encoded, batch_matched_anchors = label_encoder(batch_y, diagnostics=True)
                 else:
                     batch_y_encoded = label_encoder(batch_y, diagnostics=False)
@@ -758,7 +757,7 @@ class DataGenerator:
             ret.append(batch_X)
             if not (label_encoder is None or self.labels is None):
                 ret.append(batch_y_encoded)
-                if ('matched_anchors' in returns) and isinstance(label_encoder, SSDBoxEncoder): ret.append(batch_matched_anchors)
+                if ('matched_anchors' in returns) and isinstance(label_encoder, SSDInputEncoder): ret.append(batch_matched_anchors)
             if 'processed_labels' in returns and not self.labels is None: ret.append(batch_y)
             if 'filenames' in returns: ret.append(batch_filenames)
             if 'image_ids' in returns and not self.image_ids is None: ret.append(batch_image_ids)
