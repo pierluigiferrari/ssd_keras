@@ -264,6 +264,6 @@ class SSDDataAugmentation:
                 image, labels = transform(image, labels)
 
         if return_inverter:
-            return image, labels, inverters
+            return image, labels, inverters[::-1]
         else:
             return image, labels
