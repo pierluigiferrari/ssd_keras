@@ -47,7 +47,7 @@ class SSDInputEncoder:
                  steps=None,
                  offsets=None,
                  limit_boxes=False,
-                 variances=[1.0, 1.0, 1.0, 1.0],
+                 variances=[0.1, 0.1, 0.2, 0.2],
                  pos_iou_threshold=0.5,
                  neg_iou_threshold=0.3,
                  coords='centroids',
@@ -82,14 +82,12 @@ class SSDInputEncoder:
                 to detect.
             aspect_ratios_global (list, optional): The list of aspect ratios for which anchor boxes are to be
                 generated. This list is valid for all prediction layers. Defaults to [0.5, 1.0, 2.0]. Note that you should
-                set the aspect ratios such that the resulting anchor box shapes very roughly correspond to the shapes of the
-                objects you are trying to detect. For many standard detection tasks, the default values will yield good
-                results.
+                set the aspect ratios such that the resulting anchor box shapes roughly correspond to the shapes of the
+                objects you are trying to detect.
             aspect_ratios_per_layer (list, optional): A list containing one aspect ratio list for each prediction layer.
                 If a list is passed, it overrides `aspect_ratios_global`. Defaults to `None`. Note that you should
                 set the aspect ratios such that the resulting anchor box shapes very roughly correspond to the shapes of the
-                objects you are trying to detect. For many standard detection tasks, the default values will yield good
-                results.
+                objects you are trying to detect.
             two_boxes_for_ar1 (bool, optional): Only relevant for aspect ratios lists that contain 1. Will be ignored otherwise.
                 If `True`, two anchor boxes will be generated for aspect ratio 1. The first will be generated
                 using the scaling factor for the respective layer, the second one will be generated using
@@ -100,7 +98,7 @@ class SSDInputEncoder:
                 the image. If the list contains ints/floats, then that value will be used for both spatial dimensions.
                 If the list contains tuples of two ints/floats, then they represent `(step_height, step_width)`.
                 If no steps are provided, then they will be computed such that the anchor box center points will form an
-                equidistant grid within the image dimensions. Defaults to `None`.
+                equidistant grid within the image dimensions.
             offsets (list, optional): `None` or a list with as many elements as there are predictor layers. The elements can be
                 either floats or tuples of two floats. These numbers represent for each predictor layer how many
                 pixels from the top and left boarders of the image the top-most and left-most anchor box center points should be
@@ -108,26 +106,20 @@ class SSDInputEncoder:
                 of the step size specified in the `steps` argument. If the list contains floats, then that value will
                 be used for both spatial dimensions. If the list contains tuples of two floats, then they represent
                 `(vertical_offset, horizontal_offset)`. If no offsets are provided, then they will default to 0.5 of the step size.
-                Defaults to `None`.
             limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
-                Defaults to `True`.
-            variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
-                to be precise) for the encoded ground truth (i.e. target) box coordinates. A variance value of 1.0 would apply
-                no scaling at all to the targets, while values in (0,1) upscale the encoded targets and values greater than 1.0
-                downscale the encoded targets. If you want to reproduce the configuration of the original SSD,
-                set this to `[0.1, 0.1, 0.2, 0.2]`, provided the coordinate format is 'centroids'. Defaults to `[1.0, 1.0, 1.0, 1.0]`.
+            variances (list, optional): A list of 4 floats >0. The anchor box offset for each coordinate will be divided by
+                its respective variance value.
             pos_iou_threshold (float, optional): The intersection-over-union similarity threshold that must be
-                met in order to match a given ground truth box to a given anchor box. Defaults to 0.5.
+                met in order to match a given ground truth box to a given anchor box.
             neg_iou_threshold (float, optional): The maximum allowed intersection-over-union similarity of an
                 anchor box with any ground truth box to be labeled a negative (i.e. background) box. If an
                 anchor box is neither a positive, nor a negative box, it will be ignored during training.
             coords (str, optional): The box coordinate format to be used internally in the model (i.e. this is not the input format
                 of the ground truth labels). Can be either 'centroids' for the format `(cx, cy, w, h)` (box center coordinates, width,
                 and height), 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`.
-                Defaults to 'centroids'.
             normalize_coords (bool, optional): If `True`, the encoder uses relative instead of absolute coordinates.
                 This means instead of using absolute tartget coordinates, the encoder will scale all coordinates to be within [0,1].
-                This way learning becomes independent of the input image size. Defaults to `False`.
+                This way learning becomes independent of the input image size.
         '''
         predictor_sizes = np.array(predictor_sizes)
         if len(predictor_sizes.shape) == 1:
