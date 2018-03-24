@@ -49,7 +49,7 @@ class SSDInputEncoder:
                  limit_boxes=False,
                  variances=[0.1, 0.1, 0.2, 0.2],
                  pos_iou_threshold=0.5,
-                 neg_iou_threshold=0.3,
+                 neg_iou_limit=0.3,
                  coords='centroids',
                  normalize_coords=True):
         '''
@@ -111,7 +111,7 @@ class SSDInputEncoder:
                 its respective variance value.
             pos_iou_threshold (float, optional): The intersection-over-union similarity threshold that must be
                 met in order to match a given ground truth box to a given anchor box.
-            neg_iou_threshold (float, optional): The maximum allowed intersection-over-union similarity of an
+            neg_iou_limit (float, optional): The maximum allowed intersection-over-union similarity of an
                 anchor box with any ground truth box to be labeled a negative (i.e. background) box. If an
                 anchor box is neither a positive, nor a negative box, it will be ignored during training.
             coords (str, optional): The box coordinate format to be used internally in the model (i.e. this is not the input format
@@ -156,8 +156,8 @@ class SSDInputEncoder:
         if np.any(variances <= 0):
             raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
 
-        if neg_iou_threshold > pos_iou_threshold:
-            raise ValueError("It cannot be `neg_iou_threshold > pos_iou_threshold`.")
+        if neg_iou_limit > pos_iou_threshold:
+            raise ValueError("It cannot be `neg_iou_limit > pos_iou_threshold`.")
 
         if not (coords == 'minmax' or coords == 'centroids' or coords == 'corners'):
             raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
@@ -196,7 +196,7 @@ class SSDInputEncoder:
         self.limit_boxes = limit_boxes
         self.variances = variances
         self.pos_iou_threshold = pos_iou_threshold
-        self.neg_iou_threshold = neg_iou_threshold
+        self.neg_iou_limit = neg_iou_limit
         self.coords = coords
         self.normalize_coords = normalize_coords
 
@@ -250,7 +250,7 @@ class SSDInputEncoder:
 
         The class for all anchor boxes for which there was no match with any ground truth box will be set to the
         background class, except for those anchor boxes whose IoU similarity with any ground truth box is higher than
-        the set negative threshold (see the `neg_iou_threshold` argument in `__init__()`).
+        the set negative upper bound (see the `neg_iou_limit` argument in `__init__()`).
 
         Arguments:
             ground_truth_labels (list): A python list of length `batch_size` that contains one 2D Numpy array
@@ -295,7 +295,7 @@ class SSDInputEncoder:
                 elif self.coords == 'minmax':
                     true_box = convert_coordinates(true_box, start_index=1, conversion='corners2minmax')
                 similarities = iou(y_encode_template[i,:,-12:-8], true_box[1:], coords=self.coords) # The iou similarities for all anchor boxes
-                negative_boxes[similarities >= self.neg_iou_threshold] = 0 # If a negative box gets an IoU match >= `self.neg_iou_threshold`, it's no longer a valid negative box
+                negative_boxes[similarities >= self.neg_iou_limit] = 0 # If a negative box gets an IoU match >= `self.neg_iou_limit`, it's no longer a valid negative box
                 similarities *= available_boxes # Filter out anchor boxes which aren't available anymore (i.e. already matched to a different ground truth box)
                 available_and_thresh_met = np.copy(similarities)
                 available_and_thresh_met[available_and_thresh_met < self.pos_iou_threshold] = 0 # Filter out anchor boxes which don't meet the iou threshold
