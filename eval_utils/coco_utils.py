@@ -22,7 +22,11 @@ from tqdm import trange
 from math import ceil
 import sys
 
-from ssd_box_utils.ssd_box_encode_decode_utils import decode_y
+from data_generator.object_detection_2d_geometric_ops import Resize
+from data_generator.object_detection_2d_patch_sampling_ops import RandomPadFixedAR
+from data_generator.object_detection_2d_photometric_ops import ConvertTo3Channels
+from ssd_encoder_decoder.ssd_output_decoder import decode_detections
+from data_generator.object_detection_2d_misc_utils import apply_inverse_transforms
 
 def get_coco_category_maps(annotations_file):
     '''
@@ -61,9 +65,9 @@ def predict_all_to_json(out_file,
                         img_height,
                         img_width,
                         classes_to_cats,
-                        batch_generator,
+                        data_generator,
                         batch_size,
-                        batch_generator_mode='resize',
+                        data_generator_mode='resize',
                         model_mode='training',
                         confidence_thresh=0.01,
                         iou_threshold=0.45,
@@ -81,9 +85,9 @@ def predict_all_to_json(out_file,
         img_width (int): The input image width for the model.
         classes_to_cats (dict): A dictionary that maps the consecutive class IDs predicted by the model
             to the non-consecutive original MS COCO category IDs.
-        batch_generator (BatchGenerator): A `BatchGenerator` object with the evaluation dataset.
+        data_generator (DataGenerator): A `DataGenerator` object with the evaluation dataset.
         batch_size (int): The batch size for the evaluation.
-        batch_generator_mode (str, optional): Either of 'resize' or 'pad'. If 'resize', the input images will
+        data_generator_mode (str, optional): Either of 'resize' or 'pad'. If 'resize', the input images will
             be resized (i.e. warped) to `(img_height, img_width)`. This mode does not preserve the aspect ratios of the images.
             If 'pad', the input images will be first padded so that they have the aspect ratio defined by `img_height`
             and `img_width` and then resized to `(img_height, img_width)`. This mode preserves the aspect ratios of the images.
@@ -113,29 +117,32 @@ def predict_all_to_json(out_file,
         None.
     '''
 
-    if batch_generator_mode == 'resize':
-        random_pad_and_resize=False
-        resize=(img_height,img_width)
-    elif batch_generator_mode == 'pad':
-        random_pad_and_resize=(img_height, img_width, 0, 3, 1.0)
-        resize=False
+    convert_to_3_channels = ConvertTo3Channels()
+    resize = Resize(height=img_height,width=img_width)
+    if data_generator_mode == 'resize':
+        transformations = [convert_to_3_channels,
+                           resize]
+    elif data_generator_mode == 'pad':
+        random_pad = RandomPadFixedAR(patch_aspect_ratio=img_width/img_height, clip_boxes=False)
+        transformations = [convert_to_3_channels,
+                           random_pad,
+                           resize]
     else:
-        raise ValueError("Unexpected argument value: `batch_generator_mode` can be either of 'resize' or 'pad', but received '{}'.".format(batch_generator_mode))
+        raise ValueError("Unexpected argument value: `data_generator_mode` can be either of 'resize' or 'pad', but received '{}'.".format(data_generator_mode))
 
     # Set the generator parameters.
-    generator = batch_generator.generate(batch_size=batch_size,
-                                         shuffle=False,
-                                         train=False,
-                                         returns={'processed_images', 'image_ids', 'inverse_transform'},
-                                         convert_to_3_channels=True,
-                                         random_pad_and_resize=random_pad_and_resize,
-                                         resize=resize,
-                                         limit_boxes=False,
-                                         keep_images_without_gt=True)
+    generator = data_generator.generate(batch_size=batch_size,
+                                        shuffle=False,
+                                        transformations=transformations,
+                                        label_encoder=None,
+                                        returns={'processed_images',
+                                                 'image_ids',
+                                                 'inverse_transform'},
+                                        keep_images_without_gt=True)
     # Put the results in this list.
     results = []
     # Compute the number of batches to iterate over the entire dataset.
-    n_images = batch_generator.get_n_samples()
+    n_images = data_generator.get_dataset_size()
     print("Number of images in the evaluation dataset: {}".format(n_images))
     n_batches = int(ceil(n_images / batch_size))
     # Loop over all batches.
@@ -143,45 +150,48 @@ def predict_all_to_json(out_file,
     tr.set_description('Producing results file')
     for i in tr:
         # Generate batch.
-        batch_X, batch_image_ids, batch_inverse_coord_transform = next(generator)
+        batch_X, batch_image_ids, batch_inverse_transforms = next(generator)
         # Predict.
         y_pred = model.predict(batch_X)
         # If the model was created in 'training' mode, the raw predictions need to
         # be decoded and filtered, otherwise that's already taken care of.
         if model_mode == 'training':
             # Decode.
-            y_pred = decode_y(y_pred,
-                              confidence_thresh=confidence_thresh,
-                              iou_threshold=iou_threshold,
-                              top_k=top_k,
-                              input_coords=pred_coords,
-                              normalize_coords=normalize_coords,
-                              img_height=img_height,
-                              img_width=img_width)
+            y_pred = decode_detections(y_pred,
+                                       confidence_thresh=confidence_thresh,
+                                       iou_threshold=iou_threshold,
+                                       top_k=top_k,
+                                       input_coords=pred_coords,
+                                       normalize_coords=normalize_coords,
+                                       img_height=img_height,
+                                       img_width=img_width)
+        else:
+            # Filter out the all-zeros dummy elements of `y_pred`.
+            y_pred_filtered = []
+            for i in range(len(y_pred)):
+                y_pred_filtered.append(y_pred[i][y_pred[i,:,0] != 0])
+            y_pred = y_pred_filtered
+        # Convert the predicted box coordinates for the original images.
+        y_pred = apply_inverse_transforms(y_pred, batch_inverse_transforms)
+
         # Convert each predicted box into the results format.
         for k, batch_item in enumerate(y_pred):
-            # The box coordinates were predicted for the transformed
-            # (resized, cropped, padded, etc.) image. We now have to
-            # transform these coordinates back to what they would be
-            # in the original images.
-            batch_item[:,2:] *= batch_inverse_coord_transform[k,:,1]
-            batch_item[:,2:] += batch_inverse_coord_transform[k,:,0]
             for box in batch_item:
                 class_id = box[0]
                 # Transform the consecutive class IDs back to the original COCO category IDs.
                 cat_id = classes_to_cats[class_id]
                 # Round the box coordinates to reduce the JSON file size.
-                xmin = round(box[2], 1)
-                ymin = round(box[3], 1)
-                xmax = round(box[4], 1)
-                ymax = round(box[5], 1)
+                xmin = float(round(box[2], 1))
+                ymin = float(round(box[3], 1))
+                xmax = float(round(box[4], 1))
+                ymax = float(round(box[5], 1))
                 width = xmax - xmin
                 height = ymax - ymin
                 bbox = [xmin, ymin, width, height]
                 result = {}
                 result['image_id'] = batch_image_ids[k]
                 result['category_id'] = cat_id
-                result['score'] = round(box[1], 3)
+                result['score'] = float(round(box[1], 3))
                 result['bbox'] = bbox
                 results.append(result)
 
