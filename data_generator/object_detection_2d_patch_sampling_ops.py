@@ -830,15 +830,11 @@ class RandomPadFixedAR:
 
     def __init__(self,
                  patch_aspect_ratio,
-                 clip_boxes=False,
                  background=(0,0,0),
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
             patch_aspect_ratio (float): The fixed aspect ratio that all sampled patches will have.
-            clip_boxes (bool, optional): Only relevant if ground truth bounding boxes are given.
-                If `True`, any ground truth bounding boxes will be clipped to lie entirely within the
-                sampled patch.
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the potential
                 background pixels of the scaled images. In the case of single-channel images,
                 the first element of `background` will be used as the background pixel value.
@@ -848,7 +844,6 @@ class RandomPadFixedAR:
         '''
 
         self.patch_aspect_ratio = patch_aspect_ratio
-        self.clip_boxes = clip_boxes
         self.background = background
         self.labels_format = labels_format
 
@@ -876,7 +871,7 @@ class RandomPadFixedAR:
                                    box_filter=None,
                                    image_validator=None,
                                    n_trials_max=1,
-                                   clip_boxes=self.clip_boxes,
+                                   clip_boxes=False,
                                    background=self.background,
                                    prob=1.0,
                                    labels_format=self.labels_format)
