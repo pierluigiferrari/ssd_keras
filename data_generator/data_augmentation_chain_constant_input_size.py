@@ -38,14 +38,15 @@ class DataAugmentationConstantInputSize:
                  random_brightness=(-48, 48, 0.5),
                  random_contrast=(0.5, 1.8, 0.5),
                  random_saturation=(0.5, 1.8, 0.5),
-                 random_hue=(24, 0.5),
+                 random_hue=(18, 0.5),
                  random_flip=0.5,
-                 random_translate=((0.03,0.3), (0.03,0.3), 0.5),
+                 random_translate=((0.03,0.5), (0.03,0.5), 0.5),
                  random_scale=(0.5, 2.0, 0.5),
                  n_trials_max=3,
                  clip_boxes=False,
                  overlap_criterion='area',
-                 bounds=(0.3, 1.0),
+                 bounds_box_filter=(0.3, 1.0),
+                 bounds_validator=(0.5, 1.0),
                  n_boxes_min=1,
                  background=(0,0,0),
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
@@ -56,19 +57,20 @@ class DataAugmentationConstantInputSize:
         self.n_trials_max = n_trials_max
         self.clip_boxes = clip_boxes
         self.overlap_criterion = overlap_criterion
-        self.bounds = bounds
+        self.bounds_box_filter = bounds_box_filter
+        self.bounds_validator = bounds_validator
         self.n_boxes_min = n_boxes_min
         self.background = background
         self.labels_format = labels_format
 
         # Determines which boxes are kept in an image after the transformations have been applied.
         self.box_filter = BoxFilter(overlap_criterion=self.overlap_criterion,
-                                    bounds=self.bounds,
+                                    bounds=self.bounds_box_filter,
                                     labels_format=self.labels_format)
 
         # Determines whether the result of the transformations is a valid training image.
         self.image_validator = ImageValidator(overlap_criterion=self.overlap_criterion,
-                                              bounds=self.bounds,
+                                              bounds=self.bounds_validator,
                                               n_boxes_min=self.n_boxes_min,
                                               labels_format=self.labels_format)
 
@@ -96,16 +98,7 @@ class DataAugmentationConstantInputSize:
                                                 n_trials_max=self.n_trials_max,
                                                 background=self.background,
                                                 labels_format=self.labels_format)
-        self.random_zoom_in = RandomScale(min_factor=random_scale[0],
-                                          max_factor=1.0,
-                                          prob=random_scale[2],
-                                          clip_boxes=self.clip_boxes,
-                                          box_filter=self.box_filter,
-                                          image_validator=self.image_validator,
-                                          n_trials_max=self.n_trials_max,
-                                          background=self.background,
-                                          labels_format=self.labels_format)
-        self.random_zoom_out = RandomScale(min_factor=1.0,
+        self.random_zoom_in = RandomScale(min_factor=1.0,
                                           max_factor=random_scale[1],
                                           prob=random_scale[2],
                                           clip_boxes=self.clip_boxes,
@@ -114,6 +107,15 @@ class DataAugmentationConstantInputSize:
                                           n_trials_max=self.n_trials_max,
                                           background=self.background,
                                           labels_format=self.labels_format)
+        self.random_zoom_out = RandomScale(min_factor=random_scale[0],
+                                           max_factor=1.0,
+                                           prob=random_scale[2],
+                                           clip_boxes=self.clip_boxes,
+                                           box_filter=self.box_filter,
+                                           image_validator=self.image_validator,
+                                           n_trials_max=self.n_trials_max,
+                                           background=self.background,
+                                           labels_format=self.labels_format)
 
         # If we zoom in, do translation before scaling.
         self.sequence1 = [self.convert_to_3_channels,
@@ -164,19 +166,19 @@ class DataAugmentationConstantInputSize:
             if not (labels is None):
                 for transform in self.sequence1:
                     image, labels = transform(image, labels)
-                    return image, labels
+                return image, labels
             else:
                 for transform in self.sequence1:
                     image = transform(image)
-                    return image
+                return image
         # Choose sequence 2 with probability 0.5.
         else:
 
             if not (labels is None):
                 for transform in self.sequence2:
                     image, labels = transform(image, labels)
-                    return image, labels
+                return image, labels
             else:
                 for transform in self.sequence2:
                     image = transform(image)
-                    return image
+                return image
