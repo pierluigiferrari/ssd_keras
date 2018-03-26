@@ -23,7 +23,7 @@ import keras.backend as K
 from keras.engine.topology import InputSpec
 from keras.engine.topology import Layer
 
-from ssd_box_utils.ssd_box_encode_decode_utils import convert_coordinates
+from bounding_box_utils.bounding_box_utils import convert_coordinates
 
 class AnchorBoxes(Layer):
     '''
@@ -65,8 +65,8 @@ class AnchorBoxes(Layer):
                  two_boxes_for_ar1=True,
                  this_steps=None,
                  this_offsets=None,
-                 limit_boxes=True,
-                 variances=[1.0, 1.0, 1.0, 1.0],
+                 clip_boxes=False,
+                 variances=[0.1, 0.1, 0.2, 0.2],
                  coords='centroids',
                  normalize_coords=False,
                  **kwargs):
@@ -87,15 +87,12 @@ class AnchorBoxes(Layer):
                 If `True`, two default boxes will be generated for aspect ratio 1. The first will be generated
                 using the scaling factor for the respective layer, the second one will be generated using
                 geometric mean of said scaling factor and next bigger scaling factor.
-            limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
-            variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
-                to be precise) for the encoded predicted box coordinates. A variance value of 1.0 would apply
-                no scaling at all to the predictions, while values in (0,1) upscale the encoded predictions and values greater
-                than 1.0 downscale the encoded predictions. If you want to reproduce the configuration of the original SSD,
-                set this to `[0.1, 0.1, 0.2, 0.2]`, provided the coordinate format is 'centroids'.
-            coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
-                `(cx, cy, w, h)` (box center coordinates, width, and height), 'corners' for the format `(xmin, ymin, xmax,  ymax)`,
-                or 'minmax' for the format `(xmin, xmax, ymin, ymax)`.
+            clip_boxes (bool, optional): If `True`, clips the anchor box coordinates to stay within image boundaries.
+            variances (list, optional): A list of 4 floats >0. The anchor box offset for each coordinate will be divided by
+                its respective variance value.
+            coords (str, optional): The box coordinate format to be used internally in the model (i.e. this is not the input format
+                of the ground truth labels). Can be either 'centroids' for the format `(cx, cy, w, h)` (box center coordinates, width, and height),
+                'corners' for the format `(xmin, ymin, xmax,  ymax)`, or 'minmax' for the format `(xmin, xmax, ymin, ymax)`.
             normalize_coords (bool, optional): Set to `True` if the model uses relative instead of absolute coordinates,
                 i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates.
         '''
@@ -119,7 +116,7 @@ class AnchorBoxes(Layer):
         self.two_boxes_for_ar1 = two_boxes_for_ar1
         self.this_steps = this_steps
         self.this_offsets = this_offsets
-        self.limit_boxes = limit_boxes
+        self.clip_boxes = clip_boxes
         self.variances = variances
         self.coords = coords
         self.normalize_coords = normalize_coords
@@ -220,8 +217,8 @@ class AnchorBoxes(Layer):
         # Convert `(cx, cy, w, h)` to `(xmin, xmax, ymin, ymax)`
         boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='centroids2corners')
 
-        # If `limit_boxes` is enabled, clip the coordinates to lie within the image boundaries
-        if self.limit_boxes:
+        # If `clip_boxes` is enabled, clip the coordinates to lie within the image boundaries
+        if self.clip_boxes:
             x_coords = boxes_tensor[:,:,:,[0, 2]]
             x_coords[x_coords >= self.img_width] = self.img_width - 1
             x_coords[x_coords < 0] = 0
@@ -273,7 +270,7 @@ class AnchorBoxes(Layer):
             'next_scale': self.next_scale,
             'aspect_ratios': list(self.aspect_ratios),
             'two_boxes_for_ar1': self.two_boxes_for_ar1,
-            'limit_boxes': self.limit_boxes,
+            'clip_boxes': self.clip_boxes,
             'variances': list(self.variances),
             'coords': self.coords,
             'normalize_coords': self.normalize_coords

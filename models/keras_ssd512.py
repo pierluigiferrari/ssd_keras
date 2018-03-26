@@ -22,6 +22,7 @@ import numpy as np
 from keras.models import Model
 from keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, ZeroPadding2D, Reshape, Concatenate
 from keras.regularizers import l2
+import keras.backend as K
 
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_L2Normalization import L2Normalization
@@ -46,13 +47,13 @@ def ssd_512(image_size,
             two_boxes_for_ar1=True,
             steps=[8, 16, 32, 64, 128, 256, 512],
             offsets=None,
-            limit_boxes=False,
+            clip_boxes=False,
             variances=[0.1, 0.1, 0.2, 0.2],
             coords='centroids',
             normalize_coords=False,
             subtract_mean=[123, 117, 104],
             divide_by_stddev=None,
-            swap_channels=True,
+            swap_channels=[2, 1, 0],
             confidence_thresh=0.01,
             iou_threshold=0.45,
             top_k=200,
@@ -107,19 +108,10 @@ def ssd_512(image_size,
         aspect_ratios_per_layer (list, optional): A list containing one aspect ratio list for each prediction layer.
             This allows you to set the aspect ratios for each predictor layer individually, which is the case for the
             original SSD512 implementation. If a list is passed, it overrides `aspect_ratios_global`.
-            Defaults to the aspect ratios used in the original SSD512 architecture, i.e.:
-                [[1.0, 2.0, 0.5],
-                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-                 [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-                 [1.0, 2.0, 0.5],
-                 [1.0, 2.0, 0.5]]
         two_boxes_for_ar1 (bool, optional): Only relevant for aspect ratio lists that contain 1. Will be ignored otherwise.
             If `True`, two anchor boxes will be generated for aspect ratio 1. The first will be generated
             using the scaling factor for the respective layer, the second one will be generated using
-            geometric mean of said scaling factor and next bigger scaling factor. Defaults to `True`, following the original
-            implementation.
+            geometric mean of said scaling factor and next bigger scaling factor.
         steps (list, optional): `None` or a list with as many elements as there are predictor layers. The elements can be
             either ints/floats or tuples of two ints/floats. These numbers represent for each predictor layer how many
             pixels apart the anchor box center points should be vertically and horizontally along the spatial grid over
@@ -134,17 +126,12 @@ def ssd_512(image_size,
             of the step size specified in the `steps` argument. If the list contains floats, then that value will
             be used for both spatial dimensions. If the list contains tuples of two floats, then they represent
             `(vertical_offset, horizontal_offset)`. If no offsets are provided, then they will default to 0.5 of the step size.
-        limit_boxes (bool, optional): If `True`, limits box coordinates to stay within image boundaries.
-            This would normally be set to `True`, but here it defaults to `False`, following the original
-            implementation.
-        variances (list, optional): A list of 4 floats >0 with scaling factors (actually it's not factors but divisors
-            to be precise) for the encoded predicted box coordinates. A variance value of 1.0 would apply
-            no scaling at all to the predictions, while values in (0,1) upscale the encoded predictions and values greater
-            than 1.0 downscale the encoded predictions. Defaults to `[0.1, 0.1, 0.2, 0.2]`, following the original implementation.
-            The coordinate format must be 'centroids'.
-        coords (str, optional): The box coordinate format to be used. Can be either 'centroids' for the format
-            `(cx, cy, w, h)` (box center coordinates, width, and height) or 'minmax' for the format
-            `(xmin, xmax, ymin, ymax)`. Defaults to 'centroids', following the original implementation.
+        clip_boxes (bool, optional): If `True`, clips the anchor box coordinates to stay within image boundaries.
+        variances (list, optional): A list of 4 floats >0. The anchor box offset for each coordinate will be divided by
+            its respective variance value.
+        coords (str, optional): The box coordinate format to be used internally by the model (i.e. this is not the input format
+            of the ground truth labels). Can be either 'centroids' for the format `(cx, cy, w, h)` (box center coordinates, width,
+            and height), 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`.
         normalize_coords (bool, optional): Set to `True` if the model is supposed to use relative instead of absolute coordinates,
             i.e. if the model predicts box coordinates within [0,1] instead of absolute coordinates.
         subtract_mean (array-like, optional): `None` or an array-like object of integers or floating point values
@@ -155,8 +142,8 @@ def ssd_512(image_size,
             floating point values of any shape that is broadcast-compatible with the image shape. The image pixel
             intensity values will be divided by the elements of this array. For example, pass a list
             of three integers to perform per-channel standard deviation normalization for color images.
-        swap_channels (bool, optional): If `True`, the color channel order of the input images will be reversed,
-            i.e. if the input color channel order is RGB, the color channels will be swapped to BGR.
+        swap_channels (list, optional): Either `False` or a list of integers representing the desired order in which the input
+            image channels should be swapped.
         confidence_thresh (float, optional): A float in [0,1), the minimum classification confidence in a specific
             positive class in order to be considered for the non-maximum suppression stage for the respective class.
             A lower value will result in a larger part of the selection process being done by the non-maximum suppression
@@ -265,8 +252,12 @@ def ssd_512(image_size,
         x1 = Lambda(lambda z: z - np.array(subtract_mean), output_shape=(img_height, img_width, img_channels), name='input_mean_normalization')(x1)
     if not (divide_by_stddev is None):
         x1 = Lambda(lambda z: z / np.array(divide_by_stddev), output_shape=(img_height, img_width, img_channels), name='input_stddev_normalization')(x1)
-    if swap_channels and (img_channels == 3):
-        x1 = Lambda(lambda z: z[...,::-1], output_shape=(img_height, img_width, img_channels), name='input_channel_swap')(x1)
+    if swap_channels:
+        sc = swap_channels
+        if img_channels == 3:
+            x1 = Lambda(lambda z: K.stack([z[...,sc[0]], z[...,sc[1]], z[...,sc[2]]], axis=-1), output_shape=(img_height, img_width, img_channels), name='input_channel_swap')(x1)
+        elif img_channels == 4:
+            x1 = Lambda(lambda z: K.stack([z[...,sc[0]], z[...,sc[1]], z[...,sc[2]], z[...,sc[3]]], axis=-1), output_shape=(img_height, img_width, img_channels), name='input_channel_swap')(x1)
 
     conv1_1 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='conv1_1')(x1)
     conv1_2 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='conv1_2')(conv1_1)
@@ -343,25 +334,25 @@ def ssd_512(image_size,
 
     # Output shape of anchors: `(batch, height, width, n_boxes, 8)`
     conv4_3_norm_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[0], next_scale=scales[1], aspect_ratios=aspect_ratios[0],
-                                             two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[0], this_offsets=offsets[0], limit_boxes=limit_boxes,
+                                             two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[0], this_offsets=offsets[0], clip_boxes=clip_boxes,
                                              variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv4_3_norm_mbox_priorbox')(conv4_3_norm_mbox_loc)
     fc7_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[1], next_scale=scales[2], aspect_ratios=aspect_ratios[1],
-                                    two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[1], this_offsets=offsets[1], limit_boxes=limit_boxes,
+                                    two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[1], this_offsets=offsets[1], clip_boxes=clip_boxes,
                                     variances=variances, coords=coords, normalize_coords=normalize_coords, name='fc7_mbox_priorbox')(fc7_mbox_loc)
     conv6_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[2], next_scale=scales[3], aspect_ratios=aspect_ratios[2],
-                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[2], this_offsets=offsets[2], limit_boxes=limit_boxes,
+                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[2], this_offsets=offsets[2], clip_boxes=clip_boxes,
                                         variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv6_2_mbox_priorbox')(conv6_2_mbox_loc)
     conv7_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[3], next_scale=scales[4], aspect_ratios=aspect_ratios[3],
-                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[3], this_offsets=offsets[3], limit_boxes=limit_boxes,
+                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[3], this_offsets=offsets[3], clip_boxes=clip_boxes,
                                         variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv7_2_mbox_priorbox')(conv7_2_mbox_loc)
     conv8_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[4], next_scale=scales[5], aspect_ratios=aspect_ratios[4],
-                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[4], this_offsets=offsets[4], limit_boxes=limit_boxes,
+                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[4], this_offsets=offsets[4], clip_boxes=clip_boxes,
                                         variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv8_2_mbox_priorbox')(conv8_2_mbox_loc)
     conv9_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[5], next_scale=scales[6], aspect_ratios=aspect_ratios[5],
-                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[5], this_offsets=offsets[5], limit_boxes=limit_boxes,
+                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[5], this_offsets=offsets[5], clip_boxes=clip_boxes,
                                         variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv9_2_mbox_priorbox')(conv9_2_mbox_loc)
     conv10_2_mbox_priorbox = AnchorBoxes(img_height, img_width, this_scale=scales[6], next_scale=scales[7], aspect_ratios=aspect_ratios[6],
-                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[6], this_offsets=offsets[6], limit_boxes=limit_boxes,
+                                        two_boxes_for_ar1=two_boxes_for_ar1, this_steps=steps[6], this_offsets=offsets[6], clip_boxes=clip_boxes,
                                         variances=variances, coords=coords, normalize_coords=normalize_coords, name='conv10_2_mbox_priorbox')(conv10_2_mbox_loc)
 
     ### Reshape
@@ -460,11 +451,6 @@ def ssd_512(image_size,
         raise ValueError("`mode` must be one of 'training', 'inference' or 'inference_fast', but received '{}'.".format(mode))
 
     if return_predictor_sizes:
-        # Get the spatial dimensions (height, width) of the predictor conv layers, we need them to
-        # be able to generate the default boxes for the matching process outside of the model during training.
-        # Note that the original implementation performs anchor box matching inside the loss function. We don't do that.
-        # Instead, we'll do it in the batch generator function.
-        # The spatial dimensions are the same for the confidence and localization predictors, so we just take those of the conf layers.
         predictor_sizes = np.array([conv4_3_norm_mbox_conf._keras_shape[1:3],
                                     fc7_mbox_conf._keras_shape[1:3],
                                     conv6_2_mbox_conf._keras_shape[1:3],

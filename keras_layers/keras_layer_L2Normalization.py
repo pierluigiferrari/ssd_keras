@@ -61,8 +61,7 @@ class L2Normalization(Layer):
 
     def call(self, x, mask=None):
         output = K.l2_normalize(x, self.axis)
-        output *= self.gamma
-        return output
+        return output * self.gamma
 
     def get_config(self):
         config = {

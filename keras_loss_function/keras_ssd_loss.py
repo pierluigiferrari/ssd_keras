@@ -203,6 +203,6 @@ class SSDLoss:
         # because the relevant criterion to average our loss over is the number of positive boxes in the batch
         # (by which we're dividing in the line above), not the batch size. So in order to revert Keras' averaging
         # over the batch size, we'll have to multiply by it.
-        total_loss *= tf.to_float(batch_size)
+        total_loss = total_loss * tf.to_float(batch_size)
 
         return total_loss
