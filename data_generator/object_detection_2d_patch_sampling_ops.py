@@ -456,6 +456,7 @@ class RandomPatch:
                  clip_boxes=False,
                  prob=1.0,
                  background=(0,0,0),
+                 can_fail=True,
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
@@ -479,6 +480,8 @@ class RandomPatch:
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the potential
                 background pixels of the scaled images. In the case of single-channel images,
                 the first element of `background` will be used as the background pixel value.
+            can_fail (bool, optional): If `True`, will return `None` if no valid patch could be found after
+                `n_trials_max` trials. If `False`, will return the unaltered input image in such a case.
             labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
                 of an image contains which bounding box coordinate. The dictionary maps at least the keywords
                 'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
@@ -494,6 +497,7 @@ class RandomPatch:
         self.clip_boxes = clip_boxes
         self.prob = prob
         self.background = background
+        self.can_fail = can_fail
         self.labels_format = labels_format
 
     def __call__(self, image, labels=None, return_inverter=False):
@@ -554,17 +558,31 @@ class RandomPatch:
                         # Sample the patch.
                         return sample_patch(image, labels, return_inverter)
 
-            # If we weren't able to sample a valid patch, return `None`.
-            if labels is None:
-                if return_inverter:
-                    return None, None
+            # If we weren't able to sample a valid patch...
+            if self.can_fail:
+                # ...return `None`.
+                if labels is None:
+                    if return_inverter:
+                        return None, None
+                    else:
+                        return None
                 else:
-                    return None
+                    if return_inverter:
+                        return None, None, None
+                    else:
+                        return None, None
             else:
-                if return_inverter:
-                    return None, None, None
+                # ...return the unaltered input image.
+                if labels is None:
+                    if return_inverter:
+                        return image, None
+                    else:
+                        return image
                 else:
-                    return None, None
+                    if return_inverter:
+                        return image, labels, None
+                    else:
+                        return image, labels
 
         else:
             if return_inverter:
@@ -815,6 +833,7 @@ class RandomMaxCropFixedAR:
                                    n_trials_max=self.n_trials_max,
                                    clip_boxes=self.clip_boxes,
                                    prob=1.0,
+                                   can_fail=False,
                                    labels_format=self.labels_format)
 
         return random_patch(image, labels, return_inverter)
