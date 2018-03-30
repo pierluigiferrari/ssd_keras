@@ -259,7 +259,7 @@ class SSDDataAugmentation:
         for transform in self.sequence:
             if return_inverter and ('return_inverter' in inspect.signature(transform).parameters):
                 image, labels, inverter = transform(image, labels, return_inverter=True)
-                inverters.append[inverter]
+                inverters.append(inverter)
             else:
                 image, labels = transform(image, labels)
 
