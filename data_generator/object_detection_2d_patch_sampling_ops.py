@@ -456,7 +456,7 @@ class RandomPatch:
                  clip_boxes=False,
                  prob=1.0,
                  background=(0,0,0),
-                 can_fail=True,
+                 can_fail=False,
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
