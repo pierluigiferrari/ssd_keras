@@ -21,6 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import division
 import numpy as np
 import cv2
+import random
 
 from data_generator.object_detection_2d_image_boxes_validation_utils import BoxFilter, ImageValidator
 
@@ -642,6 +643,129 @@ class RandomScale:
 
             else:
                 return image, labels
+
+        elif labels is None:
+            return image
+
+        else:
+            return image, labels
+
+class Rotate:
+    '''
+    Rotates images counter-clockwise by 90, 180, or 270 degrees.
+    '''
+
+    def __init__(self,
+                 angle,
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
+        '''
+        Arguments:
+            angle (int): The angle in degrees by which to rotate the images counter-clockwise.
+                Only 90, 180, and 270 are valid values.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
+        '''
+
+        if not angle in {90, 180, 270}:
+            raise ValueError("`angle` must be in the set {90, 180, 270}.")
+        self.angle = angle
+        self.labels_format = labels_format
+
+    def __call__(self, image, labels=None):
+
+        img_height, img_width = image.shape[:2]
+
+        # Compute the rotation matrix.
+        M = cv2.getRotationMatrix2D(center=(img_width / 2, img_height / 2),
+                                    angle=self.angle,
+                                    scale=1)
+
+        # Get the sine and cosine from the rotation matrix.
+        cos_angle = np.abs(M[0, 0])
+        sin_angle = np.abs(M[0, 1])
+
+        # Compute the new bounding dimensions of the image.
+        img_width_new = int(img_height * sin_angle + img_width * cos_angle)
+        img_height_new = int(img_height * cos_angle + img_width * sin_angle)
+
+        # Adjust the rotation matrix to take into account the translation.
+        M[1, 2] += (img_height_new - img_height) / 2
+        M[0, 2] += (img_width_new - img_width) / 2
+
+        # Rotate the image.
+        image = cv2.warpAffine(image,
+                               M=M,
+                               dsize=(img_width_new, img_height_new))
+
+        if labels is None:
+            return image
+        else:
+            xmin = self.labels_format['xmin']
+            ymin = self.labels_format['ymin']
+            xmax = self.labels_format['xmax']
+            ymax = self.labels_format['ymax']
+
+            labels = np.copy(labels)
+            # Rotate the bounding boxes accordingly.
+            # Transform two opposite corner points of the rectangular boxes using the rotation matrix `M`.
+            toplefts = np.array([labels[:,xmin], labels[:,ymin], np.ones(labels.shape[0])])
+            bottomrights = np.array([labels[:,xmax], labels[:,ymax], np.ones(labels.shape[0])])
+            new_toplefts = (np.dot(M, toplefts)).T
+            new_bottomrights = (np.dot(M, bottomrights)).T
+            labels[:,[xmin,ymin]] = new_toplefts.astype(np.int)
+            labels[:,[xmax,ymax]] = new_bottomrights.astype(np.int)
+
+            if self.angle == 90:
+                # ymin and ymax were switched by the rotation.
+                labels[:,[ymax,ymin]] = labels[:,[ymin,ymax]]
+            elif self.angle == 180:
+                # ymin and ymax were switched by the rotation,
+                # and also xmin and xmax were switched.
+                labels[:,[ymax,ymin]] = labels[:,[ymin,ymax]]
+                labels[:,[xmax,xmin]] = labels[:,[xmin,xmax]]
+            elif self.angle == 270:
+                # xmin and xmax were switched by the rotation.
+                labels[:,[xmax,xmin]] = labels[:,[xmin,xmax]]
+
+            return image, labels
+
+class RandomRotate:
+    '''
+    Randomly rotates images counter-clockwise.
+    '''
+
+    def __init__(self,
+                 angles=[90, 180, 270],
+                 prob=0.5,
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
+        '''
+        Arguments:
+            angle (list): The list of angles in degrees from which one is randomly selected to rotate
+                the images counter-clockwise. Only 90, 180, and 270 are valid values.
+            prob (float, optional): `(1 - prob)` determines the probability with which the original,
+                unaltered image is returned.
+            labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
+                of an image contains which bounding box coordinate. The dictionary maps at least the keywords
+                'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
+        '''
+        for angle in angles:
+            if not angle in {90, 180, 270}:
+                raise ValueError("`angles` can only contain the values 90, 180, and 270.")
+        self.angles = angles
+        self.prob = prob
+        self.labels_format = labels_format
+
+    def __call__(self, image, labels=None):
+
+        p = np.random.uniform(0,1)
+        if p >= (1.0-self.prob):
+            # Pick a rotation angle.
+            angle = random.choice(self.angles)
+
+            rotate = Rotate(angle=angle, labels_format=self.labels_format)
+
+            return rotate(image, labels)
 
         elif labels is None:
             return image
