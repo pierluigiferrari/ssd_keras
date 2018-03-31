@@ -20,7 +20,7 @@ This is a Keras implementation of the SSD model architecture introduced by Wei L
 
 Ports of the trained weights of all the original models are provided below, as are convolutionalized VGG-16 weights. The performance of the ported models matches or slightly surpasses that of the original Caffe models, see below.
 
-The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
+The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The provided tutorials, documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
 
 There are currently the following network architectures in this repository:
 * SSD300: [`keras_ssd300.py`](models/keras_ssd300.py)
@@ -124,7 +124,7 @@ Python 2 compatibility: This implementation seems to work with Python 2.7, but I
 
 ### How to use it
 
-This repository provides Jupyter notebooks that explain training, inference and evaluation, and there are a bunch of explanations in the subsequent sections that complement the notebooks.
+This repository provides Jupyter notebook tutorials that explain training, inference and evaluation, and there are a bunch of explanations in the subsequent sections that complement the notebooks.
 
 How to use a trained model for inference:
 * [`ssd300_inference.ipynb`](ssd300_inference.ipynb)
