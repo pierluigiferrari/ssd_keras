@@ -115,8 +115,8 @@ Finally, some prediction examples of an SSD7 (i.e. the small 7-layer version) pa
 * Numpy
 * TensorFlow 1.x
 * Keras 2.x
-* OpenCV (for data augmentation)
-* Beautiful Soup 4.x (to parse XML files)
+* OpenCV
+* Beautiful Soup 4.x
 
 The Theano and CNTK backends are currently not supported.
 
