@@ -239,23 +239,38 @@ def ssd_300(image_size,
         offsets = [None] * n_predictor_layers
 
     ############################################################################
+    # Define functions for the Lambda layers below.
+    ############################################################################
+
+    def identity_layer(tensor):
+        return tensor
+
+    def input_mean_normalization(tensor):
+        return tensor - np.array(subtract_mean)
+
+    def input_stddev_normalization(tensor):
+        return tensor / np.array(divide_by_stddev)
+
+    def input_channel_swap(tensor):
+        if len(swap_channels) == 3:
+            return K.stack([tensor[...,swap_channels[0]], tensor[...,swap_channels[1]], tensor[...,swap_channels[2]]], axis=-1)
+        elif len(swap_channels) == 4:
+            return K.stack([tensor[...,swap_channels[0]], tensor[...,swap_channels[1]], tensor[...,swap_channels[2]], tensor[...,swap_channels[3]]], axis=-1)
+
+    ############################################################################
     # Build the network.
     ############################################################################
 
     x = Input(shape=(img_height, img_width, img_channels))
 
     # The following identity layer is only needed so that the subsequent lambda layers can be optional.
-    x1 = Lambda(lambda z: z, output_shape=(img_height, img_width, img_channels), name='identity_layer')(x)
+    x1 = Lambda(identity_layer, output_shape=(img_height, img_width, img_channels), name='identity_layer')(x)
     if not (subtract_mean is None):
-        x1 = Lambda(lambda z: z - np.array(subtract_mean), output_shape=(img_height, img_width, img_channels), name='input_mean_normalization')(x1)
+        x1 = Lambda(input_mean_normalization, output_shape=(img_height, img_width, img_channels), name='input_mean_normalization')(x1)
     if not (divide_by_stddev is None):
-        x1 = Lambda(lambda z: z / np.array(divide_by_stddev), output_shape=(img_height, img_width, img_channels), name='input_stddev_normalization')(x1)
+        x1 = Lambda(input_stddev_normalization, output_shape=(img_height, img_width, img_channels), name='input_stddev_normalization')(x1)
     if swap_channels:
-        sc = swap_channels
-        if img_channels == 3:
-            x1 = Lambda(lambda z: K.stack([z[...,sc[0]], z[...,sc[1]], z[...,sc[2]]], axis=-1), output_shape=(img_height, img_width, img_channels), name='input_channel_swap')(x1)
-        elif img_channels == 4:
-            x1 = Lambda(lambda z: K.stack([z[...,sc[0]], z[...,sc[1]], z[...,sc[2]], z[...,sc[3]]], axis=-1), output_shape=(img_height, img_width, img_channels), name='input_channel_swap')(x1)
+        x1 = Lambda(input_channel_swap, output_shape=(img_height, img_width, img_channels), name='input_channel_swap')(x1)
 
     conv1_1 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='conv1_1')(x1)
     conv1_2 = Conv2D(64, (3, 3), activation='relu', padding='same', kernel_initializer='he_normal', kernel_regularizer=l2(l2_reg), name='conv1_2')(conv1_1)
