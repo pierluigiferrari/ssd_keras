@@ -10,7 +10,7 @@ Contributions to this repository are welcome, but before you create a pull reque
     * why your propsed change adds value, i.e. what problem or use case it solves,
     * all the API changes it will introduce, if any,
     * all behavioral changes in any existing parts of the project it will introduce, if any.
-4. This should go without saying, but you are responsible for updating any parts of the code or the tutorial notebooks that depend on your introduced changes.
+4. This should go without saying, but you are responsible for updating any parts of the code or the tutorial notebooks that are affected by your introduced changes.
 5. Any submitted code must conform to the coding standards and style of this repository. There is no formal guide for coding standards and style, but here are a few things to note:
     * Any new modules, classes or functions must provide proper docstrings unless they are trivial. These docstrings must have sections for Arguments, Returns, and Raises (if applicable). For every argument of a function, the docstring must explain precisely what the argument does, what data type it expects, whether or not it is optional, and any requirements for the range of values it expects. The same goes for the returns. Use existing docstrings as templates.
     * Naming:
