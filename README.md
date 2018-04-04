@@ -213,7 +213,7 @@ If you want to fine-tune one of the provided trained models on your own dataset,
 
 ### ToDo
 
-The following things are on the to-do list, ranked by priority. Contributions are welcome.
+The following things are on the to-do list, ranked by priority. Contributions are welcome, but please read the [contribution guidelines](CONTRIBUTING.md).
 
 1. Add model definitions and trained weights for SSDs based on other base networks such as MobileNet, InceptionResNetV2, or DenseNet.
 2. Add support for the Theano and CNTK backends. Probably easy to do: Just requires porting the custom layers and the loss function from TensorFlow to the abstract Keras backend.
