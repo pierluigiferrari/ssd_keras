@@ -5,7 +5,7 @@ Contributions to this repository are welcome, but before you create a pull reque
 
 1. The To-do list in the README of this repository defines the main topics for which contributions are welcome. If you want to contribute, ideally contribute to one of the topics listed there.
 2. If you'd like to contribute features that are not mentioned on the to-do list in the README, make sure to explain why your proposed change adds value, i.e. what relevant use case it solves. The benefit of any new feature will be compared against the cost of maintaining it and your contribution will be accepter or rejected based on this trade-off.
-3. One pull-request should be about one specific feature or improvement, i.e. it should not contain multiple unrelated changes. If you want to contribute multiple features and/or improvements, create a separate pull request for every individual feature or improvement.
+3. One pull request should be about one specific feature or improvement, i.e. it should not contain multiple unrelated changes. If you want to contribute multiple features and/or improvements, create a separate pull request for every individual feature or improvement.
 3. When you create a pull request, make sure to explain properly
     * why your propsed change adds value, i.e. what problem or use case it solves,
     * all the API changes it will introduce, if any,
