@@ -11,11 +11,12 @@ Contributions to this repository are welcome, but before you create a pull reque
     * all the API changes it will introduce, if any,
     * all behavioral changes in any existing parts of the project it will introduce, if any.
 4. This should go without saying, but you are responsible for updating any parts of the code or the tutorial notebooks that depend on your introduced changes.
-5. Any submitted code must match the coding standards and style of this repository. There is no formal guide for coding standards and style, but here are a few things to note:
-    * Any new modules, classes or functions must provide proper docstrings. These docstrings must have sections for Arguments, Returns, and Raises (if applicable). For every argument of a function, the docstring must explain precisely what the argument does, what data type it expects, whether or not it is optional, and any requirements for the range of values it expects. The same goes for the returns. Use existing docstrings as templates.
+5. Any submitted code must conform to the coding standards and style of this repository. There is no formal guide for coding standards and style, but here are a few things to note:
+    * Any new modules, classes or functions must provide proper docstrings unless they are trivial. These docstrings must have sections for Arguments, Returns, and Raises (if applicable). For every argument of a function, the docstring must explain precisely what the argument does, what data type it expects, whether or not it is optional, and any requirements for the range of values it expects. The same goes for the returns. Use existing docstrings as templates.
     * Naming:
         * `ClassNames` consist of capitalized words without underscores.
         * `module_names.py` consist of lower case words connected with underscores.
         * `function_names` consist of lower case words connected with underscores.
         * `variable_names` consist of lower case words connected with underscores.
     * All module, class, function, and variable names must be descriptive in order to meet the goal that all code should always be as self-explanatory as possible. A longer and descriptive name is always preferable over a shorter and non-descriptive name. Abbreviations are generally to be avoided unless the full words would really make the name too long.
+    * More in-line comments are better than fewer in-line comments and all comments should be precise and succinct.
