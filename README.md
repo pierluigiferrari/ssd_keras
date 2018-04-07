@@ -213,7 +213,7 @@ If you want to fine-tune one of the provided trained models on your own dataset,
 
 ### ToDo
 
-The following things are on the to-do list, ranked by priority. Contributions are welcome, but please read the [contribution guidelines](CONTRIBUTING.md).
+The following things are on the to-do list, ranked by priority. Contributions are welcome, but please read the [contributing guidelines](CONTRIBUTING.md).
 
 1. Add model definitions and trained weights for SSDs based on other base networks such as MobileNet, InceptionResNetV2, or DenseNet.
 2. Add support for the Theano and CNTK backends. Probably easy to do: Just requires porting the custom layers and the loss function from TensorFlow to the abstract Keras backend.
@@ -226,7 +226,7 @@ Currently in the works:
 ### Important notes
 
 * All trained models that were trained on MS COCO use the smaller anchor box scaling factors provided in all of the Jupyter notebooks. In particular, note that the '07+12+COCO' and '07++12+COCO' models use the smaller scaling factors.
-* The original Caffe models use a learning rate multiplier of 2 for the bias terms. Keras currently doesn't provide the option for per-weight learning rate multipliers, so this implementation differs from the Caffe implementation in this regard. This difference isn't relevant if you're using the trained models, but you should keep it in mind if you want to reproduce the training of the original models.
+* The original Caffe models use a learning rate multiplier of 2 for the bias terms. Keras currently doesn't support per-weight learning rate multipliers, so this implementation differs from the Caffe implementation in this regard. This difference isn't relevant if you're using the trained models, but you should keep it in mind if you want to reproduce the training of the original models.
 
 ### Terminology
 
