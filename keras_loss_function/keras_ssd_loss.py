@@ -127,30 +127,30 @@ class SSDLoss:
         self.alpha = tf.constant(self.alpha)
 
         batch_size = tf.shape(y_pred)[0] # Output dtype: tf.int32
-        n_boxes = tf.shape(y_pred)[1] # Output dtype: tf.int32, note that `n_boxes` in this context denotes the total number of boxes per image, not the number of boxes per cell
+        n_boxes = tf.shape(y_pred)[1] # Output dtype: tf.int32, note that `n_boxes` in this context denotes the total number of boxes per image, not the number of boxes per cell.
 
-        # 1: Compute the losses for class and box predictions for every box
+        # 1: Compute the losses for class and box predictions for every box.
 
         classification_loss = tf.to_float(self.log_loss(y_true[:,:,:-12], y_pred[:,:,:-12])) # Output shape: (batch_size, n_boxes)
         localization_loss = tf.to_float(self.smooth_L1_loss(y_true[:,:,-12:-8], y_pred[:,:,-12:-8])) # Output shape: (batch_size, n_boxes)
 
-        # 2: Compute the classification losses for the positive and negative targets
+        # 2: Compute the classification losses for the positive and negative targets.
 
-        # Create masks for the positive and negative ground truth classes
+        # Create masks for the positive and negative ground truth classes.
         negatives = y_true[:,:,0] # Tensor of shape (batch_size, n_boxes)
         positives = tf.to_float(tf.reduce_max(y_true[:,:,1:-12], axis=-1)) # Tensor of shape (batch_size, n_boxes)
 
-        # Count the number of positive boxes (classes 1 to n) in y_true across the whole batch
+        # Count the number of positive boxes (classes 1 to n) in y_true across the whole batch.
         n_positive = tf.reduce_sum(positives)
 
         # Now mask all negative boxes and sum up the losses for the positive boxes PER batch item
         # (Keras loss functions must output one scalar loss value PER batch item, rather than just
-        # one scalar for the entire batch, that's why we're not summing across all axes)
+        # one scalar for the entire batch, that's why we're not summing across all axes).
         pos_class_loss = tf.reduce_sum(classification_loss * positives, axis=-1) # Tensor of shape (batch_size,)
 
-        # Compute the classification loss for the negative default boxes (if there are any)
+        # Compute the classification loss for the negative default boxes (if there are any).
 
-        # First, compute the classification loss for all negative boxes
+        # First, compute the classification loss for all negative boxes.
         neg_class_loss_all = classification_loss * negatives # Tensor of shape (batch_size, n_boxes)
         n_neg_losses = tf.count_nonzero(neg_class_loss_all, dtype=tf.int32) # The number of non-zero loss entries in `neg_class_loss_all`
         # What's the point of `n_neg_losses`? For the next step, which will be to compute which negative boxes enter the classification
@@ -162,15 +162,15 @@ class SSDLoss:
         # We therefore need to make sure that `n_negative_keep`, which assumes the role of the `k` argument in `tf.nn.top-k()`,
         # is at most the number of negative boxes for which there is a positive classification loss.
 
-        # Compute the number of negative examples we want to account for in the loss
-        # We'll keep at most `self.neg_pos_ratio` times the number of positives in `y_true`, but at least `self.n_neg_min` (unless `n_neg_loses` is smaller)
+        # Compute the number of negative examples we want to account for in the loss.
+        # We'll keep at most `self.neg_pos_ratio` times the number of positives in `y_true`, but at least `self.n_neg_min` (unless `n_neg_loses` is smaller).
         n_negative_keep = tf.minimum(tf.maximum(self.neg_pos_ratio * tf.to_int32(n_positive), self.n_neg_min), n_neg_losses)
 
         # In the unlikely case when either (1) there are no negative ground truth boxes at all
-        # or (2) the classification loss for all negative boxes is zero, return zero as the `neg_class_loss`
+        # or (2) the classification loss for all negative boxes is zero, return zero as the `neg_class_loss`.
         def f1():
             return tf.zeros([batch_size])
-        # Otherwise compute the negative loss
+        # Otherwise compute the negative loss.
         def f2():
             # Now we'll identify the top-k (where k == `n_negative_keep`) boxes with the highest confidence loss that
             # belong to the background class in the ground truth data. Note that this doesn't necessarily mean that the model
@@ -179,9 +179,13 @@ class SSDLoss:
             # To do this, we reshape `neg_class_loss_all` to 1D...
             neg_class_loss_all_1D = tf.reshape(neg_class_loss_all, [-1]) # Tensor of shape (batch_size * n_boxes,)
             # ...and then we get the indices for the `n_negative_keep` boxes with the highest loss out of those...
-            values, indices = tf.nn.top_k(neg_class_loss_all_1D, n_negative_keep, False) # We don't need sorting
+            values, indices = tf.nn.top_k(neg_class_loss_all_1D,
+                                          k=n_negative_keep,
+                                          sorted=False) # We don't need them sorted.
             # ...and with these indices we'll create a mask...
-            negatives_keep = tf.scatter_nd(tf.expand_dims(indices, axis=1), updates=tf.ones_like(indices, dtype=tf.int32), shape=tf.shape(neg_class_loss_all_1D)) # Tensor of shape (batch_size * n_boxes,)
+            negatives_keep = tf.scatter_nd(indices=tf.expand_dims(indices, axis=1),
+                                           updates=tf.ones_like(indices, dtype=tf.int32),
+                                           shape=tf.shape(neg_class_loss_all_1D)) # Tensor of shape (batch_size * n_boxes,)
             negatives_keep = tf.to_float(tf.reshape(negatives_keep, [batch_size, n_boxes])) # Tensor of shape (batch_size, n_boxes)
             # ...and use it to keep only those boxes and mask all other classification losses
             neg_class_loss = tf.reduce_sum(classification_loss * negatives_keep, axis=-1) # Tensor of shape (batch_size,)
@@ -191,12 +195,12 @@ class SSDLoss:
 
         class_loss = pos_class_loss + neg_class_loss # Tensor of shape (batch_size,)
 
-        # 3: Compute the localization loss for the positive targets
-        #    We don't penalize localization loss for negative predicted boxes (obviously: there are no ground truth boxes they would correspond to)
+        # 3: Compute the localization loss for the positive targets.
+        #    We don't compute a localization loss for negative predicted boxes (obviously: there are no ground truth boxes they would correspond to).
 
         loc_loss = tf.reduce_sum(localization_loss * positives, axis=-1) # Tensor of shape (batch_size,)
 
-        # 4: Compute the total loss
+        # 4: Compute the total loss.
 
         total_loss = (class_loss + self.alpha * loc_loss) / tf.maximum(1.0, n_positive) # In case `n_positive == 0`
         # Keras has the annoying habit of dividing the loss by the batch size, which sucks in our case
