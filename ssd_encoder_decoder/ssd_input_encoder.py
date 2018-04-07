@@ -21,6 +21,7 @@ from __future__ import division
 import numpy as np
 
 from bounding_box_utils.bounding_box_utils import iou, convert_coordinates
+from ssd_encoder_decoder.matching_utils import match_bipartite_greedy, match_multi
 
 class SSDInputEncoder:
     '''
@@ -48,10 +49,12 @@ class SSDInputEncoder:
                  offsets=None,
                  clip_boxes=False,
                  variances=[0.1, 0.1, 0.2, 0.2],
+                 matching_type='multi',
                  pos_iou_threshold=0.5,
                  neg_iou_limit=0.3,
                  coords='centroids',
-                 normalize_coords=True):
+                 normalize_coords=True,
+                 background_id=0):
         '''
         Arguments:
             img_height (int): The height of the input images.
@@ -60,7 +63,7 @@ class SSDInputEncoder:
             predictor_sizes (list): A list of int-tuples of the format `(height, width)`
                 containing the output heights and widths of the convolutional predictor layers.
             min_scale (float, optional): The smallest scaling factor for the size of the anchor boxes as a fraction
-                of the shorter side of the input images. Defaults to 0.1. Note that you should set the scaling factors
+                of the shorter side of the input images. Note that you should set the scaling factors
                 such that the resulting anchor box sizes correspond to the sizes of the objects you are trying
                 to detect. Must be >0.
             max_scale (float, optional): The largest scaling factor for the size of the anchor boxes as a fraction
@@ -68,7 +71,7 @@ class SSDInputEncoder:
                 largest will be linearly interpolated. Note that the second to last of the linearly interpolated
                 scaling factors will actually be the scaling factor for the last predictor layer, while the last
                 scaling factor is used for the second box for aspect ratio 1 in the last predictor layer
-                if `two_boxes_for_ar1` is `True`. Defaults to 0.9. Note that you should set the scaling factors
+                if `two_boxes_for_ar1` is `True`. Note that you should set the scaling factors
                 such that the resulting anchor box sizes correspond to the sizes of the objects you are trying
                 to detect. Must be greater than or equal to `min_scale`.
             scales (list, optional): A list of floats >0 containing scaling factors per convolutional predictor layer.
@@ -109,6 +112,10 @@ class SSDInputEncoder:
             clip_boxes (bool, optional): If `True`, limits the anchor box coordinates to stay within image boundaries.
             variances (list, optional): A list of 4 floats >0. The anchor box offset for each coordinate will be divided by
                 its respective variance value.
+            matching_type (str, optional): Can be either 'multi' or 'bipartite'. In 'bipartite' mode, each ground truth box will
+                be matched only to the one anchor box with the highest IoU overlap. In 'multi' mode, in addition to the aforementioned
+                bipartite matching, all anchor boxes with an IoU overlap greater than or equal to the `pos_iou_threshold` will be
+                matched to a given ground truth box.
             pos_iou_threshold (float, optional): The intersection-over-union similarity threshold that must be
                 met in order to match a given ground truth box to a given anchor box.
             neg_iou_limit (float, optional): The maximum allowed intersection-over-union similarity of an
@@ -120,6 +127,7 @@ class SSDInputEncoder:
             normalize_coords (bool, optional): If `True`, the encoder uses relative instead of absolute coordinates.
                 This means instead of using absolute tartget coordinates, the encoder will scale all coordinates to be within [0,1].
                 This way learning becomes independent of the input image size.
+            background_id (int, optional): Determines which class ID is for the background class.
         '''
         predictor_sizes = np.array(predictor_sizes)
         if len(predictor_sizes.shape) == 1:
@@ -155,9 +163,6 @@ class SSDInputEncoder:
         variances = np.array(variances)
         if np.any(variances <= 0):
             raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
-
-        if neg_iou_limit > pos_iou_threshold:
-            raise ValueError("It cannot be `neg_iou_limit > pos_iou_threshold`.")
 
         if not (coords == 'minmax' or coords == 'centroids' or coords == 'corners'):
             raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
@@ -195,10 +200,12 @@ class SSDInputEncoder:
             self.offsets = [None] * len(predictor_sizes)
         self.clip_boxes = clip_boxes
         self.variances = variances
+        self.matching_type = matching_type
         self.pos_iou_threshold = pos_iou_threshold
         self.neg_iou_limit = neg_iou_limit
         self.coords = coords
         self.normalize_coords = normalize_coords
+        self.background_id = background_id
 
         # Compute the number of boxes per cell.
         if aspect_ratios_per_layer:
@@ -243,15 +250,6 @@ class SSDInputEncoder:
         '''
         Converts ground truth bounding box data into a suitable format to train an SSD model.
 
-        For each image in the batch, each ground truth bounding box belonging to that image will be compared against each
-        anchor box in a template with respect to their jaccard similarity. If the jaccard similarity is greater than
-        or equal to the set threshold, the boxes will be matched, meaning that the ground truth box coordinates and class
-        will be written to the the specific position of the matched anchor box in the template.
-
-        The class for all anchor boxes for which there was no match with any ground truth box will be set to the
-        background class, except for those anchor boxes whose IoU similarity with any ground truth box is higher than
-        the set negative upper bound (see the `neg_iou_limit` argument in `__init__()`).
-
         Arguments:
             ground_truth_labels (list): A python list of length `batch_size` that contains one 2D Numpy array
                 for each batch image. Each such array has `k` rows for the `k` ground truth bounding boxes belonging
@@ -271,63 +269,116 @@ class SSDInputEncoder:
             the last four elements are the variances.
         '''
 
-        # 1: Generate the template for y_encoded
-        y_encode_template = self.generate_encode_template(batch_size=len(ground_truth_labels), diagnostics=False)
-        y_encoded = np.copy(y_encode_template) # We'll write the ground truth box data to this array
+        # Mapping to define which indices represent which coordinates in the ground truth.
+        class_id = 0
+        xmin = 1
+        ymin = 2
+        xmax = 3
+        ymax = 4
 
-        # 2: Match the boxes from `ground_truth_labels` to the anchor boxes in `y_encode_template`
-        #    and for each matched box record the ground truth coordinates in `y_encoded`.
-        #    Every time there is no match for a anchor box, record `class_id` 0 in `y_encoded` for that anchor box.
+        batch_size = len(ground_truth_labels)
 
-        class_vector = np.eye(self.n_classes) # An identity matrix that we'll use as one-hot class vectors
+        ##################################################################################
+        # Generate the template for y_encoded.
+        ##################################################################################
 
-        for i in range(y_encode_template.shape[0]): # For each batch item...
-            available_boxes = np.ones((y_encode_template.shape[1])) # 1 for all anchor boxes that are not yet matched to a ground truth box, 0 otherwise
-            negative_boxes = np.ones((y_encode_template.shape[1])) # 1 for all negative boxes, 0 otherwise
-            for true_box in ground_truth_labels[i]: # For each ground truth box belonging to the current batch item...
-                true_box = true_box.astype(np.float)
-                if abs(true_box[3] - true_box[1] < 0.001) or abs(true_box[4] - true_box[2] < 0.001): continue # Protect ourselves against bad ground truth data: boxes with width or height equal to zero
-                if self.normalize_coords:
-                    true_box[[1,3]] /= self.img_width # Normalize xmin and xmax to be within [0,1]
-                    true_box[[2,4]] /= self.img_height # Normalize ymin and ymax to be within [0,1]
-                if self.coords == 'centroids':
-                    true_box = convert_coordinates(true_box, start_index=1, conversion='corners2centroids')
-                elif self.coords == 'minmax':
-                    true_box = convert_coordinates(true_box, start_index=1, conversion='corners2minmax')
-                similarities = iou(y_encode_template[i,:,-12:-8], true_box[1:], coords=self.coords) # The iou similarities for all anchor boxes
-                negative_boxes[similarities >= self.neg_iou_limit] = 0 # If a negative box gets an IoU match >= `self.neg_iou_limit`, it's no longer a valid negative box
-                similarities *= available_boxes # Filter out anchor boxes which aren't available anymore (i.e. already matched to a different ground truth box)
-                available_and_thresh_met = np.copy(similarities)
-                available_and_thresh_met[available_and_thresh_met < self.pos_iou_threshold] = 0 # Filter out anchor boxes which don't meet the iou threshold
-                assign_indices = np.nonzero(available_and_thresh_met)[0] # Get the indices of the left-over anchor boxes to which we want to assign this ground truth box
-                if len(assign_indices) > 0: # If we have any matches
-                    y_encoded[i,assign_indices,:-8] = np.concatenate((class_vector[int(true_box[0])], true_box[1:]), axis=0) # Write the ground truth box coordinates and class to all assigned anchor box positions. Remember that the last four elements of `y_encoded` are just dummy entries.
-                    available_boxes[assign_indices] = 0 # Make the assigned anchor boxes unavailable for the next ground truth box
-                else: # If we don't have any matches
-                    best_match_index = np.argmax(similarities) # Get the index of the best iou match out of all available boxes
-                    y_encoded[i,best_match_index,:-8] = np.concatenate((class_vector[int(true_box[0])], true_box[1:]), axis=0) # Write the ground truth box coordinates and class to the best match anchor box position
-                    available_boxes[best_match_index] = 0 # Make the assigned anchor box unavailable for the next ground truth box
-                    negative_boxes[best_match_index] = 0 # The assigned anchor box is no longer a negative box
-            # Set the classes of all remaining available anchor boxes to class zero
-            background_class_indices = np.nonzero(negative_boxes)[0]
-            y_encoded[i,background_class_indices,0] = 1
+        y_encoded = self.generate_encoding_template(batch_size=batch_size, diagnostics=False)
 
-        # 3: Convert absolute box coordinates to offsets from the anchor boxes and normalize them
+        ##################################################################################
+        # Match ground truth boxes to anchor boxes.
+        ##################################################################################
+
+        # Match the ground truth boxes to the anchor boxes. Every anchor box that does not have
+        # a ground truth match and for which the maximal IoU overlap with any ground truth box is less
+        # than or equal to `neg_iou_limit` will be a negative (background) box.
+
+        y_encoded[:, :, self.background_id] = 1 # All boxes are background boxes by default.
+        n_boxes = y_encoded.shape[1] # The total number of boxes that the model predicts per batch item
+        class_vectors = np.eye(self.n_classes) # An identity matrix that we'll use as one-hot class vectors
+
+        for i in range(batch_size): # For each batch item...
+
+            labels = ground_truth_labels[i].astype(np.float) # The labels for this batch item
+            classes_one_hot = class_vectors[labels[:, class_id].astype(np.int)] # The one-hot class IDs for the ground truth boxes of this batch item
+            labels_one_hot = np.concatenate([classes_one_hot, labels[:, [xmin,ymin,xmax,ymax]]], axis=-1) # The one-hot version of the labels for this batch item
+
+            # Check for degenerate ground truth bounding boxes before attempting any computations.
+            if np.any(labels[:,[xmax]] - labels[:,[xmin]] <= 0) or np.any(labels[:,[ymax]] - labels[:,[ymin]] <= 0):
+                warnings.warn("SSDInputEncoder detected degenerate ground truth bounding boxes, i.e. bounding boxes where xmax <= xmin and/or ymax <= ymin. " +
+                              "This means that your dataset either contains bad ground truth data or that you are passing ground truth in the wrong coordinate " +
+                              "format. Note that SSDInputEncoder expects the box coordinates to be in the format (xmin, ymin, xmax, ymax). Degenerate ground truth " +
+                              "bounding boxes may lead to errors during the training.")
+
+            # Maybe normalize the box coordinates.
+            if self.normalize_coords:
+                labels[:,[ymin,ymax]] /= self.img_height # Normalize ymin and ymax relative to the image height
+                labels[:,[xmin,xmax]] /= self.img_width # Normalize xmin and xmax relative to the image width
+
+            # Maybe convert the box coordinate format.
+            if self.coords == 'centroids':
+                labels = convert_coordinates(labels, start_index=xmin, conversion='corners2centroids')
+            elif self.coords == 'minmax':
+                labels = convert_coordinates(labels, start_index=xmin, conversion='corners2minmax')
+
+            # Compute the IoU similarities between all anchor boxes and all ground truth boxes for this batch item.
+            # This is a matrix of shape `(num_ground_truth_boxes, num_anchor_boxes)`.
+            similarities = iou(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product')
+
+            # First: Do bipartite matching, i.e. match each ground truth box to the one anchor box with the highest IoU.
+            #        This ensures that each ground truth box will have at least one good match.
+
+            # For each ground truth box, get the anchor box to match with it.
+            bipartite_matches = match_bipartite_greedy(weight_matrix=similarities)
+
+            # Write the ground truth data to the matched anchor boxes.
+            y_encoded[i, bipartite_matches, :-8] = labels_one_hot
+
+            # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
+            similarities[:, bipartite_matches] = 0
+
+            # Second: Maybe do 'multi' matching, where each remaining anchor box will be matched to its most similar
+            #         ground truth box with an IoU of at least `pos_iou_threshold`, or not matched if there is no
+            #         such ground truth box.
+
+            if self.matching_type == 'multi':
+
+                # Get all matches that satisfy the IoU threshold.
+                matches = match_multi(weight_matrix=similarities, threshold=self.pos_iou_threshold)
+
+                # Write the ground truth data to the matched anchor boxes.
+                y_encoded[i, matches[1], :-8] = labels_one_hot[matches[0]]
+
+                # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
+                similarities[:, matches[1]] = 0
+
+            # Third: Now after the matching is done, all negative (background) anchor boxes that have
+            #        an IoU of `neg_iou_limit` or more with any ground truth box will be set to netral,
+            #        i.e. they will no longer be background boxes. These anchors are "too close" to a
+            #        ground truth box to be valid background boxes.
+
+            max_background_similarities = np.amax(similarities, axis=0)
+            neutral_boxes = np.nonzero(max_background_similarities >= self.neg_iou_limit)[0]
+            y_encoded[i, neutral_boxes, self.background_id] = 0
+
+        ##################################################################################
+        # Convert box coordinates to anchor box offsets.
+        ##################################################################################
+
         if self.coords == 'centroids':
-            y_encoded[:,:,[-12,-11]] -= y_encode_template[:,:,[-12,-11]] # cx(gt) - cx(anchor), cy(gt) - cy(anchor)
-            y_encoded[:,:,[-12,-11]] /= y_encode_template[:,:,[-10,-9]] * y_encode_template[:,:,[-4,-3]] # (cx(gt) - cx(anchor)) / w(anchor) / cx_variance, (cy(gt) - cy(anchor)) / h(anchor) / cy_variance
-            y_encoded[:,:,[-10,-9]] /= y_encode_template[:,:,[-10,-9]] # w(gt) / w(anchor), h(gt) / h(anchor)
-            y_encoded[:,:,[-10,-9]] = np.log(y_encoded[:,:,[-10,-9]]) / y_encode_template[:,:,[-2,-1]] # ln(w(gt) / w(anchor)) / w_variance, ln(h(gt) / h(anchor)) / h_variance (ln == natural logarithm)
+            y_encoded[:,:,[-12,-11]] -= y_encoded[:,:,[-8,-7]] # cx(gt) - cx(anchor), cy(gt) - cy(anchor)
+            y_encoded[:,:,[-12,-11]] /= y_encoded[:,:,[-6,-5]] * y_encoded[:,:,[-4,-3]] # (cx(gt) - cx(anchor)) / w(anchor) / cx_variance, (cy(gt) - cy(anchor)) / h(anchor) / cy_variance
+            y_encoded[:,:,[-10,-9]] /= y_encoded[:,:,[-6,-5]] # w(gt) / w(anchor), h(gt) / h(anchor)
+            y_encoded[:,:,[-10,-9]] = np.log(y_encoded[:,:,[-10,-9]]) / y_encoded[:,:,[-2,-1]] # ln(w(gt) / w(anchor)) / w_variance, ln(h(gt) / h(anchor)) / h_variance (ln == natural logarithm)
         elif self.coords == 'corners':
-            y_encoded[:,:,-12:-8] -= y_encode_template[:,:,-12:-8] # (gt - anchor) for all four coordinates
-            y_encoded[:,:,[-12,-10]] /= np.expand_dims(y_encode_template[:,:,-10] - y_encode_template[:,:,-12], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
-            y_encoded[:,:,[-11,-9]] /= np.expand_dims(y_encode_template[:,:,-9] - y_encode_template[:,:,-11], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
-            y_encoded[:,:,-12:-8] /= y_encode_template[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
+            y_encoded[:,:,-12:-8] -= y_encoded[:,:,-8:-4] # (gt - anchor) for all four coordinates
+            y_encoded[:,:,[-12,-10]] /= np.expand_dims(y_encoded[:,:,-6] - y_encoded[:,:,-8], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
+            y_encoded[:,:,[-11,-9]] /= np.expand_dims(y_encoded[:,:,-5] - y_encoded[:,:,-7], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
+            y_encoded[:,:,-12:-8] /= y_encoded[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
         elif self.coords == 'minmax':
-            y_encoded[:,:,-12:-8] -= y_encode_template[:,:,-12:-8] # (gt - anchor) for all four coordinates
-            y_encoded[:,:,[-12,-11]] /= np.expand_dims(y_encode_template[:,:,-11] - y_encode_template[:,:,-12], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
-            y_encoded[:,:,[-10,-9]] /= np.expand_dims(y_encode_template[:,:,-9] - y_encode_template[:,:,-10], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
-            y_encoded[:,:,-12:-8] /= y_encode_template[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
+            y_encoded[:,:,-12:-8] -= y_encoded[:,:,-8:-4] # (gt - anchor) for all four coordinates
+            y_encoded[:,:,[-12,-11]] /= np.expand_dims(y_encoded[:,:,-7] - y_encoded[:,:,-8], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
+            y_encoded[:,:,[-10,-9]] /= np.expand_dims(y_encoded[:,:,-5] - y_encoded[:,:,-6], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
+            y_encoded[:,:,-12:-8] /= y_encoded[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
 
         if diagnostics:
             # Here we'll save the matched anchor boxes (i.e. anchor boxes that were matched to a ground truth box, but keeping the anchor box coordinates).
@@ -346,7 +397,7 @@ class SSDInputEncoder:
                                         this_offsets=None,
                                         diagnostics=False):
         '''
-        Compute an array of the spatial positions and sizes of the anchor boxes for one predictor layer
+        Computes an array of the spatial positions and sizes of the anchor boxes for one predictor layer
         of size `feature_map_size == [feature_map_height, feature_map_width]`.
 
         Arguments:
@@ -467,12 +518,12 @@ class SSDInputEncoder:
         else:
             return boxes_tensor
 
-    def generate_encode_template(self, batch_size, diagnostics=False):
+    def generate_encoding_template(self, batch_size, diagnostics=False):
         '''
         Produces an encoding template for the ground truth label tensor for a given batch.
 
         Note that all tensor creation, reshaping and concatenation operations performed in this function
-        and the sub-functions it calls are identical to those performed inside the conv net model. This, of course,
+        and the sub-functions it calls are identical to those performed inside the SSD model. This, of course,
         must be the case in order to preserve the spatial meaning of each box prediction, but it's useful to make
         yourself aware of this fact and why it is necessary.
 
@@ -520,12 +571,12 @@ class SSDInputEncoder:
         variances_tensor += self.variances # Long live broadcasting
 
         # 4: Concatenate the classes, boxes and variances tensors to get our final template for y_encoded. We also need
-        #    another tensor of the shape of `boxes_tensor` as a space filler so that `y_encode_template` has the same
+        #    another tensor of the shape of `boxes_tensor` as a space filler so that `y_encoding_template` has the same
         #    shape as the SSD model output tensor. The content of this tensor is irrelevant, we'll just use
         #    `boxes_tensor` a second time.
-        y_encode_template = np.concatenate((classes_tensor, boxes_tensor, boxes_tensor, variances_tensor), axis=2)
+        y_encoding_template = np.concatenate((classes_tensor, boxes_tensor, boxes_tensor, variances_tensor), axis=2)
 
         if diagnostics:
-            return y_encode_template, self.centers_diag, self.wh_list_diag, self.steps_diag, self.offsets_diag
+            return y_encoding_template, self.centers_diag, self.wh_list_diag, self.steps_diag, self.offsets_diag
         else:
-            return y_encode_template
+            return y_encoding_template
