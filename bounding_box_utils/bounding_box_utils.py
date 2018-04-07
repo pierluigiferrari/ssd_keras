@@ -22,55 +22,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import division
 import numpy as np
 
-def iou(boxes1, boxes2, coords='centroids'):
-    '''
-    Compute the intersection-over-union similarity (also known as Jaccard similarity)
-    of two axis-aligned 2D rectangular boxes or of multiple axis-aligned 2D rectangular
-    boxes contained in two arrays with broadcast-compatible shapes.
-
-    Three common use cases would be to compute the similarities for 1 vs. 1, 1 vs. `n`,
-    or `n` vs. `n` boxes. The two arguments are symmetric.
-
-    Arguments:
-        boxes1 (array): Either a 1D Numpy array of shape `(4, )` containing the coordinates for one box in the
-            format specified by `coords` or a 2D Numpy array of shape `(n, 4)` containing the coordinates for `n` boxes.
-            Shape must be broadcast-compatible to `boxes2`.
-        boxes2 (array): Either a 1D Numpy array of shape `(4, )` containing the coordinates for one box in the
-            format specified by `coords` or a 2D Numpy array of shape `(n, 4)` containing the coordinates for `n` boxes.
-            Shape must be broadcast-compatible to `boxes1`.
-        coords (str, optional): The coordinate format in the input arrays. Can be either 'centroids' for the format
-            `(cx, cy, w, h)`, 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format
-            `(xmin, ymin, xmax, ymax)`.
-
-    Returns:
-        A 1D Numpy array of dtype float containing values in [0,1], the Jaccard similarity of the boxes in `boxes1` and `boxes2`.
-        0 means there is no overlap between two given boxes, 1 means their coordinates are identical.
-    '''
-
-    if len(boxes1.shape) > 2: raise ValueError("boxes1 must have rank either 1 or 2, but has rank {}.".format(len(boxes1.shape)))
-    if len(boxes2.shape) > 2: raise ValueError("boxes2 must have rank either 1 or 2, but has rank {}.".format(len(boxes2.shape)))
-
-    if len(boxes1.shape) == 1: boxes1 = np.expand_dims(boxes1, axis=0)
-    if len(boxes2.shape) == 1: boxes2 = np.expand_dims(boxes2, axis=0)
-
-    if not (boxes1.shape[1] == boxes2.shape[1] == 4): raise ValueError("It must be boxes1.shape[1] == boxes2.shape[1] == 4, but it is boxes1.shape[1] == {}, boxes2.shape[1] == {}.".format(boxes1.shape[1], boxes2.shape[1]))
-
-    if coords == 'centroids':
-        # TODO: Implement a version that uses fewer computation steps (that doesn't need conversion)
-        boxes1 = convert_coordinates(boxes1, start_index=0, conversion='centroids2minmax')
-        boxes2 = convert_coordinates(boxes2, start_index=0, conversion='centroids2minmax')
-    elif not (coords in {'minmax', 'corners'}):
-        raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
-
-    if coords in {'minmax', 'centroids'}:
-        intersection = np.maximum(0, np.minimum(boxes1[:,1], boxes2[:,1]) - np.maximum(boxes1[:,0], boxes2[:,0])) * np.maximum(0, np.minimum(boxes1[:,3], boxes2[:,3]) - np.maximum(boxes1[:,2], boxes2[:,2]))
-        union = (boxes1[:,1] - boxes1[:,0]) * (boxes1[:,3] - boxes1[:,2]) + (boxes2[:,1] - boxes2[:,0]) * (boxes2[:,3] - boxes2[:,2]) - intersection
-    elif coords == 'corners':
-        intersection = np.maximum(0, np.minimum(boxes1[:,2], boxes2[:,2]) - np.maximum(boxes1[:,0], boxes2[:,0])) * np.maximum(0, np.minimum(boxes1[:,3], boxes2[:,3]) - np.maximum(boxes1[:,1], boxes2[:,1]))
-        union = (boxes1[:,2] - boxes1[:,0]) * (boxes1[:,3] - boxes1[:,1]) + (boxes2[:,2] - boxes2[:,0]) * (boxes2[:,3] - boxes2[:,1]) - intersection
-
-    return intersection / union
-
 def convert_coordinates(tensor, start_index, conversion):
     '''
     Convert coordinates for axis-aligned 2D boxes between two coordinate formats.
@@ -80,9 +31,6 @@ def convert_coordinates(tensor, start_index, conversion):
         1) (xmin, xmax, ymin, ymax) - the 'minmax' format
         2) (xmin, ymin, xmax, ymax) - the 'corners' format
         2) (cx, cy, w, h) - the 'centroids' format
-
-    Note that converting from one of the supported formats to another and back is
-    an identity operation up to possible rounding errors for integer tensors.
 
     Arguments:
         tensor (array): A Numpy nD array containing the four consecutive coordinates
@@ -156,3 +104,238 @@ def convert_coordinates2(tensor, start_index, conversion):
         raise ValueError("Unexpected conversion value. Supported values are 'minmax2centroids' and 'centroids2minmax'.")
 
     return tensor1
+
+def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product'):
+    '''
+    Computes the intersection areas of two sets of axis-aligned 2D rectangular boxes.
+
+    Let `boxes1` and `boxes2` contain `m` and `n` boxes, respectively.
+
+    In 'outer_product' mode, returns an `(m,n)` matrix with the intersection areas for all possible
+    combinations of the boxes in `boxes1` and `boxes2`.
+
+    In 'element-wise' mode, `m` and `n` must be broadcast-compatible. Refer to the explanation
+    of the `mode` argument for details.
+
+    Arguments:
+        boxes1 (array): Either a 1D Numpy array of shape `(4, )` containing the coordinates for one box in the
+            format specified by `coords` or a 2D Numpy array of shape `(m, 4)` containing the coordinates for `m` boxes.
+            If `mode` is set to 'element_wise', the shape must be broadcast-compatible with `boxes2`.
+        boxes2 (array): Either a 1D Numpy array of shape `(4, )` containing the coordinates for one box in the
+            format specified by `coords` or a 2D Numpy array of shape `(n, 4)` containing the coordinates for `n` boxes.
+            If `mode` is set to 'element_wise', the shape must be broadcast-compatible with `boxes1`.
+        coords (str, optional): The coordinate format in the input arrays. Can be either 'centroids' for the format
+            `(cx, cy, w, h)`, 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format
+            `(xmin, ymin, xmax, ymax)`.
+        mode (str, optional): Can be one of 'outer_product' and 'element-wise'. In 'outer_product' mode, returns an
+            `(m,n)` matrix with the intersection areas for all possible combinations of the `m` boxes in `boxes1` with the
+            `n` boxes in `boxes2`. In 'element-wise' mode, returns a 1D array and the shapes of `boxes1` and `boxes2`
+            must be boadcast-compatible. If both `boxes1` and `boxes2` have `m` boxes, then this returns an array of
+            length `m` where the i-th position contains the intersection area of `boxes1[i]` with `boxes2[i]`.
+
+    Returns:
+        A 1D or 2D Numpy array (refer to the `mode` argument for details) of dtype float containing values with
+        the intersection areas of the boxes in `boxes1` and `boxes2`.
+    '''
+
+    # Make sure the boxes have the right shapes.
+    if boxes1.ndim > 2: raise ValueError("boxes1 must have rank either 1 or 2, but has rank {}.".format(boxes1.ndim))
+    if boxes2.ndim > 2: raise ValueError("boxes2 must have rank either 1 or 2, but has rank {}.".format(boxes2.ndim))
+
+    if boxes1.ndim == 1: boxes1 = np.expand_dims(boxes1, axis=0)
+    if boxes2.ndim == 1: boxes2 = np.expand_dims(boxes2, axis=0)
+
+    if not (boxes1.shape[1] == boxes2.shape[1] == 4): raise ValueError("All boxes must consist of 4 coordinates, but the boxes in `boxes1` and `boxes2` have {} and {} coordinates, respectively.".format(boxes1.shape[1], boxes2.shape[1]))
+    if not mode in {'outer_product', 'element-wise'}: raise ValueError("`mode` must be one of 'outer_product' and 'element-wise', but got '{}'.",format(mode))
+
+    # Convert the coordinates if necessary.
+    if coords == 'centroids':
+        boxes1 = convert_coordinates(boxes1, start_index=0, conversion='centroids2corners')
+        boxes2 = convert_coordinates(boxes2, start_index=0, conversion='centroids2corners')
+        coords = 'corners'
+    elif not (coords in {'minmax', 'corners'}):
+        raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
+
+    m = boxes1.shape[0] # The number of boxes in `boxes1`
+    n = boxes2.shape[0] # The number of boxes in `boxes2`
+
+    # Set the correct coordinate indices for the respective formats.
+    if coords == 'corners':
+        xmin = 0
+        ymin = 1
+        xmax = 2
+        ymax = 3
+    elif coords == 'minmax':
+        xmin = 0
+        xmax = 1
+        ymin = 2
+        ymax = 3
+
+    # Compute the intersection areas.
+
+    if mode == 'outer_product':
+
+        # For all possible box combinations, get the greater xmin and ymin values.
+        # This is a tensor of shape (m,n,2).
+        min_xy = np.maximum(np.tile(np.expand_dims(boxes1[:,[xmin,ymin]], axis=1), reps=(1, n, 1)),
+                            np.tile(np.expand_dims(boxes2[:,[xmin,ymin]], axis=0), reps=(m, 1, 1)))
+
+        # For all possible box combinations, get the smaller xmax and ymax values.
+        # This is a tensor of shape (m,n,2).
+        max_xy = np.minimum(np.tile(np.expand_dims(boxes1[:,[xmax,ymax]], axis=1), reps=(1, n, 1)),
+                            np.tile(np.expand_dims(boxes2[:,[xmax,ymax]], axis=0), reps=(m, 1, 1)))
+
+        # Compute the side lengths of the intersection rectangles.
+        side_lengths = np.maximum(0, max_xy - min_xy)
+
+        return side_lengths[:,:,0] * side_lengths[:,:,1]
+
+    elif mode == 'element-wise':
+
+        min_xy = np.maximum(boxes1[:,[xmin,ymin]], boxes2[:,[xmin,ymin]])
+        max_xy = np.minimum(boxes1[:,[xmax,ymax]], boxes2[:,[xmax,ymax]])
+
+        # Compute the side lengths of the intersection rectangles.
+        side_lengths = np.maximum(0, max_xy - min_xy)
+
+        return side_lengths[:,0] * side_lengths[:,1]
+
+def intersection_area_(boxes1, boxes2, coords='corners', mode='outer_product'):
+    '''
+    The same as 'intersection_area()' but for internal use, i.e. without all the safety checks.
+    '''
+
+    m = boxes1.shape[0] # The number of boxes in `boxes1`
+    n = boxes2.shape[0] # The number of boxes in `boxes2`
+
+    # Set the correct coordinate indices for the respective formats.
+    if coords == 'corners':
+        xmin = 0
+        ymin = 1
+        xmax = 2
+        ymax = 3
+    elif coords == 'minmax':
+        xmin = 0
+        xmax = 1
+        ymin = 2
+        ymax = 3
+
+    # Compute the intersection areas.
+
+    if mode == 'outer_product':
+
+        # For all possible box combinations, get the greater xmin and ymin values.
+        # This is a tensor of shape (m,n,2).
+        min_xy = np.maximum(np.tile(np.expand_dims(boxes1[:,[xmin,ymin]], axis=1), reps=(1, n, 1)),
+                            np.tile(np.expand_dims(boxes2[:,[xmin,ymin]], axis=0), reps=(m, 1, 1)))
+
+        # For all possible box combinations, get the smaller xmax and ymax values.
+        # This is a tensor of shape (m,n,2).
+        max_xy = np.minimum(np.tile(np.expand_dims(boxes1[:,[xmax,ymax]], axis=1), reps=(1, n, 1)),
+                            np.tile(np.expand_dims(boxes2[:,[xmax,ymax]], axis=0), reps=(m, 1, 1)))
+
+        # Compute the side lengths of the intersection rectangles.
+        side_lengths = np.maximum(0, max_xy - min_xy)
+
+        return side_lengths[:,:,0] * side_lengths[:,:,1]
+
+    elif mode == 'element-wise':
+
+        min_xy = np.maximum(boxes1[:,[xmin,ymin]], boxes2[:,[xmin,ymin]])
+        max_xy = np.minimum(boxes1[:,[xmax,ymax]], boxes2[:,[xmax,ymax]])
+
+        # Compute the side lengths of the intersection rectangles.
+        side_lengths = np.maximum(0, max_xy - min_xy)
+
+        return side_lengths[:,0] * side_lengths[:,1]
+
+
+def iou(boxes1, boxes2, coords='centroids', mode='outer_product'):
+    '''
+    Computes the intersection-over-union similarity (also known as Jaccard similarity)
+    of two sets of axis-aligned 2D rectangular boxes.
+
+    Let `boxes1` and `boxes2` contain `m` and `n` boxes, respectively.
+
+    In 'outer_product' mode, returns an `(m,n)` matrix with the IoUs for all possible
+    combinations of the boxes in `boxes1` and `boxes2`.
+
+    In 'element-wise' mode, `m` and `n` must be broadcast-compatible. Refer to the explanation
+    of the `mode` argument for details.
+
+    Arguments:
+        boxes1 (array): Either a 1D Numpy array of shape `(4, )` containing the coordinates for one box in the
+            format specified by `coords` or a 2D Numpy array of shape `(m, 4)` containing the coordinates for `m` boxes.
+            If `mode` is set to 'element_wise', the shape must be broadcast-compatible with `boxes2`.
+        boxes2 (array): Either a 1D Numpy array of shape `(4, )` containing the coordinates for one box in the
+            format specified by `coords` or a 2D Numpy array of shape `(n, 4)` containing the coordinates for `n` boxes.
+            If `mode` is set to 'element_wise', the shape must be broadcast-compatible with `boxes1`.
+        coords (str, optional): The coordinate format in the input arrays. Can be either 'centroids' for the format
+            `(cx, cy, w, h)`, 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format
+            `(xmin, ymin, xmax, ymax)`.
+        mode (str, optional): Can be one of 'outer_product' and 'element-wise'. In 'outer_product' mode, returns an
+            `(m,n)` matrix with the IoU overlaps for all possible combinations of the `m` boxes in `boxes1` with the
+            `n` boxes in `boxes2`. In 'element-wise' mode, returns a 1D array and the shapes of `boxes1` and `boxes2`
+            must be boadcast-compatible. If both `boxes1` and `boxes2` have `m` boxes, then this returns an array of
+            length `m` where the i-th position contains the IoU overlap of `boxes1[i]` with `boxes2[i]`.
+
+    Returns:
+        A 1D or 2D Numpy array (refer to the `mode` argument for details) of dtype float containing values in [0,1],
+        the Jaccard similarity of the boxes in `boxes1` and `boxes2`. 0 means there is no overlap between two given
+        boxes, 1 means their coordinates are identical.
+    '''
+
+    # Make sure the boxes have the right shapes.
+    if boxes1.ndim > 2: raise ValueError("boxes1 must have rank either 1 or 2, but has rank {}.".format(boxes1.ndim))
+    if boxes2.ndim > 2: raise ValueError("boxes2 must have rank either 1 or 2, but has rank {}.".format(boxes2.ndim))
+
+    if boxes1.ndim == 1: boxes1 = np.expand_dims(boxes1, axis=0)
+    if boxes2.ndim == 1: boxes2 = np.expand_dims(boxes2, axis=0)
+
+    if not (boxes1.shape[1] == boxes2.shape[1] == 4): raise ValueError("All boxes must consist of 4 coordinates, but the boxes in `boxes1` and `boxes2` have {} and {} coordinates, respectively.".format(boxes1.shape[1], boxes2.shape[1]))
+    if not mode in {'outer_product', 'element-wise'}: raise ValueError("`mode` must be one of 'outer_product' and 'element-wise', but got '{}'.".format(mode))
+
+    # Convert the coordinates if necessary.
+    if coords == 'centroids':
+        boxes1 = convert_coordinates(boxes1, start_index=0, conversion='centroids2corners')
+        boxes2 = convert_coordinates(boxes2, start_index=0, conversion='centroids2corners')
+        coords = 'corners'
+    elif not (coords in {'minmax', 'corners'}):
+        raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
+
+    # Compute the IoU.
+
+    # Compute the interesection areas.
+
+    intersection_areas = intersection_area_(boxes1, boxes2, coords=coords, mode=mode)
+
+    m = boxes1.shape[0] # The number of boxes in `boxes1`
+    n = boxes2.shape[0] # The number of boxes in `boxes2`
+
+    # Compute the union areas.
+
+    # Set the correct coordinate indices for the respective formats.
+    if coords == 'corners':
+        xmin = 0
+        ymin = 1
+        xmax = 2
+        ymax = 3
+    elif coords == 'minmax':
+        xmin = 0
+        xmax = 1
+        ymin = 2
+        ymax = 3
+
+    if mode == 'outer_product':
+
+        boxes1_areas = np.tile(np.expand_dims((boxes1[:,xmax] - boxes1[:,xmin]) * (boxes1[:,ymax] - boxes1[:,ymin]), axis=1), reps=(1,n))
+        boxes2_areas = np.tile(np.expand_dims((boxes2[:,xmax] - boxes2[:,xmin]) * (boxes2[:,ymax] - boxes2[:,ymin]), axis=0), reps=(m,1))
+
+    elif mode == 'element-wise':
+
+        boxes1_areas = (boxes1[:,xmax] - boxes1[:,xmin]) * (boxes1[:,ymax] - boxes1[:,ymin])
+        boxes2_areas = (boxes2[:,xmax] - boxes2[:,xmin]) * (boxes2[:,ymax] - boxes2[:,ymin])
+
+    union_areas = boxes1_areas + boxes2_areas - intersection_areas
+
+    return intersection_areas / union_areas
