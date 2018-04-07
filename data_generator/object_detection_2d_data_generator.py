@@ -597,18 +597,18 @@ class DataGenerator:
 
         if self.labels is None:
             if any([ret in returns for ret in ['original_labels', 'processed_labels', 'encoded_labels', 'matched_anchors']]):
-                warnings.warn("Since no labels were given, none of 'original_labels', 'processed_labels', 'encoded_labels', and 'matched_anchors'" +
+                warnings.warn("Since no labels were given, none of 'original_labels', 'processed_labels', 'encoded_labels', and 'matched_anchors' " +
                               "are possible returns, but you set `returns = {}`. The impossible returns will be missing from the output".format(returns))
         elif label_encoder is None:
             if any([ret in returns for ret in ['encoded_labels', 'matched_anchors']]):
-                warnings.warn("Since no label encoder was given, 'encoded_labels' and 'matched_anchors' aren't possible returns," +
+                warnings.warn("Since no label encoder was given, 'encoded_labels' and 'matched_anchors' aren't possible returns, " +
                               "but you set `returns = {}`. The impossible returns will be missing from the output".format(returns))
         elif not isinstance(label_encoder, SSDInputEncoder):
             if 'matched_anchors' in returns:
-                warnings.warn("`label_encoder` is not an `SSDInputEncoder` object, therefore 'matched_anchors' is not a possible return," +
+                warnings.warn("`label_encoder` is not an `SSDInputEncoder` object, therefore 'matched_anchors' is not a possible return, " +
                               "but you set `returns = {}`. The impossible returns will be missing from the output".format(returns))
         if (self.image_ids is None) and ('image_ids' in returns):
-            warnings.warn("No image IDs were given, therefore 'image_ids' is not a possible return," +
+            warnings.warn("No image IDs were given, therefore 'image_ids' is not a possible return, " +
                           "but you set `returns = {}`. The impossible returns will be missing from the output".format(returns))
 
         #############################################################################################
