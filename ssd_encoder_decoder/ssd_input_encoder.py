@@ -299,8 +299,6 @@ class SSDInputEncoder:
         for i in range(batch_size): # For each batch item...
 
             labels = ground_truth_labels[i].astype(np.float) # The labels for this batch item
-            classes_one_hot = class_vectors[labels[:, class_id].astype(np.int)] # The one-hot class IDs for the ground truth boxes of this batch item
-            labels_one_hot = np.concatenate([classes_one_hot, labels[:, [xmin,ymin,xmax,ymax]]], axis=-1) # The one-hot version of the labels for this batch item
 
             # Check for degenerate ground truth bounding boxes before attempting any computations.
             if np.any(labels[:,[xmax]] - labels[:,[xmin]] <= 0) or np.any(labels[:,[ymax]] - labels[:,[ymin]] <= 0):
@@ -319,6 +317,9 @@ class SSDInputEncoder:
                 labels = convert_coordinates(labels, start_index=xmin, conversion='corners2centroids')
             elif self.coords == 'minmax':
                 labels = convert_coordinates(labels, start_index=xmin, conversion='corners2minmax')
+
+            classes_one_hot = class_vectors[labels[:, class_id].astype(np.int)] # The one-hot class IDs for the ground truth boxes of this batch item
+            labels_one_hot = np.concatenate([classes_one_hot, labels[:, [xmin,ymin,xmax,ymax]]], axis=-1) # The one-hot version of the labels for this batch item
 
             # Compute the IoU similarities between all anchor boxes and all ground truth boxes for this batch item.
             # This is a matrix of shape `(num_ground_truth_boxes, num_anchor_boxes)`.
