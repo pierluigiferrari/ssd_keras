@@ -298,6 +298,7 @@ class SSDInputEncoder:
 
         for i in range(batch_size): # For each batch item...
 
+            if ground_truth_labels[i].size == 0: continue # If there is no ground truth for this batch item, there is nothing to match.
             labels = ground_truth_labels[i].astype(np.float) # The labels for this batch item
 
             # Check for degenerate ground truth bounding boxes before attempting any computations.
