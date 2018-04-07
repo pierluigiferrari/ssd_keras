@@ -147,7 +147,7 @@ class BoxFilter:
             # Compute the patch coordinates.
             image_coords = np.array([0, 0, image_width, image_height])
             # Compute the IoU between the patch and all of the ground truth boxes.
-            image_boxes_iou = iou(image_coords, labels[:, [xmin, ymin, xmax, ymax]], coords='corners')
+            image_boxes_iou = iou(image_coords, labels[:, [xmin, ymin, xmax, ymax]], coords='corners', mode='element-wise')
             requirements_met = (image_boxes_iou > lower) * (image_boxes_iou <= upper)
 
         elif self.overlap_criterion == 'area':
