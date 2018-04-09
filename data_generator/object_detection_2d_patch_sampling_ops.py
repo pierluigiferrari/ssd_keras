@@ -239,9 +239,9 @@ class CropPad:
                 If `True`, any ground truth bounding boxes will be clipped to lie entirely within the
                 sampled patch.
             box_filter (BoxFilter, optional): Only relevant if ground truth bounding boxes are given.
-                A `BoxFilter` object to filter out bounding boxes that don't meet the overlap
-                requirements with the sampled patch. If `None`, the validity of the bounding
-                boxes is not checked.
+                A `BoxFilter` object to filter out bounding boxes that don't meet the given criteria
+                after the transformation. Refer to the `BoxFilter` documentation for details. If `None`,
+                the validity of the bounding boxes is not checked.
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the potential
                 background pixels of the scaled images. In the case of single-channel images,
                 the first element of `background` will be used as the background pixel value.
@@ -249,10 +249,10 @@ class CropPad:
                 of an image contains which bounding box coordinate. The dictionary maps at least the keywords
                 'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
-        if (patch_height <= 0) or (patch_width <= 0):
-            raise ValueError("Patch height and width must both be positive.")
-        if (patch_ymin + patch_height < 0) or (patch_xmin + patch_width < 0):
-            raise ValueError("A patch with the given coordinates cannot overlap with an input image.")
+        #if (patch_height <= 0) or (patch_width <= 0):
+        #    raise ValueError("Patch height and width must both be positive.")
+        #if (patch_ymin + patch_height < 0) or (patch_xmin + patch_width < 0):
+        #    raise ValueError("A patch with the given coordinates cannot overlap with an input image.")
         if not (isinstance(box_filter, BoxFilter) or box_filter is None):
             raise ValueError("`box_filter` must be either `None` or a `BoxFilter` object.")
         self.patch_height = patch_height
@@ -329,9 +329,9 @@ class CropPad:
             # Compute all valid boxes for this patch.
             if not (self.box_filter is None):
                 self.box_filter.labels_format = self.labels_format
-                labels = self.box_filter(image_height=self.patch_height,
-                                         image_width=self.patch_width,
-                                         labels=labels)
+                labels = self.box_filter(labels=labels,
+                                         image_height=self.patch_height,
+                                         image_width=self.patch_width)
 
             if self.clip_boxes:
                 labels[:,[ymin,ymax]] = np.clip(labels[:,[ymin,ymax]], a_min=0, a_max=self.patch_height-1)
@@ -370,23 +370,23 @@ class Crop:
         self.clip_boxes = clip_boxes
         self.box_filter = box_filter
         self.labels_format = labels_format
+        self.crop = CropPad(patch_ymin=self.crop_top,
+                            patch_xmin=self.crop_left,
+                            patch_height=None,
+                            patch_width=None,
+                            clip_boxes=self.clip_boxes,
+                            box_filter=self.box_filter,
+                            labels_format=self.labels_format)
 
     def __call__(self, image, labels=None, return_inverter=False):
 
         img_height, img_width = image.shape[:2]
 
-        crop_height = img_height - self.crop_top - self.crop_bottom
-        crop_width = img_width - self.crop_left - self.crop_right
+        self.crop.patch_height = img_height - self.crop_top - self.crop_bottom
+        self.crop.patch_width = img_width - self.crop_left - self.crop_right
+        self.crop.labels_format = self.labels_format
 
-        crop = CropPad(patch_ymin=self.crop_top,
-                       patch_xmin=self.crop_left,
-                       patch_height=crop_height,
-                       patch_width=crop_width,
-                       clip_boxes=clip_boxes,
-                       box_filter=box_filter,
-                       labels_format=self.labels_format)
-
-        return crop(image, labels, return_inverter)
+        return self.crop(image, labels, return_inverter)
 
 class Pad:
     '''
@@ -412,24 +412,24 @@ class Pad:
         self.box_filter = box_filter
         self.background = background
         self.labels_format = labels_format
+        self.pad = CropPad(patch_ymin=-self.pad_top,
+                           patch_xmin=-self.pad_left,
+                           patch_height=None,
+                           patch_width=None,
+                           clip_boxes=self.clip_boxes,
+                           box_filter=self.box_filter,
+                           background=self.background,
+                           labels_format=self.labels_format)
 
     def __call__(self, image, labels=None, return_inverter=False):
 
         img_height, img_width = image.shape[:2]
 
-        pad_height = img_height + self.pad_top + self.pad_bottom
-        pad_width = img_width + self.pad_left + self.pad_right
+        self.pad.patch_height = img_height + self.pad_top + self.pad_bottom
+        self.pad.patch_width = img_width + self.pad_left + self.pad_right
+        self.pad.labels_format = self.labels_format
 
-        pad = CropPad(patch_ymin=-self.pad_top,
-                      patch_xmin=-self.pad_left,
-                      patch_height=pad_height,
-                      patch_width=pad_width,
-                      clip_boxes=clip_boxes,
-                      box_filter=box_filter,
-                      background=self.background,
-                      labels_format=self.labels_format)
-
-        return pad(image, labels, return_inverter)
+        return self.pad(image, labels, return_inverter)
 
 class RandomPatch:
     '''
@@ -463,9 +463,9 @@ class RandomPatch:
             patch_coord_generator (PatchCoordinateGenerator): A `PatchCoordinateGenerator` object
                 to generate the positions and sizes of the patches to be sampled from the input images.
             box_filter (BoxFilter, optional): Only relevant if ground truth bounding boxes are given.
-                A `BoxFilter` object to filter out bounding boxes that don't meet the overlap
-                requirements with the sampled patch. If `None`, the validity of the bounding
-                boxes is not checked.
+                A `BoxFilter` object to filter out bounding boxes that don't meet the given criteria
+                after the transformation. Refer to the `BoxFilter` documentation for details. If `None`,
+                the validity of the bounding boxes is not checked.
             image_validator (ImageValidator, optional): Only relevant if ground truth bounding boxes are given.
                 An `ImageValidator` object to determine whether a sampled patch is valid. If `None`,
                 any outcome is valid.
@@ -499,6 +499,14 @@ class RandomPatch:
         self.background = background
         self.can_fail = can_fail
         self.labels_format = labels_format
+        self.sample_patch = CropPad(patch_ymin=None,
+                                    patch_xmin=None,
+                                    patch_height=None,
+                                    patch_width=None,
+                                    clip_boxes=self.clip_boxes,
+                                    box_filter=self.box_filter,
+                                    background=self.background,
+                                    labels_format=self.labels_format)
 
     def __call__(self, image, labels=None, return_inverter=False):
 
@@ -514,49 +522,34 @@ class RandomPatch:
             xmax = self.labels_format['xmax']
             ymax = self.labels_format['ymax']
 
-            # Override the preset labels formats in the box filter and image validator.
-            if not self.box_filter is None:
-                self.box_filter.labels_format = self.labels_format
+            # Override the preset labels format.
             if not self.image_validator is None:
                 self.image_validator.labels_format = self.labels_format
+            self.sample_patch.labels_format = self.labels_format
 
             for _ in range(max(1, self.n_trials_max)):
 
                 # Generate patch coordinates.
                 patch_ymin, patch_xmin, patch_height, patch_width = self.patch_coord_generator()
 
+                self.sample_patch.patch_ymin = patch_ymin
+                self.sample_patch.patch_xmin = patch_xmin
+                self.sample_patch.patch_height = patch_height
+                self.sample_patch.patch_width = patch_width
+
                 if (labels is None) or (self.image_validator is None):
                     # We either don't have any boxes or if we do, we will accept any outcome as valid.
-                    sample_patch = CropPad(patch_ymin=patch_ymin,
-                                           patch_xmin=patch_xmin,
-                                           patch_height=patch_height,
-                                           patch_width=patch_width,
-                                           clip_boxes=self.clip_boxes,
-                                           box_filter=self.box_filter,
-                                           background=self.background,
-                                           labels_format=self.labels_format)
-
-                    return sample_patch(image, labels, return_inverter)
+                    return self.sample_patch(image, labels, return_inverter)
                 else:
                     # Translate the box coordinates to the patch's coordinate system.
                     new_labels = np.copy(labels)
                     new_labels[:, [ymin, ymax]] -= patch_ymin
                     new_labels[:, [xmin, xmax]] -= patch_xmin
                     # Check if the patch is valid.
-                    if self.image_validator(image_height=patch_height,
-                                            image_width=patch_width,
-                                            labels=new_labels):
-                        # Create a patch sampler object.
-                        sample_patch = CropPad(patch_ymin=patch_ymin,
-                                               patch_xmin=patch_xmin,
-                                               patch_height=patch_height,
-                                               patch_width=patch_width,
-                                               clip_boxes=self.clip_boxes,
-                                               box_filter=self.box_filter,
-                                               background=self.background,
-                                               labels_format=self.labels_format)
-                        # Sample the patch.
-                        return sample_patch(image, labels, return_inverter)
+                    if self.image_validator(labels=new_labels,
+                                            image_height=patch_height,
+                                            image_width=patch_width):
+                        return self.sample_patch(image, labels, return_inverter)
 
             # If we weren't able to sample a valid patch...
             if self.can_fail:
@@ -631,9 +624,9 @@ class RandomPatchInf:
             patch_coord_generator (PatchCoordinateGenerator): A `PatchCoordinateGenerator` object
                 to generate the positions and sizes of the patches to be sampled from the input images.
             box_filter (BoxFilter, optional): Only relevant if ground truth bounding boxes are given.
-                A `BoxFilter` object to filter out bounding boxes that don't meet the overlap
-                requirements with the sampled patch. If `None`, the validity of the bounding
-                boxes is not checked.
+                A `BoxFilter` object to filter out bounding boxes that don't meet the given criteria
+                after the transformation. Refer to the `BoxFilter` documentation for details. If `None`,
+                the validity of the bounding boxes is not checked.
             image_validator (ImageValidator, optional): Only relevant if ground truth bounding boxes are given.
                 An `ImageValidator` object to determine whether a sampled patch is valid. If `None`,
                 any outcome is valid.
@@ -673,6 +666,14 @@ class RandomPatchInf:
         self.prob = prob
         self.background = background
         self.labels_format = labels_format
+        self.sample_patch = CropPad(patch_ymin=None,
+                                    patch_xmin=None,
+                                    patch_height=None,
+                                    patch_width=None,
+                                    clip_boxes=self.clip_boxes,
+                                    box_filter=self.box_filter,
+                                    background=self.background,
+                                    labels_format=self.labels_format)
 
     def __call__(self, image, labels=None, return_inverter=False):
 
@@ -685,11 +686,10 @@ class RandomPatchInf:
         xmax = self.labels_format['xmax']
         ymax = self.labels_format['ymax']
 
-        # Override the preset labels formats in the box filter and image validator.
-        if not self.box_filter is None:
-            self.box_filter.labels_format = self.labels_format
+        # Override the preset labels format.
         if not self.image_validator is None:
             self.image_validator.labels_format = self.labels_format
+        self.sample_patch.labels_format = self.labels_format
 
         while True: # Keep going until we either find a valid patch or return the original image.
 
@@ -707,6 +707,11 @@ class RandomPatchInf:
                     # Generate patch coordinates.
                     patch_ymin, patch_xmin, patch_height, patch_width = self.patch_coord_generator()
 
+                    self.sample_patch.patch_ymin = patch_ymin
+                    self.sample_patch.patch_xmin = patch_xmin
+                    self.sample_patch.patch_height = patch_height
+                    self.sample_patch.patch_width = patch_width
+
                     # Check if the resulting patch meets the aspect ratio requirements.
                     aspect_ratio = patch_width / patch_height
                     if not (self.patch_coord_generator.min_aspect_ratio <= aspect_ratio <= self.patch_coord_generator.max_aspect_ratio):
@@ -714,36 +719,17 @@ class RandomPatchInf:
 
                     if (labels is None) or (self.image_validator is None):
                         # We either don't have any boxes or if we do, we will accept any outcome as valid.
-                        sample_patch = CropPad(patch_ymin=patch_ymin,
-                                               patch_xmin=patch_xmin,
-                                               patch_height=patch_height,
-                                               patch_width=patch_width,
-                                               clip_boxes=self.clip_boxes,
-                                               box_filter=self.box_filter,
-                                               background=self.background,
-                                               labels_format=self.labels_format)
-
-                        return sample_patch(image, labels, return_inverter)
+                        return self.sample_patch(image, labels, return_inverter)
                     else:
                         # Translate the box coordinates to the patch's coordinate system.
                         new_labels = np.copy(labels)
                         new_labels[:, [ymin, ymax]] -= patch_ymin
                         new_labels[:, [xmin, xmax]] -= patch_xmin
                         # Check if the patch contains the minimum number of boxes we require.
-                        if self.image_validator(image_height=patch_height,
-                                                image_width=patch_width,
-                                                labels=new_labels):
-                            # Create a patch sampler object.
-                            sample_patch = CropPad(patch_ymin=patch_ymin,
-                                                   patch_xmin=patch_xmin,
-                                                   patch_height=patch_height,
-                                                   patch_width=patch_width,
-                                                   clip_boxes=self.clip_boxes,
-                                                   box_filter=self.box_filter,
-                                                   background=self.background,
-                                                   labels_format=self.labels_format)
-                            # Sample the patch.
-                            return sample_patch(image, labels, return_inverter)
+                        if self.image_validator(labels=new_labels,
+                                                image_height=patch_height,
+                                                image_width=patch_width):
+                            return self.sample_patch(image, labels, return_inverter)
             else:
                 if return_inverter:
                     def inverter(labels):
@@ -780,9 +766,9 @@ class RandomMaxCropFixedAR:
         Arguments:
             patch_aspect_ratio (float): The fixed aspect ratio that all sampled patches will have.
             box_filter (BoxFilter, optional): Only relevant if ground truth bounding boxes are given.
-                A `BoxFilter` object to filter out bounding boxes that don't meet the overlap
-                requirements with the sampled patch. If `None`, the validity of the bounding
-                boxes is not checked.
+                A `BoxFilter` object to filter out bounding boxes that don't meet the given criteria
+                after the transformation. Refer to the `BoxFilter` documentation for details. If `None`,
+                the validity of the bounding boxes is not checked.
             image_validator (ImageValidator, optional): Only relevant if ground truth bounding boxes are given.
                 An `ImageValidator` object to determine whether a sampled patch is valid. If `None`,
                 any outcome is valid.
@@ -803,6 +789,14 @@ class RandomMaxCropFixedAR:
         self.n_trials_max = n_trials_max
         self.clip_boxes = clip_boxes
         self.labels_format = labels_format
+        self.random_patch = RandomPatch(patch_coord_generator=PatchCoordinateGenerator(), # Just a dummy object
+                                        box_filter=self.box_filter,
+                                        image_validator=self.image_validator,
+                                        n_trials_max=self.n_trials_max,
+                                        clip_boxes=self.clip_boxes,
+                                        prob=1.0,
+                                        can_fail=False,
+                                        labels_format=self.labels_format)
 
     def __call__(self, image, labels=None, return_inverter=False):
 
@@ -827,16 +821,9 @@ class RandomMaxCropFixedAR:
                                                          patch_width=patch_width)
 
         # The rest of the work is done by `RandomPatch`.
-        random_patch = RandomPatch(patch_coord_generator=patch_coord_generator,
-                                   box_filter=self.box_filter,
-                                   image_validator=self.image_validator,
-                                   n_trials_max=self.n_trials_max,
-                                   clip_boxes=self.clip_boxes,
-                                   prob=1.0,
-                                   can_fail=False,
-                                   labels_format=self.labels_format)
-
-        return random_patch(image, labels, return_inverter)
+        self.random_patch.patch_coord_generator = patch_coord_generator
+        self.random_patch.labels_format = self.labels_format
+        return self.random_patch(image, labels, return_inverter)
 
 class RandomPadFixedAR:
     '''
@@ -865,6 +852,14 @@ class RandomPadFixedAR:
         self.patch_aspect_ratio = patch_aspect_ratio
         self.background = background
         self.labels_format = labels_format
+        self.random_patch = RandomPatch(patch_coord_generator=PatchCoordinateGenerator(), # Just a dummy object
+                                        box_filter=None,
+                                        image_validator=None,
+                                        n_trials_max=1,
+                                        clip_boxes=False,
+                                        background=self.background,
+                                        prob=1.0,
+                                        labels_format=self.labels_format)
 
     def __call__(self, image, labels=None, return_inverter=False):
 
@@ -886,13 +881,6 @@ class RandomPadFixedAR:
                                                          patch_width=patch_width)
 
         # The rest of the work is done by `RandomPatch`.
-        random_patch = RandomPatch(patch_coord_generator=patch_coord_generator,
-                                   box_filter=None,
-                                   image_validator=None,
-                                   n_trials_max=1,
-                                   clip_boxes=False,
-                                   background=self.background,
-                                   prob=1.0,
-                                   labels_format=self.labels_format)
-
-        return random_patch(image, labels, return_inverter)
+        self.random_patch.patch_coord_generator = patch_coord_generator
+        self.random_patch.labels_format = self.labels_format
+        return self.random_patch(image, labels, return_inverter)
