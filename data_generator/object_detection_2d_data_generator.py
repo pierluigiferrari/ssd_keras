@@ -42,6 +42,7 @@ except ImportError:
     warnings.warn("'pickle' module is missing. You won't be able to save parsed file lists and annotations as pickled files.")
 
 from ssd_encoder_decoder.ssd_input_encoder import SSDInputEncoder
+from data_generator.object_detection_2d_image_boxes_validation_utils import BoxFilter
 
 class DegenerateBatchError(Exception):
     '''
@@ -512,7 +513,8 @@ class DataGenerator:
                  transformations=[],
                  label_encoder=None,
                  returns={'processed_images', 'encoded_labels'},
-                 keep_images_without_gt=False):
+                 keep_images_without_gt=False,
+                 degenerate_box_handling='remove'):
         '''
         Generates batches of samples and (optionally) corresponding labels indefinitely.
 
@@ -569,6 +571,12 @@ class DataGenerator:
             keep_images_without_gt (bool, optional): If `False`, images for which there aren't any ground truth boxes before
                 any transformations have been applied will be removed from the batch. If `True`, such images will be kept
                 in the batch.
+            degenerate_box_handling (str, optional): How to handle degenerate boxes, which are boxes that have `xmax <= xmin` and/or
+                `ymax <= ymin`. Degenerate boxes can sometimes be in the dataset, or non-degenerate boxes can become degenerate
+                after they were processed by transformations. Note that the generator checks for degenerate boxes after all
+                transformations have been applied (if any), but before the labels were passed to the `label_encoder` (if one was given).
+                Can be one of 'warn' or 'remove'. If 'warn', the generator will merely print a warning to let you know that there
+                are degenerate boxes in a batch. If 'remove', the generator will remove degenerate boxes from the batch silently.
 
         Yields:
             The next batch as a tuple of items as defined by the `returns` argument. By default, this will be
@@ -576,20 +584,6 @@ class DataGenerator:
             tensor as its second element if in training mode, or a 1-tuple containing only the processed batch images if
             not in training mode. Any additional outputs must be specified in the `returns` argument.
         '''
-
-        #############################################################################################
-        # Maybe shuffle the dataset initially.
-        #############################################################################################
-
-        if shuffle:
-            if (self.labels is None) and (self.image_ids is None):
-                self.filenames = sklearn.utils.shuffle(self.filenames)
-            elif (self.labels is None):
-                self.filenames, self.image_ids = sklearn.utils.shuffle(self.filenames, self.image_ids)
-            elif (self.image_ids is None):
-                self.filenames, self.labels = sklearn.utils.shuffle(self.filenames, self.labels)
-            else:
-                self.filenames, self.labels, self.image_ids = sklearn.utils.shuffle(self.filenames, self.labels, self.image_ids)
 
         #############################################################################################
         # Warn if any of the set returns aren't possible.
@@ -610,6 +604,31 @@ class DataGenerator:
         if (self.image_ids is None) and ('image_ids' in returns):
             warnings.warn("No image IDs were given, therefore 'image_ids' is not a possible return, " +
                           "but you set `returns = {}`. The impossible returns will be missing from the output".format(returns))
+
+        #############################################################################################
+        # Do a few preparatory things like maybe shuffling the dataset initially.
+        #############################################################################################
+
+        if shuffle:
+            if (self.labels is None) and (self.image_ids is None):
+                self.filenames = sklearn.utils.shuffle(self.filenames)
+            elif (self.labels is None):
+                self.filenames, self.image_ids = sklearn.utils.shuffle(self.filenames, self.image_ids)
+            elif (self.image_ids is None):
+                self.filenames, self.labels = sklearn.utils.shuffle(self.filenames, self.labels)
+            else:
+                self.filenames, self.labels, self.image_ids = sklearn.utils.shuffle(self.filenames, self.labels, self.image_ids)
+
+        if degenerate_box_handling == 'remove':
+            box_filter = BoxFilter(check_overlap=False,
+                                   check_min_area=False,
+                                   check_degenerate=True,
+                                   labels_format=self.labels_format)
+
+        # Override the labels formats of all the transformations to make sure they are set correctly.
+        if not (self.labels is None):
+            for transform in transformations:
+                transform.labels_format = self.labels_format
 
         #############################################################################################
         # Generate mini batches.
@@ -675,12 +694,13 @@ class DataGenerator:
             for i in range(len(batch_X)):
 
                 if not (self.labels is None):
-                    # If this image has no ground truth boxes, maybe we don't want to keep it in the batch.
-                    if (len(batch_y[i]) == 0) and not keep_images_without_gt:
-                        batch_items_to_remove.append(i)
-                        continue
                     # Convert the labels for this image to an array (in case they aren't already).
                     batch_y[i] = np.array(batch_y[i])
+                    # If this image has no ground truth boxes, maybe we don't want to keep it in the batch.
+                    if (batch_y[i].size == 0) and not keep_images_without_gt:
+                        batch_items_to_remove.append(i)
+                        batch_inverse_transforms.append([])
+                        continue
 
                 # Apply any image transformations we may have received.
                 if transformations:
@@ -691,8 +711,6 @@ class DataGenerator:
 
                         if not (self.labels is None):
 
-                            transform.labels_format = self.labels_format # Override the preset labels format of the given transform to make sure all transforms use the correct format.
-
                             if ('inverse_transform' in returns) and ('return_inverter' in inspect.signature(transform).parameters):
                                 batch_X[i], batch_y[i], inverse_transform = transform(batch_X[i], batch_y[i], return_inverter=True)
                                 inverse_transforms.append(inverse_transform)
@@ -701,6 +719,8 @@ class DataGenerator:
 
                             if batch_X[i] is None: # In case the transform failed to produce an output image, which is possible for some random transforms.
                                 batch_items_to_remove.append(i)
+                                batch_inverse_transforms.append([])
+                                continue
 
                         else:
 
@@ -711,6 +731,28 @@ class DataGenerator:
                                 batch_X[i] = transform(batch_X[i])
 
                     batch_inverse_transforms.append(inverse_transforms[::-1])
+
+                    #########################################################################################
+                    # Check for degenerate boxes in this batch item.
+                    #########################################################################################
+
+                    xmin = self.labels_format['xmin']
+                    ymin = self.labels_format['ymin']
+                    xmax = self.labels_format['xmax']
+                    ymax = self.labels_format['ymax']
+
+                    # Check for degenerate ground truth bounding boxes before attempting any computations.
+                    if np.any(batch_y[i][:,xmax] - batch_y[i][:,xmin] <= 0) or np.any(batch_y[i][:,ymax] - batch_y[i][:,ymin] <= 0):
+                        if degenerate_box_handling == 'warn':
+                            warnings.warn("Detected degenerate ground truth bounding boxes for batch item {} with bounding boxes {}, ".format(i, batch_y[i]) +
+                                          "i.e. bounding boxes where xmax <= xmin and/or ymax <= ymin. " +
+                                          "This could mean that your dataset contains degenerate ground truth boxes, or that any image transformations you may apply might " +
+                                          "result in degenerate ground truth boxes, or that you are parsing the ground truth in the wrong coordinate format." +
+                                          "Degenerate ground truth bounding boxes may lead to NaN errors during the training.")
+                        elif degenerate_box_handling == 'remove':
+                            batch_y[i] = box_filter(batch_y[i])
+                            if (batch_y[i].size == 0) and not keep_images_without_gt:
+                                batch_items_to_remove.append(i)
 
             #########################################################################################
             # Remove any items we might not want to keep from the batch.
