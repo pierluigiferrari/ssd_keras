@@ -34,6 +34,7 @@ class Resize:
                  height,
                  width,
                  interpolation_mode=cv2.INTER_LINEAR,
+                 box_filter=None,
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
@@ -42,13 +43,20 @@ class Resize:
             interpolation_mode (int, optional): An integer that denotes a valid
                 OpenCV interpolation mode. For example, integers 0 through 5 are
                 valid interpolation modes.
+            box_filter (BoxFilter, optional): Only relevant if ground truth bounding boxes are given.
+                A `BoxFilter` object to filter out bounding boxes that don't meet the given criteria
+                after the transformation. Refer to the `BoxFilter` documentation for details. If `None`,
+                the validity of the bounding boxes is not checked.
             labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
                 of an image contains which bounding box coordinate. The dictionary maps at least the keywords
                 'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
         '''
+        if not (isinstance(box_filter, BoxFilter) or box_filter is None):
+            raise ValueError("`box_filter` must be either `None` or a `BoxFilter` object.")
         self.out_height = height
         self.out_width = width
         self.interpolation_mode = interpolation_mode
+        self.box_filter = box_filter
         self.labels_format = labels_format
 
     def __call__(self, image, labels=None, return_inverter=False):
@@ -67,8 +75,8 @@ class Resize:
         if return_inverter:
             def inverter(labels):
                 labels = np.copy(labels)
-                labels[:, [ymin+1, ymax+1]] = labels[:, [ymin+1, ymax+1]] * (img_height / self.out_height)
-                labels[:, [xmin+1, xmax+1]] = labels[:, [xmin+1, xmax+1]] * (img_width / self.out_width)
+                labels[:, [ymin+1, ymax+1]] = np.round(labels[:, [ymin+1, ymax+1]] * (img_height / self.out_height), decimals=0)
+                labels[:, [xmin+1, xmax+1]] = np.round(labels[:, [xmin+1, xmax+1]] * (img_width / self.out_width), decimals=0)
                 return labels
 
         if labels is None:
@@ -78,8 +86,15 @@ class Resize:
                 return image
         else:
             labels = np.copy(labels)
-            labels[:, [ymin, ymax]] = labels[:, [ymin, ymax]] * (self.out_height / img_height)
-            labels[:, [xmin, xmax]] = labels[:, [xmin, xmax]] * (self.out_width / img_width)
+            labels[:, [ymin, ymax]] = np.round(labels[:, [ymin, ymax]] * (self.out_height / img_height), decimals=0)
+            labels[:, [xmin, xmax]] = np.round(labels[:, [xmin, xmax]] * (self.out_width / img_width), decimals=0)
+
+            if not (self.box_filter is None):
+                self.box_filter.labels_format = self.labels_format
+                labels = self.box_filter(labels=labels,
+                                         image_height=self.out_height,
+                                         image_width=self.out_width)
+
             if return_inverter:
                 return image, labels, inverter
             else:
@@ -99,6 +114,7 @@ class ResizeRandomInterp:
                                       cv2.INTER_CUBIC,
                                       cv2.INTER_AREA,
                                       cv2.INTER_LANCZOS4],
+                 box_filter=None,
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:
@@ -107,6 +123,10 @@ class ResizeRandomInterp:
             interpolation_modes (list/tuple, optional): A list/tuple of integers
                 that represent valid OpenCV interpolation modes. For example,
                 integers 0 through 5 are valid interpolation modes.
+            box_filter (BoxFilter, optional): Only relevant if ground truth bounding boxes are given.
+                A `BoxFilter` object to filter out bounding boxes that don't meet the given criteria
+                after the transformation. Refer to the `BoxFilter` documentation for details. If `None`,
+                the validity of the bounding boxes is not checked.
             labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
                 of an image contains which bounding box coordinate. The dictionary maps at least the keywords
                 'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
@@ -116,15 +136,17 @@ class ResizeRandomInterp:
         self.height = height
         self.width = width
         self.interpolation_modes = interpolation_modes
+        self.box_filter = box_filter
         self.labels_format = labels_format
+        self.resize = Resize(height=self.height,
+                             width=self.width,
+                             box_filter=self.box_filter,
+                             labels_format=self.labels_format)
 
     def __call__(self, image, labels=None, return_inverter=False):
-        mode = np.random.choice(self.interpolation_modes)
-        resize = Resize(height=self.height,
-                        width=self.width,
-                        interpolation_mode=mode,
-                        labels_format=self.labels_format)
-        return resize(image, labels, return_inverter)
+        self.resize.interpolation_mode = np.random.choice(self.interpolation_modes)
+        self.resize.labels_format = self.labels_format
+        return self.resize(image, labels, return_inverter)
 
 class Flip:
     '''
@@ -197,12 +219,13 @@ class RandomFlip:
         self.dim = dim
         self.prob = prob
         self.labels_format = labels_format
+        self.flip = Flip(dim=self.dim, labels_format=self.labels_format)
 
     def __call__(self, image, labels=None):
         p = np.random.uniform(0,1)
         if p >= (1.0-self.prob):
-            flip = Flip(dim=self.dim, labels_format=self.labels_format)
-            return flip(image, labels)
+            self.flip.labels_format = self.labels_format
+            return self.flip(image, labels)
         elif labels is None:
             return image
         else:
@@ -232,9 +255,9 @@ class Translate:
                 If `True`, any ground truth bounding boxes will be clipped to lie entirely within the
                 image after the translation.
             box_filter (BoxFilter, optional): Only relevant if ground truth bounding boxes are given.
-                A `BoxFilter` object to filter out bounding boxes that don't meet the overlap
-                requirements with a translated image. If `None`, the validity of the bounding
-                boxes is not checked.
+                A `BoxFilter` object to filter out bounding boxes that don't meet the given criteria
+                after the transformation. Refer to the `BoxFilter` documentation for details. If `None`,
+                the validity of the bounding boxes is not checked.
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the
                 background pixels of the translated images.
             labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
@@ -284,9 +307,9 @@ class Translate:
             # Compute all valid boxes for this patch.
             if not (self.box_filter is None):
                 self.box_filter.labels_format = self.labels_format
-                labels = self.box_filter(image_height=img_height,
-                                         image_width=img_width,
-                                         labels=labels)
+                labels = self.box_filter(labels=labels,
+                                         image_height=img_height,
+                                         image_width=img_width)
 
             if self.clip_boxes:
                 labels[:,[ymin,ymax]] = np.clip(labels[:,[ymin,ymax]], a_min=0, a_max=img_height-1)
@@ -329,9 +352,9 @@ class RandomTranslate:
                 If `True`, any ground truth bounding boxes will be clipped to lie entirely within the
                 image after the translation.
             box_filter (BoxFilter, optional): Only relevant if ground truth bounding boxes are given.
-                A `BoxFilter` object to filter out bounding boxes that don't meet the overlap
-                requirements with a translated image. If `None`, the validity of the bounding
-                boxes is not checked.
+                A `BoxFilter` object to filter out bounding boxes that don't meet the given criteria
+                after the transformation. Refer to the `BoxFilter` documentation for details. If `None`,
+                the validity of the bounding boxes is not checked.
             image_validator (ImageValidator, optional): Only relevant if ground truth bounding boxes are given.
                 An `ImageValidator` object to determine whether a translated image is valid. If `None`,
                 any outcome is valid.
@@ -361,6 +384,12 @@ class RandomTranslate:
         self.n_trials_max = n_trials_max
         self.background = background
         self.labels_format = labels_format
+        self.translate = Translate(dy=0,
+                                   dx=0,
+                                   clip_boxes=self.clip_boxes,
+                                   box_filter=self.box_filter,
+                                   background=self.background,
+                                   labels_format=self.labels_format)
 
     def __call__(self, image, labels=None):
 
@@ -374,11 +403,10 @@ class RandomTranslate:
             xmax = self.labels_format['xmax']
             ymax = self.labels_format['ymax']
 
-            # Override the preset labels formats in the box filter and image validator.
-            if not self.box_filter is None:
-                self.box_filter.labels_format = self.labels_format
+            # Override the preset labels format.
             if not self.image_validator is None:
                 self.image_validator.labels_format = self.labels_format
+            self.translate.labels_format = self.labels_format
 
             for _ in range(max(1, self.n_trials_max)):
 
@@ -388,17 +416,12 @@ class RandomTranslate:
                 # Pick the direction in which to translate.
                 dy = np.random.choice([-dy_abs, dy_abs])
                 dx = np.random.choice([-dx_abs, dx_abs])
+                self.translate.dy_rel = dy
+                self.translate.dx_rel = dx
 
                 if (labels is None) or (self.image_validator is None):
                     # We either don't have any boxes or if we do, we will accept any outcome as valid.
-                    translate = Translate(dy=dy,
-                                          dx=dx,
-                                          clip_boxes=self.clip_boxes,
-                                          box_filter=self.box_filter,
-                                          background=self.background,
-                                          labels_format=self.labels_format)
-
-                    return translate(image, labels)
+                    return self.translate(image, labels)
                 else:
                     # Translate the box coordinates to the translated image's coordinate system.
                     new_labels = np.copy(labels)
@@ -406,18 +429,10 @@ class RandomTranslate:
                     new_labels[:, [xmin, xmax]] += int(round(img_width * dx))
 
                     # Check if the patch is valid.
-                    if self.image_validator(image_height=img_height,
-                                            image_width=img_width,
-                                            labels=new_labels):
-
-                        translate = Translate(dy=dy,
-                                              dx=dx,
-                                              clip_boxes=self.clip_boxes,
-                                              box_filter=self.box_filter,
-                                              background=self.background,
-                                              labels_format=self.labels_format)
-
-                        return translate(image, labels)
+                    if self.image_validator(labels=new_labels,
+                                            image_height=img_height,
+                                            image_width=img_width):
+                        return self.translate(image, labels)
 
             # If all attempts failed, return the unaltered input image.
             if labels is None:
@@ -450,9 +465,9 @@ class Scale:
                 If `True`, any ground truth bounding boxes will be clipped to lie entirely within the
                 image after the translation.
             box_filter (BoxFilter, optional): Only relevant if ground truth bounding boxes are given.
-                A `BoxFilter` object to filter out bounding boxes that don't meet the overlap
-                requirements with a scaled image. If `None`, the validity of the bounding
-                boxes is not checked.
+                A `BoxFilter` object to filter out bounding boxes that don't meet the given criteria
+                after the transformation. Refer to the `BoxFilter` documentation for details. If `None`,
+                the validity of the bounding boxes is not checked.
             background (list/tuple, optional): A 3-tuple specifying the RGB color value of the potential
                 background pixels of the scaled images.
             labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
@@ -501,15 +516,15 @@ class Scale:
             bottomrights = np.array([labels[:,xmax], labels[:,ymax], np.ones(labels.shape[0])])
             new_toplefts = (np.dot(M, toplefts)).T
             new_bottomrights = (np.dot(M, bottomrights)).T
-            labels[:,[xmin,ymin]] = new_toplefts.astype(np.int)
-            labels[:,[xmax,ymax]] = new_bottomrights.astype(np.int)
+            labels[:,[xmin,ymin]] = np.round(new_toplefts, decimals=0).astype(np.int)
+            labels[:,[xmax,ymax]] = np.round(new_bottomrights, decimals=0).astype(np.int)
 
             # Compute all valid boxes for this patch.
             if not (self.box_filter is None):
                 self.box_filter.labels_format = self.labels_format
-                labels = self.box_filter(image_height=img_height,
-                                         image_width=img_width,
-                                         labels=labels)
+                labels = self.box_filter(labels=labels,
+                                         image_height=img_height,
+                                         image_width=img_width)
 
             if self.clip_boxes:
                 labels[:,[ymin,ymax]] = np.clip(labels[:,[ymin,ymax]], a_min=0, a_max=img_height-1)
@@ -544,9 +559,9 @@ class RandomScale:
                 If `True`, any ground truth bounding boxes will be clipped to lie entirely within the
                 image after the translation.
             box_filter (BoxFilter, optional): Only relevant if ground truth bounding boxes are given.
-                A `BoxFilter` object to filter out bounding boxes that don't meet the overlap
-                requirements with a scaled image. If `None`, the validity of the bounding
-                boxes is not checked.
+                A `BoxFilter` object to filter out bounding boxes that don't meet the given criteria
+                after the transformation. Refer to the `BoxFilter` documentation for details. If `None`,
+                the validity of the bounding boxes is not checked.
             image_validator (ImageValidator, optional): Only relevant if ground truth bounding boxes are given.
                 An `ImageValidator` object to determine whether a scaled image is valid. If `None`,
                 any outcome is valid.
@@ -573,6 +588,11 @@ class RandomScale:
         self.n_trials_max = n_trials_max
         self.background = background
         self.labels_format = labels_format
+        self.scale = Scale(factor=1.0,
+                           clip_boxes=self.clip_boxes,
+                           box_filter=self.box_filter,
+                           background=self.background,
+                           labels_format=self.labels_format)
 
     def __call__(self, image, labels=None):
 
@@ -586,26 +606,20 @@ class RandomScale:
             xmax = self.labels_format['xmax']
             ymax = self.labels_format['ymax']
 
-            # Override the preset labels formats in the box filter and image validator.
-            if not self.box_filter is None:
-                self.box_filter.labels_format = self.labels_format
+            # Override the preset labels format.
             if not self.image_validator is None:
                 self.image_validator.labels_format = self.labels_format
+            self.scale.labels_format = self.labels_format
 
             for _ in range(max(1, self.n_trials_max)):
 
                 # Pick a scaling factor.
                 factor = np.random.uniform(self.min_factor, self.max_factor)
+                self.scale.factor = factor
 
                 if (labels is None) or (self.image_validator is None):
                     # We either don't have any boxes or if we do, we will accept any outcome as valid.
-                    scale = Scale(factor=factor,
-                                  clip_boxes=self.clip_boxes,
-                                  box_filter=self.box_filter,
-                                  background=self.background,
-                                  labels_format=self.labels_format)
-
-                    return scale(image, labels)
+                    return self.scale(image, labels)
                 else:
                     # Scale the bounding boxes accordingly.
                     # Transform two opposite corner points of the rectangular boxes using the rotation matrix `M`.
@@ -621,21 +635,14 @@ class RandomScale:
                     new_bottomrights = (np.dot(M, bottomrights)).T
 
                     new_labels = np.copy(labels)
-                    new_labels[:,[xmin,ymin]] = np.around(new_toplefts).astype(np.int)
-                    new_labels[:,[xmax,ymax]] = np.around(new_bottomrights).astype(np.int)
+                    new_labels[:,[xmin,ymin]] = np.around(new_toplefts, decimals=0).astype(np.int)
+                    new_labels[:,[xmax,ymax]] = np.around(new_bottomrights, decimals=0).astype(np.int)
 
                     # Check if the patch is valid.
-                    if self.image_validator(image_height=img_height,
-                                            image_width=img_width,
-                                            labels=new_labels):
-
-                        scale = Scale(factor=factor,
-                                      clip_boxes=self.clip_boxes,
-                                      box_filter=self.box_filter,
-                                      background=self.background,
-                                      labels_format=self.labels_format)
-
-                        return scale(image, labels)
+                    if self.image_validator(labels=new_labels,
+                                            image_height=img_height,
+                                            image_width=img_width):
+                        return self.scale(image, labels)
 
             # If all attempts failed, return the unaltered input image.
             if labels is None:
@@ -713,8 +720,8 @@ class Rotate:
             bottomrights = np.array([labels[:,xmax], labels[:,ymax], np.ones(labels.shape[0])])
             new_toplefts = (np.dot(M, toplefts)).T
             new_bottomrights = (np.dot(M, bottomrights)).T
-            labels[:,[xmin,ymin]] = new_toplefts.astype(np.int)
-            labels[:,[xmax,ymax]] = new_bottomrights.astype(np.int)
+            labels[:,[xmin,ymin]] = np.round(new_toplefts, decimals=0).astype(np.int)
+            labels[:,[xmax,ymax]] = np.round(new_bottomrights, decimals=0).astype(np.int)
 
             if self.angle == 90:
                 # ymin and ymax were switched by the rotation.
@@ -755,16 +762,15 @@ class RandomRotate:
         self.angles = angles
         self.prob = prob
         self.labels_format = labels_format
+        self.rotate = Rotate(angle=0, labels_format=self.labels_format)
 
     def __call__(self, image, labels=None):
 
         p = np.random.uniform(0,1)
         if p >= (1.0-self.prob):
             # Pick a rotation angle.
-            angle = random.choice(self.angles)
-
-            rotate = Rotate(angle=angle, labels_format=self.labels_format)
-
+            self.rotate.angle = random.choice(self.angles)
+            self.rotate.labels_format = self.labels_format
             return rotate(image, labels)
 
         elif labels is None:
