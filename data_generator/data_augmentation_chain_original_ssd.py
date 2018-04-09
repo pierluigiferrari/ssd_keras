@@ -68,7 +68,10 @@ class SSDRandomCrop:
 
         # Filters out boxes whose center point does not lie within the
         # chosen patches.
-        self.box_filter = BoxFilter(overlap_criterion='center_point',
+        self.box_filter = BoxFilter(check_overlap=True,
+                                    check_min_area=False,
+                                    check_degenerate=False,
+                                    overlap_criterion='center_point',
                                     labels_format=self.labels_format)
 
         # Determines whether a given patch is considered a valid patch.
@@ -95,8 +98,6 @@ class SSDRandomCrop:
                                           labels_format=self.labels_format)
 
     def __call__(self, image, labels=None, return_inverter=False):
-        self.box_filter.labels_format = self.labels_format
-        self.image_validator.labels_format = self.labels_format
         self.random_crop.labels_format = self.labels_format
         return self.random_crop(image, labels, return_inverter)
 
@@ -233,6 +234,16 @@ class SSDDataAugmentation:
         self.expand = SSDExpand(background=background, labels_format=self.labels_format)
         self.random_crop = SSDRandomCrop(labels_format=self.labels_format)
         self.random_flip = RandomFlip(dim='horizontal', prob=0.5, labels_format=self.labels_format)
+
+        # This box filter makes sure that the resized images don't contain any degenerate boxes.
+        # Resizing the images could lead the boxes to becomes smaller. For boxes that are already
+        # pretty small, that might result in boxes with height and/or width zero, which we obviously
+        # cannot allow.
+        self.box_filter = BoxFilter(check_overlap=False,
+                                    check_min_area=False,
+                                    check_degenerate=True,
+                                    labels_format=self.labels_format)
+
         self.resize = ResizeRandomInterp(height=img_height,
                                          width=img_width,
                                          interpolation_modes=[cv2.INTER_NEAREST,
@@ -240,6 +251,7 @@ class SSDDataAugmentation:
                                                               cv2.INTER_CUBIC,
                                                               cv2.INTER_AREA,
                                                               cv2.INTER_LANCZOS4],
+                                         box_filter=self.box_filter,
                                          labels_format=self.labels_format)
 
         self.sequence = [self.photometric_distortions,
