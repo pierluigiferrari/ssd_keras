@@ -78,7 +78,7 @@ class ConvertDataType:
 
     def __call__(self, image, labels=None):
         if self.to == 'uint8':
-            image = image.astype(np.uint8)
+            image = np.round(image, decimals=0).astype(np.uint8)
         else:
             image = image.astype(np.float32)
         if labels is None:
@@ -152,13 +152,13 @@ class RandomHue:
         if not (0 <= max_delta <= 180): raise ValueError("`max_delta` must be in the closed interval `[0, 180]`.")
         self.max_delta = max_delta
         self.prob = prob
+        self.change_hue = Hue(delta=0)
 
     def __call__(self, image, labels=None):
         p = np.random.uniform(0,1)
         if p >= (1.0-self.prob):
-            delta = np.random.uniform(-self.max_delta, self.max_delta)
-            change_hue = Hue(delta=delta)
-            return change_hue(image, labels)
+            self.change_hue.delta = np.random.uniform(-self.max_delta, self.max_delta)
+            return self.change_hue(image, labels)
         elif labels is None:
             return image
         else:
@@ -211,13 +211,13 @@ class RandomSaturation:
         self.lower = lower
         self.upper = upper
         self.prob = prob
+        self.change_saturation = Saturation(factor=1.0)
 
     def __call__(self, image, labels=None):
         p = np.random.uniform(0,1)
         if p >= (1.0-self.prob):
-            factor = np.random.uniform(self.lower, self.upper)
-            change_saturation = Saturation(factor=factor)
-            return change_saturation(image, labels)
+            self.change_saturation.factor = np.random.uniform(self.lower, self.upper)
+            return self.change_saturation(image, labels)
         elif labels is None:
             return image
         else:
@@ -267,13 +267,13 @@ class RandomBrightness:
         self.lower = float(lower)
         self.upper = float(upper)
         self.prob = prob
+        self.change_brightness = Brightness(delta=0)
 
     def __call__(self, image, labels=None):
         p = np.random.uniform(0,1)
         if p >= (1.0-self.prob):
-            delta = np.random.uniform(self.lower, self.upper)
-            change_brightness = Brightness(delta=delta)
-            return change_brightness(image, labels)
+            self.change_brightness.delta = np.random.uniform(self.lower, self.upper)
+            return self.change_brightness(image, labels)
         elif labels is None:
             return image
         else:
@@ -326,13 +326,13 @@ class RandomContrast:
         self.lower = lower
         self.upper = upper
         self.prob = prob
+        self.change_contrast = Contrast(factor=1.0)
 
     def __call__(self, image, labels=None):
         p = np.random.uniform(0,1)
         if p >= (1.0-self.prob):
-            factor = np.random.uniform(self.lower, self.upper)
-            change_contrast = Contrast(factor=factor)
-            return change_contrast(image, labels)
+            self.change_contrast.factor = np.random.uniform(self.lower, self.upper)
+            return self.change_contrast(image, labels)
         elif labels is None:
             return image
         else:
@@ -425,12 +425,12 @@ class RandomHistogramEqualization:
                 unaltered image is returned.
         '''
         self.prob = prob
+        self.equalize = HistogramEqualization()
 
     def __call__(self, image, labels=None):
         p = np.random.uniform(0,1)
         if p >= (1.0-self.prob):
-            equalize = HistogramEqualization()
-            return equalize(image, labels)
+            return self.equalize(image, labels)
         elif labels is None:
             return image
         else:
@@ -472,14 +472,14 @@ class RandomChannelSwap:
         self.permutations = ((0, 2, 1),
                              (1, 0, 2), (1, 2, 0),
                              (2, 0, 1), (2, 1, 0))
+        self.swap_channels = ChannelSwap(order=(0, 1, 2))
 
     def __call__(self, image, labels=None):
         p = np.random.uniform(0,1)
         if p >= (1.0-self.prob):
             i = np.random.randint(5) # There are 6 possible permutations.
-            permutation = self.permutations[i]
-            swap_channels = ChannelSwap(order=permutation)
-            return swap_channels(image, labels)
+            self.swap_channels.order = self.permutations[i]
+            return self.swap_channels(image, labels)
         elif labels is None:
             return image
         else:
