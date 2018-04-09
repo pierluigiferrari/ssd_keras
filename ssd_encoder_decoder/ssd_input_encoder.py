@@ -19,7 +19,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import division
 import numpy as np
-import warnings
 
 from bounding_box_utils.bounding_box_utils import iou, convert_coordinates
 from ssd_encoder_decoder.matching_utils import match_bipartite_greedy, match_multi
@@ -304,11 +303,9 @@ class SSDInputEncoder:
 
             # Check for degenerate ground truth bounding boxes before attempting any computations.
             if np.any(labels[:,[xmax]] - labels[:,[xmin]] <= 0) or np.any(labels[:,[ymax]] - labels[:,[ymin]] <= 0):
-                warnings.warn("SSDInputEncoder detected degenerate ground truth bounding boxes for batch item {} with bounding boxes {}, ".format(i, labels) +
-                              "i.e. bounding boxes where xmax <= xmin and/or ymax <= ymin. " +
-                              "This means that your dataset either contains bad ground truth data or that you are passing ground truth in the wrong coordinate " +
-                              "format. Note that SSDInputEncoder expects the box coordinates to be in the format (xmin, ymin, xmax, ymax). Degenerate ground truth " +
-                              "bounding boxes may lead to errors during the training.")
+                raise DegenerateBoxError("SSDInputEncoder detected degenerate ground truth bounding boxes for batch item {} with bounding boxes {}, ".format(i, labels) +
+                                         "i.e. bounding boxes where xmax <= xmin and/or ymax <= ymin. Degenerate ground truth " +
+                                         "bounding boxes will lead to NaN errors during the training.")
 
             # Maybe normalize the box coordinates.
             if self.normalize_coords:
@@ -584,3 +581,9 @@ class SSDInputEncoder:
             return y_encoding_template, self.centers_diag, self.wh_list_diag, self.steps_diag, self.offsets_diag
         else:
             return y_encoding_template
+
+class DegenerateBoxError(Exception):
+    '''
+    An exception class to be raised if degenerate boxes are being detected.
+    '''
+    pass
