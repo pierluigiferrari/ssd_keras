@@ -1,5 +1,7 @@
 '''
-The data augmentation operations of the original SSD implementation.
+A data augmentation pipeline suitable for variable-size images that produces effects
+that are similar (but not identical) to those of the original SSD data augmentation
+pipeline while being faster.
 
 Copyright (C) 2018 Pierluigi Ferrari
 
@@ -29,10 +31,12 @@ from data_generator.object_detection_2d_image_boxes_validation_utils import BoxF
 
 class DataAugmentationVariableInputSize:
     '''
+    A data augmentation pipeline suitable for variable-size images that produces effects
+    that are similar (but not identical!) to those of the original SSD data augmentation
+    pipeline while being faster.
+
     Applies a chain of photometric and geometric image transformations. For documentation, please refer
     to the documentation of the individual transformations involved.
-
-    Important: This augmentation chain is suitable for constant-size images only.
     '''
 
     def __init__(self,
