@@ -139,14 +139,14 @@ def predict_all_to_txt(model,
         # be decoded and filtered, otherwise that's already taken care of.
         if model_mode == 'training':
             # Decode.
-            y_pred = decode_y(y_pred,
-                              confidence_thresh=confidence_thresh,
-                              iou_threshold=iou_threshold,
-                              top_k=top_k,
-                              input_coords=pred_coords,
-                              normalize_coords=normalize_coords,
-                              img_height=img_height,
-                              img_width=img_width)
+            y_pred = decode_detections(y_pred,
+                                       confidence_thresh=confidence_thresh,
+                                       iou_threshold=iou_threshold,
+                                       top_k=top_k,
+                                       input_coords=pred_coords,
+                                       normalize_coords=normalize_coords,
+                                       img_height=img_height,
+                                       img_width=img_width)
         else:
             # Filter out the all-zeros dummy elements of `y_pred`.
             y_pred_filtered = []
