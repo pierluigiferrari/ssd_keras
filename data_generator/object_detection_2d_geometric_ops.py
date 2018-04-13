@@ -762,7 +762,7 @@ class RandomRotate:
         self.angles = angles
         self.prob = prob
         self.labels_format = labels_format
-        self.rotate = Rotate(angle=0, labels_format=self.labels_format)
+        self.rotate = Rotate(angle=90, labels_format=self.labels_format)
 
     def __call__(self, image, labels=None):
 
@@ -771,7 +771,7 @@ class RandomRotate:
             # Pick a rotation angle.
             self.rotate.angle = random.choice(self.angles)
             self.rotate.labels_format = self.labels_format
-            return rotate(image, labels)
+            return self.rotate(image, labels)
 
         elif labels is None:
             return image
