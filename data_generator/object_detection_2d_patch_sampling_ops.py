@@ -219,7 +219,7 @@ class CropPad:
                  patch_xmin,
                  patch_height,
                  patch_width,
-                 clip_boxes=False,
+                 clip_boxes=True,
                  box_filter=None,
                  background=(0,0,0),
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
@@ -360,7 +360,7 @@ class Crop:
                  crop_bottom,
                  crop_left,
                  crop_right,
-                 clip_boxes=False,
+                 clip_boxes=True,
                  box_filter=None,
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         self.crop_top = crop_top
@@ -453,7 +453,7 @@ class RandomPatch:
                  box_filter=None,
                  image_validator=None,
                  n_trials_max=3,
-                 clip_boxes=False,
+                 clip_boxes=True,
                  prob=1.0,
                  background=(0,0,0),
                  can_fail=False,
@@ -615,7 +615,7 @@ class RandomPatchInf:
                  image_validator=None,
                  bound_generator=None,
                  n_trials_max=50,
-                 clip_boxes=False,
+                 clip_boxes=True,
                  prob=0.857,
                  background=(0,0,0),
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
@@ -760,7 +760,7 @@ class RandomMaxCropFixedAR:
                  box_filter=None,
                  image_validator=None,
                  n_trials_max=3,
-                 clip_boxes=False,
+                 clip_boxes=True,
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         '''
         Arguments:

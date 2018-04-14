@@ -49,7 +49,7 @@ class DataAugmentationSatellite:
                  min_aspect_ratio = 0.8,
                  max_aspect_ratio = 1.25,
                  n_trials_max=3,
-                 clip_boxes=False,
+                 clip_boxes=True,
                  overlap_criterion='area',
                  bounds_box_filter=(0.3, 1.0),
                  bounds_validator=(0.5, 1.0),

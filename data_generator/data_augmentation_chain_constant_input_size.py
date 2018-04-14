@@ -41,7 +41,7 @@ class DataAugmentationConstantInputSize:
                  random_translate=((0.03,0.5), (0.03,0.5), 0.5),
                  random_scale=(0.5, 2.0, 0.5),
                  n_trials_max=3,
-                 clip_boxes=False,
+                 clip_boxes=True,
                  overlap_criterion='area',
                  bounds_box_filter=(0.3, 1.0),
                  bounds_validator=(0.5, 1.0),

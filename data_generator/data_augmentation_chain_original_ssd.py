@@ -87,13 +87,12 @@ class SSDRandomCrop:
         # is returned unaltered. Runs a maximum of 50 trials to find a valid
         # patch for each new sampled IoU threshold. Every 50 trials, the original
         # image is returned as is with probability (1 - prob) = 0.143.
-        # Does not clip the ground truth bounding boxes to lie within the patch.
         self.random_crop = RandomPatchInf(patch_coord_generator=self.patch_coord_generator,
                                           box_filter=self.box_filter,
                                           image_validator=self.image_validator,
                                           bound_generator=self.bound_generator,
                                           n_trials_max=50,
-                                          clip_boxes=False,
+                                          clip_boxes=True,
                                           prob=0.857,
                                           labels_format=self.labels_format)
 
