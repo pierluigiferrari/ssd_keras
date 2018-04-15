@@ -400,24 +400,20 @@ class Pad:
                  pad_bottom,
                  pad_left,
                  pad_right,
-                 clip_boxes=False,
-                 box_filter=None,
                  background=(0,0,0),
                  labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
         self.pad_top = pad_top
         self.pad_bottom = pad_bottom
         self.pad_left = pad_left
         self.pad_right = pad_right
-        self.clip_boxes = clip_boxes
-        self.box_filter = box_filter
         self.background = background
         self.labels_format = labels_format
         self.pad = CropPad(patch_ymin=-self.pad_top,
                            patch_xmin=-self.pad_left,
                            patch_height=None,
                            patch_width=None,
-                           clip_boxes=self.clip_boxes,
-                           box_filter=self.box_filter,
+                           clip_boxes=False,
+                           box_filter=None,
                            background=self.background,
                            labels_format=self.labels_format)
 
