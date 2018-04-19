@@ -19,7 +19,7 @@ What you see below are the training and validation loss every 1,000 training ste
 
 ### mAP
 
-Here are the intermediate and final mAP values on Pascal VOC 2007 `test`, showing the best values after every 20,000 training steps. Once again, the progress may be slower depending on how the early phase of the training is going. In another training I started with the same configuration, I got an mAP of only 0.665 after the first 20,000 training steps.
+Here are the intermediate and final mAP values on Pascal VOC 2007 `test`, evaluated using the official Pascal VOCdevkit 2007 Matlab evaluation code. The table shows the best values after every 20,000 training steps. Once again, the progress may be slower depending on how the early phase of the training is going. In another training I started with the same configuration, I got an mAP of only 0.665 after the first 20,000 training steps.
 
 |             |       |  20k     |  40k     |  60k     |  80k     |  100k    |  102k    |
 |-------------|-------|----------|----------|----------|----------|----------|----------|
