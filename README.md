@@ -18,11 +18,11 @@
 
 This is a Keras implementation of the SSD model architecture introduced by Wei Liu et al. in the paper [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325).
 
-Ports of the trained weights of all the original models are provided below, as are convolutionalized VGG-16 weights. The performance of the ported models matches or slightly surpasses that of the original Caffe models, see below.
+Ports of the trained weights of all the original models are provided below. This implementation is accurate, meaning that both the ported weights and models trained from scratch produce the same mAP values as the respective models of the original Caffe implementation (see evaluation section below).
 
 The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The provided tutorials, documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
 
-There are currently the following network architectures in this repository:
+The repository currently provides the following network architectures:
 * SSD300: [`keras_ssd300.py`](models/keras_ssd300.py)
 * SSD512: [`keras_ssd512.py`](models/keras_ssd512.py)
 * SSD7: [`keras_ssd7.py`](models/keras_ssd7.py) - a smaller 7-layer version that can be trained from scratch relatively quickly even on a mid-tier GPU, yet is capable enough for less complex object detection tasks and testing. You're obviously not going to get state-of-the-art results with that one, but it's fast.
@@ -33,7 +33,7 @@ If you would like to build an SSD with your own base network architecture, you c
 
 ### Evaluation results
 
-Here are the mAP evaluation results from the official Pascal VOC Matlab evaluation script (for 2007 test) and the official test server (for 2012 test). In all cases the results are either identical to those of the original Caffe models or surpass them slightly.
+Here are the mAP evaluation results of the ported weights and below that the evaluation results of a model trained from scratch using this implementation. All models were evaluated using the official Pascal VOC test server (for 2012 `test`) or the official Pascal VOC Matlab evaluation script (for 2007 `test`). In all cases the results are either identical to those of the original Caffe models or surpass them slightly. Download links to all ported weights are available further below.
 
 <table width="70%">
   <tr>
@@ -61,9 +61,26 @@ Here are the mAP evaluation results from the official Pascal VOC Matlab evaluati
   </tr>
 </table>
 
-The models achieve the following average number of frames per second (FPS) on Pascal VOC on an NVIDIA GeForce GTX1070. Note that the benchmark prediction speeds of the original Caffe implementation were achieved using a faster TitanX GPU. The first number (FPS) is the prediction speed using the same process as the original Caffe implementation for decoding and filtering the raw model output, while the second number (FPS Fast Mode) is the prediction speed using a more efficient filtering process.
+Training an SSD300 from scratch to convergence on Pascal VOC 2007 `trainval` and 2012 `trainval` produces the same mAP on Pascal VOC 2007 `test` as the original Caffe SSD300 "07+12" model. You can find a summary of the training [here]().
 
-<table width="50%">
+<table width="95%">
+  <tr>
+    <td>Model</td>
+    <td align=center>mAP original Caffe</td>
+    <td align=center>mAP ported weights</td>
+    <td align=center>mAP trained from scratch</td>
+  </tr>
+  <tr>
+    <td><b>SSD300 "07+12"</td>
+    <td align=center width="31%"><b>0.772</td>
+    <td align=center width="31%"><b>0.776</td>
+    <td align=center width="31%"><b>[0.771](https://drive.google.com/file/d/1-MYYaZbIHNPtI2zzklgVBAjssbP06BeA/view)</td>
+  </tr>
+</table>
+
+The models achieve the following average number of frames per second (FPS) on Pascal VOC on an NVIDIA GeForce GTX 1070 mobile (i.e. the laptop version). Note that the benchmark prediction speeds of the original Caffe implementation were achieved using a faster TitanX GPU. The first number (FPS) is the prediction speed using the same process as the original Caffe implementation for decoding and filtering the raw model output, while the second number (FPS Fast Mode) is the prediction speed using a more efficient filtering process.
+
+<table width>
   <tr>
     <td>Model</td>
     <td align=center>FPS</td>
@@ -95,14 +112,7 @@ Below are some prediction examples of the fully trained original SSD300 "07+12" 
 | ![img01](./examples/trained_ssd300_pascalVOC2007_test_pred_05_no_gt.png) | ![img01](./examples/trained_ssd300_pascalVOC2007_test_pred_04_no_gt.png) |
 | ![img01](./examples/trained_ssd300_pascalVOC2007_test_pred_01_no_gt.png) | ![img01](./examples/trained_ssd300_pascalVOC2007_test_pred_02_no_gt.png) |
 
-Next, some prediction examples of an SSD300 partially trained (20,000 steps at batch size 32) on Pascal VOC2007 `trainval`, VOC2007 `test`, and VOC2012 `train`. The predictions were made on VOC2012 `val`. The box coordinates are still a bit off, but you can see that the model has already learned quite a bit. Predictions are in blue, ground truth in green.
-
-| | |
-|---|---|
-| ![img01](./examples/ssd300_pascalVOC_pred_01.png) | ![img01](./examples/ssd300_pascalVOC_pred_02.png) |
-| ![img01](./examples/ssd300_pascalVOC_pred_03.png) | ![img01](./examples/ssd300_pascalVOC_pred_04.png) |
-
-Finally, some prediction examples of an SSD7 (i.e. the small 7-layer version) partially trained on two road traffic datasets released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations) with roughly 20,000 images in total and 5 object categories (more info in [`ssd7_training.ipynb`](ssd7_training.ipynb)). The predictions you see below were made after 10,000 training steps at batch size 32. Admittedly, cars are comparatively easy objects to detect and I picked a few of the better examples, but it is nonetheless remarkable what such a small model can do after only 10,000 training iterations.
+Here are some prediction examples of an SSD7 (i.e. the small 7-layer version) partially trained on two road traffic datasets released by [Udacity](https://github.com/udacity/self-driving-car/tree/master/annotations) with roughly 20,000 images in total and 5 object categories (more info in [`ssd7_training.ipynb`](ssd7_training.ipynb)). The predictions you see below were made after 10,000 training steps at batch size 32. Admittedly, cars are comparatively easy objects to detect and I picked a few of the better examples, but it is nonetheless remarkable what such a small model can do after only 10,000 training iterations.
 
 | | |
 |---|---|
@@ -111,7 +121,7 @@ Finally, some prediction examples of an SSD7 (i.e. the small 7-layer version) pa
 
 ### Dependencies
 
-* Python 3.x (Python 2.7 seems to work, but isn't actively supported)
+* Python 3.x
 * Numpy
 * TensorFlow 1.x
 * Keras 2.x
@@ -159,7 +169,9 @@ To train the original SSD300 model on Pascal VOC:
 2. Download the weights for the convolutionalized VGG-16 or for one of the trained original models provided below.
 3. Set the file paths for the datasets and model weights accordingly in [`ssd300_training.ipynb`](ssd300_training.ipynb) and execute the cells.
 
-The procedure for training SSD512 is the same of course. It is strongly recommended that you load at least the pre-trained VGG-16 weights when attempting to train an SSD300 or SSD512, otherwise the training will probably fail (note that the original VGG-16 was trained layer-wise, so trying to train the even deeper SSD end to end from scratch likely won't work). Also note that even with the pre-trained VGG-16 weights it will take at least ~20,000 training steps to get the first half-decent predictions out of SSD300.
+The procedure for training SSD512 is the same of course. It is imperative that you load the pre-trained VGG-16 weights when attempting to train an SSD300 or SSD512 from scratch, otherwise the training will probably fail. Here is a summary of a full training of the SSD300 "07+12" model for comparison with your own training:
+
+* [SSD300 Pascal VOC "07+12" training summary](training_summaries/ssd300_pascal_07+12_training_summary.md)
 
 #### Encoding and decoding boxes
 
@@ -226,7 +238,6 @@ Currently in the works:
 ### Important notes
 
 * All trained models that were trained on MS COCO use the smaller anchor box scaling factors provided in all of the Jupyter notebooks. In particular, note that the '07+12+COCO' and '07++12+COCO' models use the smaller scaling factors.
-* The original Caffe models use a learning rate multiplier of 2 for the bias terms. Keras currently doesn't support per-weight learning rate multipliers, so this implementation differs from the Caffe implementation in this regard. This difference isn't relevant if you're using the trained models, but you should keep it in mind if you want to reproduce the training of the original models.
 
 ### Terminology
 
