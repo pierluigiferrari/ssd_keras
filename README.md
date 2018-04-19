@@ -74,7 +74,7 @@ Training an SSD300 from scratch to convergence on Pascal VOC 2007 `trainval` and
     <td><b>SSD300 "07+12"</td>
     <td align=center width="31%"><b>0.772</td>
     <td align=center width="31%"><b>0.776</td>
-    <td align=center width="31%"><b>[0.771](https://drive.google.com/file/d/1-MYYaZbIHNPtI2zzklgVBAjssbP06BeA/view)</td>
+    <td align=center width="31%"><b><a href="https://drive.google.com/file/d/1-MYYaZbIHNPtI2zzklgVBAjssbP06BeA/view">0.771</a></td>
   </tr>
 </table>
 
