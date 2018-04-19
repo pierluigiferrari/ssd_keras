@@ -66,15 +66,15 @@ Training an SSD300 from scratch to convergence on Pascal VOC 2007 `trainval` and
 <table width="95%">
   <tr>
     <td>Model</td>
-    <td align=center>mAP original Caffe</td>
-    <td align=center>mAP ported weights</td>
-    <td align=center>mAP trained from scratch</td>
+    <td align=center>original Caffe model</td>
+    <td align=center>ported weights</td>
+    <td align=center>trained from scratch</td>
   </tr>
   <tr>
     <td><b>SSD300 "07+12"</td>
-    <td align=center width="31%"><b>0.772</td>
-    <td align=center width="31%"><b>0.776</td>
-    <td align=center width="31%"><b><a href="https://drive.google.com/file/d/1-MYYaZbIHNPtI2zzklgVBAjssbP06BeA/view">0.771</a></td>
+    <td align=center width="26%"><b>0.772</td>
+    <td align=center width="26%"><b>0.776</td>
+    <td align=center width="26%"><b><a href="https://drive.google.com/file/d/1-MYYaZbIHNPtI2zzklgVBAjssbP06BeA/view">0.771</a></td>
   </tr>
 </table>
 
