@@ -100,7 +100,7 @@ class Evaluator:
                  include_border_pixels=True,
                  sorting_algorithm='quicksort',
                  num_recall_points=11,
-                 omit_neutral_boxes=True,
+                 ignore_neutral_boxes=True,
                  return_precisions=False,
                  return_recalls=False,
                  return_average_precisions=False,
@@ -142,7 +142,7 @@ class Evaluator:
             num_recall_points (int, optional): The number of points to sample from the precision-recall-curve to compute the average
                 precisions. In other words, this is the number of equidistant recall values for which the resulting precision will be
                 computed. 11 points is the value used in the official Pascal VOC 2007 detection evaluation algorithm.
-            omit_neutral_boxes (bool, optional): In case the data generator provides annotations indicating whether a ground truth
+            ignore_neutral_boxes (bool, optional): In case the data generator provides annotations indicating whether a ground truth
                 bounding box is supposed to either count or be neutral for the evaluation, this argument decides what to do with these
                 annotations. If `False`, even boxes that are annotated as neutral will be counted into the evaluation. If `True`,
                 neutral boxes will be ignored for the evaluation. An example for evaluation-neutrality are the ground truth boxes
@@ -194,7 +194,7 @@ class Evaluator:
         # Get the total number of ground truth boxes for each class.
         #############################################################################################
 
-        self.get_num_gt_per_class(omit_neutral_boxes=omit_neutral_boxes,
+        self.get_num_gt_per_class(ignore_neutral_boxes=ignore_neutral_boxes,
                                   verbose=False,
                                   ret=False)
 
@@ -202,7 +202,7 @@ class Evaluator:
         # Match predictions to ground truth boxes for all classes.
         #############################################################################################
 
-        self.match_predictions(omit_neutral_boxes=omit_neutral_boxes,
+        self.match_predictions(ignore_neutral_boxes=ignore_neutral_boxes,
                                matching_iou_threshold=matching_iou_threshold,
                                include_border_pixels=include_border_pixels,
                                sorting_algorithm=sorting_algorithm,
@@ -466,14 +466,14 @@ class Evaluator:
             print("All results files saved.")
 
     def get_num_gt_per_class(self,
-                             omit_neutral_boxes=True,
+                             ignore_neutral_boxes=True,
                              verbose=True,
                              ret=False):
         '''
         Counts the number of ground truth boxes for each class across the dataset.
 
         Arguments:
-            omit_neutral_boxes (bool, optional): In case the data generator provides annotations indicating whether a ground truth
+            ignore_neutral_boxes (bool, optional): In case the data generator provides annotations indicating whether a ground truth
                 bounding box is supposed to either count or be neutral for the evaluation, this argument decides what to do with these
                 annotations. If `True`, only non-neutral ground truth boxes will be counted, otherwise all ground truth boxes will
                 be counted.
@@ -508,7 +508,7 @@ class Evaluator:
             # Iterate over all ground truth boxes for the current image.
             for j in range(boxes.shape[0]):
 
-                if omit_neutral_boxes and not (self.data_generator.eval_neutral is None):
+                if ignore_neutral_boxes and not (self.data_generator.eval_neutral is None):
                     if not self.data_generator.eval_neutral[i][j]:
                         # If this box is not supposed to be evaluation-neutral,
                         # increment the counter for the respective class ID.
@@ -527,7 +527,7 @@ class Evaluator:
             return num_gt_per_class
 
     def match_predictions(self,
-                          omit_neutral_boxes=True,
+                          ignore_neutral_boxes=True,
                           matching_iou_threshold=0.5,
                           include_border_pixels=True,
                           sorting_algorithm='quicksort',
@@ -540,7 +540,7 @@ class Evaluator:
         Note that `predict_on_dataset()` must be called before calling this method.
 
         Arguments:
-            omit_neutral_boxes (bool, optional): In case the data generator provides annotations indicating whether a ground truth
+            ignore_neutral_boxes (bool, optional): In case the data generator provides annotations indicating whether a ground truth
                 bounding box is supposed to either count or be neutral for the evaluation, this argument decides what to do with these
                 annotations. If `False`, even boxes that are annotated as neutral will be counted into the evaluation. If `True`,
                 neutral boxes will be ignored for the evaluation. An example for evaluation-neutrality are the ground truth boxes
@@ -592,7 +592,7 @@ class Evaluator:
         for i in range(len(self.data_generator.image_ids)):
             image_id = int(self.data_generator.image_ids[i])
             labels = self.data_generator.labels[i]
-            if omit_neutral_boxes and eval_neutral_available:
+            if ignore_neutral_boxes and eval_neutral_available:
                 ground_truth[image_id] = (np.asarray(labels), np.asarray(self.data_generator.eval_neutral[i]))
             else:
                 ground_truth[image_id] = np.asarray(labels)
@@ -644,14 +644,14 @@ class Evaluator:
 
                 # The ground truth could either be a tuple with `(ground_truth_boxes, eval_neutral_boxes)`
                 # or only `ground_truth_boxes`.
-                if omit_neutral_boxes and eval_neutral_available:
+                if ignore_neutral_boxes and eval_neutral_available:
                     gt, eval_neutral = ground_truth[image_id]
                 else:
                     gt = ground_truth[image_id]
                 gt = np.asarray(gt)
                 class_mask = gt[:,class_id_gt] == class_id
                 gt = gt[class_mask]
-                if omit_neutral_boxes and eval_neutral_available:
+                if ignore_neutral_boxes and eval_neutral_available:
                     eval_neutral = eval_neutral[class_mask]
 
                 if gt.size == 0:
@@ -679,7 +679,7 @@ class Evaluator:
                     # false positives.
                     false_pos[i] = 1
                 else:
-                    if not (omit_neutral_boxes and eval_neutral_available) or (eval_neutral[gt_match_index] == False):
+                    if not (ignore_neutral_boxes and eval_neutral_available) or (eval_neutral[gt_match_index] == False):
                         # If this is not a ground truth that is supposed to be evaluation-neutral
                         # (i.e. should be skipped for the evaluation) or if we don't even have the
                         # concept of neutral boxes.
