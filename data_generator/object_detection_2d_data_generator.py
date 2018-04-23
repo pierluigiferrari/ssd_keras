@@ -374,25 +374,27 @@ class DataGenerator:
                     folder = soup.folder.text # In case we want to return the folder in addition to the image file name. Relevant for determining which dataset an image belongs to.
                     #filename = soup.filename.text
 
-                    boxes = [] # We'll store all boxes for this image here
+                    boxes = [] # We'll store all boxes for this image here.
                     eval_neutr = [] # We'll store whether a box is annotated as "difficult" here.
-                    objects = soup.find_all('object') # Get a list of all objects in this image
+                    objects = soup.find_all('object') # Get a list of all objects in this image.
 
-                    # Parse the data for each object
+                    # Parse the data for each object.
                     for obj in objects:
-                        class_name = obj.find('name').text
+                        class_name = obj.find('name', recursive=False).text
                         class_id = self.classes.index(class_name)
-                        # Check if this class is supposed to be included in the dataset
+                        # Check whether this class is supposed to be included in the dataset.
                         if (not self.include_classes == 'all') and (not class_id in self.include_classes): continue
-                        pose = obj.pose.text
-                        truncated = int(obj.truncated.text)
+                        pose = obj.find('pose', recursive=False).text
+                        truncated = int(obj.find('truncated', recursive=False).text)
                         if exclude_truncated and (truncated == 1): continue
-                        difficult = int(obj.difficult.text)
+                        difficult = int(obj.find('difficult', recursive=False).text)
                         if exclude_difficult and (difficult == 1): continue
-                        xmin = int(obj.bndbox.xmin.text)
-                        ymin = int(obj.bndbox.ymin.text)
-                        xmax = int(obj.bndbox.xmax.text)
-                        ymax = int(obj.bndbox.ymax.text)
+                        # Get the bounding box coordinates.
+                        bndbox = obj.find('bndbox', recursive=False)
+                        xmin = int(bndbox.xmin.text)
+                        ymin = int(bndbox.ymin.text)
+                        xmax = int(bndbox.xmax.text)
+                        ymax = int(bndbox.ymax.text)
                         item_dict = {'folder': folder,
                                      'image_name': filename,
                                      'image_id': image_id,
