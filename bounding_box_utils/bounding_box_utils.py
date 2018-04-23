@@ -105,7 +105,7 @@ def convert_coordinates2(tensor, start_index, conversion):
 
     return tensor1
 
-def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product'):
+def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product', include_border_pixels=True):
     '''
     Computes the intersection areas of two sets of axis-aligned 2D rectangular boxes.
 
@@ -132,6 +132,9 @@ def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product'):
             `n` boxes in `boxes2`. In 'element-wise' mode, returns a 1D array and the shapes of `boxes1` and `boxes2`
             must be boadcast-compatible. If both `boxes1` and `boxes2` have `m` boxes, then this returns an array of
             length `m` where the i-th position contains the intersection area of `boxes1[i]` with `boxes2[i]`.
+        include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
+            For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
+            x-value 367 belong to the bounding box or not.
 
     Returns:
         A 1D or 2D Numpy array (refer to the `mode` argument for details) of dtype float containing values with
@@ -171,6 +174,11 @@ def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product'):
         ymin = 2
         ymax = 3
 
+    if include_border_pixels: # Whether to include or exclude the border pixels of the boxes.
+        d = 1 # If border pixels are supposed to belong to the bounding boxes, we have to add one pixel to any difference `xmax - xmin` or `ymax - ymin`.
+    else:
+        d = -1 # If border pixels are not supposed to belong to the bounding boxes, we have to subtract one pixel from any difference `xmax - xmin` or `ymax - ymin`.
+
     # Compute the intersection areas.
 
     if mode == 'outer_product':
@@ -186,7 +194,7 @@ def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product'):
                             np.tile(np.expand_dims(boxes2[:,[xmax,ymax]], axis=0), reps=(m, 1, 1)))
 
         # Compute the side lengths of the intersection rectangles.
-        side_lengths = np.maximum(0, max_xy - min_xy)
+        side_lengths = np.maximum(0, max_xy - min_xy + d)
 
         return side_lengths[:,:,0] * side_lengths[:,:,1]
 
@@ -196,11 +204,11 @@ def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product'):
         max_xy = np.minimum(boxes1[:,[xmax,ymax]], boxes2[:,[xmax,ymax]])
 
         # Compute the side lengths of the intersection rectangles.
-        side_lengths = np.maximum(0, max_xy - min_xy)
+        side_lengths = np.maximum(0, max_xy - min_xy + d)
 
         return side_lengths[:,0] * side_lengths[:,1]
 
-def intersection_area_(boxes1, boxes2, coords='corners', mode='outer_product'):
+def intersection_area_(boxes1, boxes2, coords='corners', mode='outer_product', include_border_pixels=True):
     '''
     The same as 'intersection_area()' but for internal use, i.e. without all the safety checks.
     '''
@@ -220,6 +228,11 @@ def intersection_area_(boxes1, boxes2, coords='corners', mode='outer_product'):
         ymin = 2
         ymax = 3
 
+    if include_border_pixels: # Whether to include or exclude the border pixels of the boxes.
+        d = 1 # If border pixels are supposed to belong to the bounding boxes, we have to add one pixel to any difference `xmax - xmin` or `ymax - ymin`.
+    else:
+        d = -1 # If border pixels are not supposed to belong to the bounding boxes, we have to subtract one pixel from any difference `xmax - xmin` or `ymax - ymin`.
+
     # Compute the intersection areas.
 
     if mode == 'outer_product':
@@ -235,7 +248,7 @@ def intersection_area_(boxes1, boxes2, coords='corners', mode='outer_product'):
                             np.tile(np.expand_dims(boxes2[:,[xmax,ymax]], axis=0), reps=(m, 1, 1)))
 
         # Compute the side lengths of the intersection rectangles.
-        side_lengths = np.maximum(0, max_xy - min_xy)
+        side_lengths = np.maximum(0, max_xy - min_xy + d)
 
         return side_lengths[:,:,0] * side_lengths[:,:,1]
 
@@ -245,12 +258,12 @@ def intersection_area_(boxes1, boxes2, coords='corners', mode='outer_product'):
         max_xy = np.minimum(boxes1[:,[xmax,ymax]], boxes2[:,[xmax,ymax]])
 
         # Compute the side lengths of the intersection rectangles.
-        side_lengths = np.maximum(0, max_xy - min_xy)
+        side_lengths = np.maximum(0, max_xy - min_xy + d)
 
         return side_lengths[:,0] * side_lengths[:,1]
 
 
-def iou(boxes1, boxes2, coords='centroids', mode='outer_product'):
+def iou(boxes1, boxes2, coords='centroids', mode='outer_product', include_border_pixels=True):
     '''
     Computes the intersection-over-union similarity (also known as Jaccard similarity)
     of two sets of axis-aligned 2D rectangular boxes.
@@ -278,6 +291,9 @@ def iou(boxes1, boxes2, coords='centroids', mode='outer_product'):
             `n` boxes in `boxes2`. In 'element-wise' mode, returns a 1D array and the shapes of `boxes1` and `boxes2`
             must be boadcast-compatible. If both `boxes1` and `boxes2` have `m` boxes, then this returns an array of
             length `m` where the i-th position contains the IoU overlap of `boxes1[i]` with `boxes2[i]`.
+        include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
+            For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
+            x-value 367 belong to the bounding box or not.
 
     Returns:
         A 1D or 2D Numpy array (refer to the `mode` argument for details) of dtype float containing values in [0,1],
@@ -326,15 +342,20 @@ def iou(boxes1, boxes2, coords='centroids', mode='outer_product'):
         ymin = 2
         ymax = 3
 
+    if include_border_pixels: # Whether to include or exclude the border pixels of the boxes.
+        d = 1 # If border pixels are supposed to belong to the bounding boxes, we have to add one pixel to any difference `xmax - xmin` or `ymax - ymin`.
+    else:
+        d = -1 # If border pixels are not supposed to belong to the bounding boxes, we have to subtract one pixel from any difference `xmax - xmin` or `ymax - ymin`.
+
     if mode == 'outer_product':
 
-        boxes1_areas = np.tile(np.expand_dims((boxes1[:,xmax] - boxes1[:,xmin]) * (boxes1[:,ymax] - boxes1[:,ymin]), axis=1), reps=(1,n))
-        boxes2_areas = np.tile(np.expand_dims((boxes2[:,xmax] - boxes2[:,xmin]) * (boxes2[:,ymax] - boxes2[:,ymin]), axis=0), reps=(m,1))
+        boxes1_areas = np.tile(np.expand_dims((boxes1[:,xmax] - boxes1[:,xmin] + d) * (boxes1[:,ymax] - boxes1[:,ymin] + d), axis=1), reps=(1,n))
+        boxes2_areas = np.tile(np.expand_dims((boxes2[:,xmax] - boxes2[:,xmin] + d) * (boxes2[:,ymax] - boxes2[:,ymin] + d), axis=0), reps=(m,1))
 
     elif mode == 'element-wise':
 
-        boxes1_areas = (boxes1[:,xmax] - boxes1[:,xmin]) * (boxes1[:,ymax] - boxes1[:,ymin])
-        boxes2_areas = (boxes2[:,xmax] - boxes2[:,xmin]) * (boxes2[:,ymax] - boxes2[:,ymin])
+        boxes1_areas = (boxes1[:,xmax] - boxes1[:,xmin] + d) * (boxes1[:,ymax] - boxes1[:,ymin] + d)
+        boxes2_areas = (boxes2[:,xmax] - boxes2[:,xmin] + d) * (boxes2[:,ymax] - boxes2[:,ymin] + d)
 
     union_areas = boxes1_areas + boxes2_areas - intersection_areas
 

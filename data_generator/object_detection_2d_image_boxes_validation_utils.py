@@ -89,7 +89,8 @@ class BoxFilter:
                  overlap_criterion='center_point',
                  overlap_bounds=(0.3, 1.0),
                  min_area=16,
-                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4}):
+                 labels_format={'class_id': 0, 'xmin': 1, 'ymin': 2, 'xmax': 3, 'ymax': 4},
+                 include_border_pixels=True):
         '''
         Arguments:
             check_overlap (bool, optional): Whether or not to enforce the overlap requirements defined by
@@ -123,6 +124,9 @@ class BoxFilter:
             labels_format (dict, optional): A dictionary that defines which index in the last axis of the labels
                 of an image contains which bounding box coordinate. The dictionary maps at least the keywords
                 'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis of the labels array.
+            include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
+                For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
+                x-value 367 belong to the bounding box or not.
         '''
         if not isinstance(overlap_bounds, (list, tuple, BoundGenerator)):
             raise ValueError("`overlap_bounds` must be either a 2-tuple of scalars or a `BoundGenerator` object.")
@@ -137,6 +141,7 @@ class BoxFilter:
         self.check_min_area = check_min_area
         self.check_degenerate = check_degenerate
         self.labels_format = labels_format
+        self.include_border_pixels = include_border_pixels
 
     def __call__(self,
                  labels,
@@ -191,17 +196,21 @@ class BoxFilter:
                 # Compute the patch coordinates.
                 image_coords = np.array([0, 0, image_width, image_height])
                 # Compute the IoU between the patch and all of the ground truth boxes.
-                image_boxes_iou = iou(image_coords, labels[:, [xmin, ymin, xmax, ymax]], coords='corners', mode='element-wise')
+                image_boxes_iou = iou(image_coords, labels[:, [xmin, ymin, xmax, ymax]], coords='corners', mode='element-wise', include_border_pixels=self.include_border_pixels)
                 requirements_met *= (image_boxes_iou > lower) * (image_boxes_iou <= upper)
 
             elif self.overlap_criterion == 'area':
+                if self.include_border_pixels: # Whether to include or exclude the border pixels of the boxes.
+                    d = 1 # If border pixels are supposed to belong to the bounding boxes, we have to add one pixel to any difference `xmax - xmin` or `ymax - ymin`.
+                else:
+                    d = -1 # If border pixels are not supposed to belong to the bounding boxes, we have to subtract one pixel from any difference `xmax - xmin` or `ymax - ymin`.
                 # Compute the areas of the boxes.
-                box_areas = (labels[:,xmax] - labels[:,xmin]) * (labels[:,ymax] - labels[:,ymin])
+                box_areas = (labels[:,xmax] - labels[:,xmin] + d) * (labels[:,ymax] - labels[:,ymin] + d)
                 # Compute the intersection area between the patch and all of the ground truth boxes.
                 clipped_boxes = np.copy(labels)
                 clipped_boxes[:,[ymin,ymax]] = np.clip(labels[:,[ymin,ymax]], a_min=0, a_max=image_height-1)
                 clipped_boxes[:,[xmin,xmax]] = np.clip(labels[:,[xmin,xmax]], a_min=0, a_max=image_width-1)
-                intersection_areas = (clipped_boxes[:,xmax] - clipped_boxes[:,xmin]) * (clipped_boxes[:,ymax] - clipped_boxes[:,ymin])
+                intersection_areas = (clipped_boxes[:,xmax] - clipped_boxes[:,xmin] + d) * (clipped_boxes[:,ymax] - clipped_boxes[:,ymin] + d) # +1 because the border pixels belong to the box areas.
                 # Check which boxes meet the overlap requirements.
                 if lower == 0.0:
                     mask_lower = intersection_areas > lower * box_areas # If `self.lower == 0`, we want to make sure that boxes with area 0 don't count, hence the ">" sign instead of the ">=" sign.

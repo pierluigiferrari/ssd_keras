@@ -52,6 +52,7 @@ class SSDInputEncoder:
                  matching_type='multi',
                  pos_iou_threshold=0.5,
                  neg_iou_limit=0.3,
+                 include_border_pixels=True,
                  coords='centroids',
                  normalize_coords=True,
                  background_id=0):
@@ -78,19 +79,16 @@ class SSDInputEncoder:
                 This list must be one element longer than the number of predictor layers. The first `k` elements are the
                 scaling factors for the `k` predictor layers, while the last element is used for the second box
                 for aspect ratio 1 in the last predictor layer if `two_boxes_for_ar1` is `True`. This additional
-                last scaling factor must be passed either way, even if it is not being used.
-                Defaults to `None`. If a list is passed, this argument overrides `min_scale` and
-                `max_scale`. All scaling factors must be greater than zero. Note that you should set the scaling factors
-                such that the resulting anchor box sizes correspond to the sizes of the objects you are trying
-                to detect.
+                last scaling factor must be passed either way, even if it is not being used. If a list is passed,
+                this argument overrides `min_scale` and `max_scale`. All scaling factors must be greater than zero.
+                Note that you should set the scaling factors such that the resulting anchor box sizes correspond to
+                the sizes of the objects you are trying to detect.
             aspect_ratios_global (list, optional): The list of aspect ratios for which anchor boxes are to be
-                generated. This list is valid for all prediction layers. Defaults to [0.5, 1.0, 2.0]. Note that you should
-                set the aspect ratios such that the resulting anchor box shapes roughly correspond to the shapes of the
-                objects you are trying to detect.
+                generated. This list is valid for all prediction layers. Note that you should set the aspect ratios such
+                that the resulting anchor box shapes roughly correspond to the shapes of the objects you are trying to detect.
             aspect_ratios_per_layer (list, optional): A list containing one aspect ratio list for each prediction layer.
-                If a list is passed, it overrides `aspect_ratios_global`. Defaults to `None`. Note that you should
-                set the aspect ratios such that the resulting anchor box shapes very roughly correspond to the shapes of the
-                objects you are trying to detect.
+                If a list is passed, it overrides `aspect_ratios_global`. Note that you should set the aspect ratios such
+                that the resulting anchor box shapes very roughly correspond to the shapes of the objects you are trying to detect.
             two_boxes_for_ar1 (bool, optional): Only relevant for aspect ratios lists that contain 1. Will be ignored otherwise.
                 If `True`, two anchor boxes will be generated for aspect ratio 1. The first will be generated
                 using the scaling factor for the respective layer, the second one will be generated using
@@ -121,6 +119,9 @@ class SSDInputEncoder:
             neg_iou_limit (float, optional): The maximum allowed intersection-over-union similarity of an
                 anchor box with any ground truth box to be labeled a negative (i.e. background) box. If an
                 anchor box is neither a positive, nor a negative box, it will be ignored during training.
+            include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
+                For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
+                x-value 367 belong to the bounding box or not.
             coords (str, optional): The box coordinate format to be used internally by the model (i.e. this is not the input format
                 of the ground truth labels). Can be either 'centroids' for the format `(cx, cy, w, h)` (box center coordinates, width,
                 and height), 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`.
@@ -217,6 +218,7 @@ class SSDInputEncoder:
         self.matching_type = matching_type
         self.pos_iou_threshold = pos_iou_threshold
         self.neg_iou_limit = neg_iou_limit
+        self.include_border_pixels = include_border_pixels
         self.coords = coords
         self.normalize_coords = normalize_coords
         self.background_id = background_id
@@ -348,7 +350,7 @@ class SSDInputEncoder:
 
             # Compute the IoU similarities between all anchor boxes and all ground truth boxes for this batch item.
             # This is a matrix of shape `(num_ground_truth_boxes, num_anchor_boxes)`.
-            similarities = iou(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product')
+            similarities = iou(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', include_border_pixels=self.include_border_pixels)
 
             # First: Do bipartite matching, i.e. match each ground truth box to the one anchor box with the highest IoU.
             #        This ensures that each ground truth box will have at least one good match.
