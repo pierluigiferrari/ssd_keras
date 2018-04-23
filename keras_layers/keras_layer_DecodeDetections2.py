@@ -27,7 +27,7 @@ import keras.backend as K
 from keras.engine.topology import InputSpec
 from keras.engine.topology import Layer
 
-class DecodeDetections2(Layer):
+class DecodeDetectionsFast(Layer):
     '''
     A Keras layer to decode the raw SSD prediction output.
 
@@ -103,11 +103,11 @@ class DecodeDetections2(Layer):
         self.tf_img_width = tf.constant(self.img_width, dtype=tf.float32, name='img_width')
         self.tf_nms_max_output_size = tf.constant(self.nms_max_output_size, name='nms_max_output_size')
 
-        super(DecodeDetections2, self).__init__(**kwargs)
+        super(DecodeDetectionsFast, self).__init__(**kwargs)
 
     def build(self, input_shape):
         self.input_spec = [InputSpec(shape=input_shape)]
-        super(DecodeDetections2, self).build(input_shape)
+        super(DecodeDetectionsFast, self).build(input_shape)
 
     def call(self, y_pred, mask=None):
         '''
@@ -157,8 +157,7 @@ class DecodeDetections2(Layer):
         y_pred = tf.concat(values=[class_ids, confidences, xmin, ymin, xmax, ymax], axis=-1)
 
         #####################################################################################
-        # 2. Perform confidence thresholding, per-class non-maximum suppression, and
-        #    top-k filtering.
+        # 2. Perform confidence thresholding, non-maximum suppression, and top-k filtering.
         #####################################################################################
 
         batch_size = tf.shape(y_pred)[0] # Output dtype: tf.int32
@@ -264,5 +263,5 @@ class DecodeDetections2(Layer):
             'img_height': self.img_height,
             'img_width': self.img_width,
         }
-        base_config = super(DecodeDetections2, self).get_config()
+        base_config = super(DecodeDetectionsFast, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))

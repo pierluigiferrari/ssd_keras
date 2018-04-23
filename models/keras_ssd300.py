@@ -27,7 +27,7 @@ import keras.backend as K
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_L2Normalization import L2Normalization
 from keras_layers.keras_layer_DecodeDetections import DecodeDetections
-from keras_layers.keras_layer_DecodeDetections2 import DecodeDetections2
+from keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
 
 def ssd_300(image_size,
             n_classes,
@@ -433,15 +433,15 @@ def ssd_300(image_size,
                                                name='decoded_predictions')(predictions)
         model = Model(inputs=x, outputs=decoded_predictions)
     elif mode == 'inference_fast':
-        decoded_predictions = DecodeDetections2(confidence_thresh=confidence_thresh,
-                                                iou_threshold=iou_threshold,
-                                                top_k=top_k,
-                                                nms_max_output_size=nms_max_output_size,
-                                                coords=coords,
-                                                normalize_coords=normalize_coords,
-                                                img_height=img_height,
-                                                img_width=img_width,
-                                                name='decoded_predictions')(predictions)
+        decoded_predictions = DecodeDetectionsFast(confidence_thresh=confidence_thresh,
+                                                   iou_threshold=iou_threshold,
+                                                   top_k=top_k,
+                                                   nms_max_output_size=nms_max_output_size,
+                                                   coords=coords,
+                                                   normalize_coords=normalize_coords,
+                                                   img_height=img_height,
+                                                   img_width=img_width,
+                                                   name='decoded_predictions')(predictions)
         model = Model(inputs=x, outputs=decoded_predictions)
     else:
         raise ValueError("`mode` must be one of 'training', 'inference' or 'inference_fast', but received '{}'.".format(mode))
