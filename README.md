@@ -49,7 +49,7 @@ Here are the mAP evaluation results of the ported weights and below that the eva
   </tr>
   <tr>
     <td><b>SSD300</td>
-    <td align=center><b>77.6</td>
+    <td align=center><b>77.5</td>
     <td align=center><b>81.2</td>
     <td align=center><b>79.4</td>
   </tr>
@@ -73,12 +73,12 @@ Training an SSD300 from scratch to convergence on Pascal VOC 2007 `trainval` and
   <tr>
     <td><b>SSD300 "07+12"</td>
     <td align=center width="26%"><b>0.772</td>
-    <td align=center width="26%"><b>0.776</td>
+    <td align=center width="26%"><b>0.775</td>
     <td align=center width="26%"><b><a href="https://drive.google.com/file/d/1-MYYaZbIHNPtI2zzklgVBAjssbP06BeA/view">0.771</a></td>
   </tr>
 </table>
 
-The models achieve the following average number of frames per second (FPS) on Pascal VOC on an NVIDIA GeForce GTX 1070 mobile (i.e. the laptop version). Note that the benchmark prediction speeds of the original Caffe implementation were achieved using a faster TitanX GPU. The first number (FPS) is the prediction speed using the same process as the original Caffe implementation for decoding and filtering the raw model output, while the second number (FPS Fast Mode) is the prediction speed using a more efficient filtering process.
+The models achieve the following average number of frames per second (FPS) on Pascal VOC on an NVIDIA GeForce GTX 1070 mobile (i.e. the laptop version). Note that the benchmark prediction speeds of the original Caffe implementation were achieved using a faster TitanX GPU. The first number (FPS) is the prediction speed using the same process as the original Caffe implementation for decoding and filtering the raw model output, while the second number (FPS Fast Mode) is the prediction speed using a filtering process that is more efficient but less accurate.
 
 <table width>
   <tr>
