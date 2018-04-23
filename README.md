@@ -228,8 +228,7 @@ If you want to fine-tune one of the provided trained models on your own dataset,
 The following things are on the to-do list, ranked by priority. Contributions are welcome, but please read the [contributing guidelines](CONTRIBUTING.md).
 
 1. Add model definitions and trained weights for SSDs based on other base networks such as MobileNet, InceptionResNetV2, or DenseNet.
-2. Add support for the Theano and CNTK backends. Probably easy to do: Just requires porting the custom layers and the loss function from TensorFlow to the abstract Keras backend.
-3. Write an mAP evaluation Python module for Pascal VOC. Use the official Matlab evaluation code from the Pascal VOC development kit in the meantime.
+2. Add support for the Theano and CNTK backends. Requires porting the custom layers and the loss function from TensorFlow to the abstract Keras backend.
 
 Currently in the works:
 
