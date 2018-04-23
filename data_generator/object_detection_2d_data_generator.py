@@ -27,6 +27,7 @@ from copy import deepcopy
 from PIL import Image
 import csv
 import os
+import sys
 from tqdm import tqdm
 try:
     import json
@@ -361,7 +362,7 @@ class DataGenerator:
                 self.image_ids += image_ids
 
             # Loop over all images in this dataset.
-            for image_id in tqdm(image_ids, desc=os.path.basename(image_set_filename)):
+            for image_id in tqdm(image_ids, desc=os.path.basename(image_set_filename), file=sys.stdout):
 
                 filename = '{}'.format(image_id) + '.jpg'
                 self.filenames.append(os.path.join(images_dir, filename))
