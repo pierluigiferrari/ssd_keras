@@ -18,6 +18,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
+from __future__ import division
+import numpy as np
 from math import ceil
 from tqdm import trange
 import sys
@@ -341,7 +343,7 @@ class Evaluator:
         #############################################################################################
 
         # We have to generate a separate results list for each class.
-        results = [list() for _ in range(n_classes + 1)]
+        results = [list() for _ in range(self.n_classes + 1)]
 
         # Create a dictionary that maps image IDs to ground truth annotations.
         # We'll need it below.
@@ -406,7 +408,7 @@ class Evaluator:
                     # Append the predicted box to the results list for its class.
                     results[class_id].append(prediction)
 
-        for i in range(n_classes + 1):
+        for i in range(self.n_classes + 1):
             results[i] = np.asarray(results[i])
 
         self.prediction_results = results
