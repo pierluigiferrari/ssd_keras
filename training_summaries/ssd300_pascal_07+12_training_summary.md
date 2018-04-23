@@ -5,7 +5,7 @@ This is a summary of the training of an SSD300 on the Pascal VOC 2007 `trainval`
 
 Since neither the SSD paper nor the GitHub repository of the original Caffe SSD implementation state details on the training progress, but only the final evaluation results, maybe some will find the loss curves and intermediate mAP evaluation results provided here helpful for comparison with their own training.
 
-What you see below are the training results of running the [`ssd300_training.ipynb`](../ssd300_training.ipynb) notebook as is, in which all parameters are already preset to replicate the training configuration of the original SSD300 "07+12" model, except for one small change: I occasionally ran into `OOM` errors at batch size 32, so I trained with batch size 31.
+What you see below are the training results of running the [`ssd300_training.ipynb`](../ssd300_training.ipynb) notebook as is, in which all parameters are already preset to replicate the training configuration of the original SSD300 "07+12" model. I just made one small change: I occasionally ran into `OOM` errors at batch size 32, so I trained with batch size 31.
 
 Important note about the data shown below:
 
@@ -17,7 +17,7 @@ What you see below are the training and validation loss every 1,000 training ste
 
 ![loss_history](ssd300_pascal_07+12_loss_history.png)
 
-### mAP
+### Mean Average Precision
 
 Here are the intermediate and final mAP values on Pascal VOC 2007 `test`, evaluated using the official Pascal VOCdevkit 2007 Matlab evaluation code. The table shows the best values after every 20,000 training steps. Once again, the progress may be slower depending on how the early phase of the training is going. In another training I started with the same configuration, I got an mAP of only 0.665 after the first 20,000 training steps. The full model after 102,000 training steps can be downloaded [here](https://drive.google.com/open?id=1-MYYaZbIHNPtI2zzklgVBAjssbP06BeA).
 
