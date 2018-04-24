@@ -1,6 +1,6 @@
 '''
-An evaluator to compute the Pascal VOC-style mean average precision
-of a given Keras SSD model on a given dataset.
+An evaluator to compute the Pascal VOC-style mean average precision (both the pre-2010
+and post-2010 algorithm versions) of a given Keras SSD model on a given dataset.
 
 Copyright (C) 2018 Pierluigi Ferrari
 
@@ -37,6 +37,9 @@ from bounding_box_utils.bounding_box_utils import iou
 class Evaluator:
     '''
     Computes the mean average precision of the given Keras SSD model on the given dataset.
+
+    Can compute the Pascal-VOC-style average precision in both the pre-2010 (k-point sampling)
+    and post-2010 (integration) algorithm versions.
 
     Optionally also returns the averages precisions, precisions, and recalls.
 
@@ -101,6 +104,7 @@ class Evaluator:
                  matching_iou_threshold=0.5,
                  include_border_pixels=True,
                  sorting_algorithm='quicksort',
+                 average_precision_mode='sample',
                  num_recall_points=11,
                  ignore_neutral_boxes=True,
                  return_precisions=False,
@@ -141,6 +145,12 @@ class Evaluator:
                 The official Matlab evaluation algorithm uses a stable sorting algorithm, so this algorithm is only guaranteed
                 to behave identically if you choose 'mergesort' as the sorting algorithm, but it will almost always behave identically
                 even if you choose 'quicksort' (but no guarantees).
+            average_precision_mode (str, optional): Can be either 'sample' or 'integrate'. In the case of 'sample', the average precision
+                will be computed according to the Pascal VOC formula that was used up until VOC 2009, where the precision will be sampled
+                for `num_recall_points` recall values. In the case of 'integrate', the average precision will be computed according to the
+                Pascal VOC formula that was used from VOC 2010 onward, where the average precision will be computed by numerically integrating
+                over the whole preciscion-recall curve instead of sampling individual points from it. 'integrate' mode is basically just
+                the limit case of 'sample' mode as the number of sample points increases.
             num_recall_points (int, optional): The number of points to sample from the precision-recall-curve to compute the average
                 precisions. In other words, this is the number of equidistant recall values for which the resulting precision will be
                 computed. 11 points is the value used in the official Pascal VOC 2007 detection evaluation algorithm.
@@ -222,7 +232,10 @@ class Evaluator:
         # Compute the average precision for this class.
         #############################################################################################
 
-        self.compute_average_precisions(num_recall_points=num_recall_points, verbose=verbose, ret=False)
+        self.compute_average_precisions(mode=average_precision_mode,
+                                        num_recall_points=num_recall_points,
+                                        verbose=verbose,
+                                        ret=False)
 
         #############################################################################################
         # Compute the mean average precision.
@@ -766,25 +779,40 @@ class Evaluator:
         if ret:
             return cumulative_precisions, cumulative_recalls
 
-    def compute_average_precisions(self, num_recall_points=11, verbose=True, ret=False):
+    def compute_average_precisions(self, mode='sample', num_recall_points=11, verbose=True, ret=False):
         '''
         Computes the average precision for each class.
+
+        Can compute the Pascal-VOC-style average precision in both the pre-2010 (k-point sampling)
+        and post-2010 (integration) algorithm versions.
 
         Note that `compute_precision_recall()` must be called before calling this method.
 
         Arguments:
-            num_recall_points (int, optional): The number of points to sample from the precision-recall-curve to compute the average
-                precisions. In other words, this is the number of equidistant recall values for which the resulting precision will be
-                computed. 11 points is the value used in the official Pascal VOC 2007 detection evaluation algorithm.
+            mode (str, optional): Can be either 'sample' or 'integrate'. In the case of 'sample', the average precision will be computed
+                according to the Pascal VOC formula that was used up until VOC 2009, where the precision will be sampled for `num_recall_points`
+                recall values. In the case of 'integrate', the average precision will be computed according to the Pascal VOC formula that
+                was used from VOC 2010 onward, where the average precision will be computed by numerically integrating over the whole
+                preciscion-recall curve instead of sampling individual points from it. 'integrate' mode is basically just the limit case
+                of 'sample' mode as the number of sample points increases. For details, see the references below.
+            num_recall_points (int, optional): Only relevant if mode is 'sample'. The number of points to sample from the precision-recall-curve
+                to compute the average precisions. In other words, this is the number of equidistant recall values for which the resulting
+                precision will be computed. 11 points is the value used in the official Pascal VOC 2007 detection evaluation algorithm.
             verbose (bool, optional): If `True`, will print out the progress during runtime.
             ret (bool, optional): If `True`, returns the average precisions.
 
         Returns:
             None by default. Optionally, a list containing average precision for each class.
+
+        References:
+            http://host.robots.ox.ac.uk/pascal/VOC/voc2012/htmldoc/devkit_doc.html#sec:ap
         '''
 
         if (self.cumulative_precisions is None) or (self.cumulative_recalls is None):
             raise ValueError("Precisions and recalls not available. You must run `compute_precision_recall()` before you call this method.")
+
+        if not (mode in {'sample', 'integrate'}):
+            raise ValueError("`mode` can be either 'sample' or 'integrate', but received '{}'".format(mode))
 
         average_precisions = [0.0]
 
@@ -798,18 +826,54 @@ class Evaluator:
             cumulative_recall = self.cumulative_recalls[class_id]
             average_precision = 0.0
 
-            for t in np.linspace(start=0, stop=1, num=num_recall_points, endpoint=True):
+            if mode == 'sample':
 
-                cum_prec_recall_greater_t = cumulative_precision[cumulative_recall >= t]
+                for t in np.linspace(start=0, stop=1, num=num_recall_points, endpoint=True):
 
-                if cum_prec_recall_greater_t.size == 0:
-                    precision = 0.0
-                else:
-                    precision = np.amax(cum_prec_recall_greater_t)
+                    cum_prec_recall_greater_t = cumulative_precision[cumulative_recall >= t]
 
-                average_precision += precision
+                    if cum_prec_recall_greater_t.size == 0:
+                        precision = 0.0
+                    else:
+                        precision = np.amax(cum_prec_recall_greater_t)
 
-            average_precision /= num_recall_points
+                    average_precision += precision
+
+                average_precision /= num_recall_points
+
+            elif mode == 'integrate':
+
+                # We will compute the precision at all unique recall values.
+                unique_recalls, unique_recall_indices, unique_recall_counts = np.unique(cumulative_recall, return_index=True, return_counts=True)
+
+                # Store the maximal precision for each recall value and the absolute difference
+                # between any two unique recal values in the lists below. The products of these
+                # two nummbers constitute the rectangular areas whose sum will be our numerical
+                # integral.
+                maximal_precisions = np.zeros_like(unique_recalls)
+                recall_deltas = np.zeros_like(unique_recalls)
+
+                # Iterate over all unique recall values in reverse order. This saves a lot of computation:
+                # For each unique recall value `r`, we want to get the maximal precision value obtained
+                # for any recall value `r* >= r`. Once we know the maximal precision for the last `k` recall
+                # values after a given iteration, then in the next iteration, in order compute the maximal
+                # precisions for the last `l > k` recall values, we only need to compute the maximal precision
+                # for `l - k` recall values and then take the maximum between that and the previously computed
+                # maximum instead of computing the maximum over all `l` values.
+                # We skip the very last recall value, since the precision after between the last recall value
+                # recall 1.0 is defined to be zero.
+                for i in range(len(unique_recalls)-2, -1, -1):
+                    begin = unique_recall_indices[i]
+                    end   = unique_recall_indices[i + 1]
+                    # When computing the maximal precisions, use the maximum of the previous iteration to
+                    # avoid unnecessary repeated computation over the same precision values.
+                    # The maximal precisions are the heights of the rectangle areas of our integral under
+                    # the precision-recall curve.
+                    maximal_precisions[i] = np.maximum(np.amax(cumulative_precision[begin:end]), maximal_precisions[i + 1])
+                    # The differences between two adjacent recall values are the widths of our rectangle areas.
+                    recall_deltas[i] = unique_recalls[i + 1] - unique_recalls[i]
+
+                average_precision = np.sum(maximal_precisions * recall_deltas)
 
             average_precisions.append(average_precision)
 
