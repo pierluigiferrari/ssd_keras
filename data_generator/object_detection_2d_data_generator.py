@@ -215,7 +215,7 @@ class DataGenerator:
                 Defaults to `False`.
 
         Returns:
-            None by default, optionally the image filenames and labels.
+            None by default, optionally the image filenames, labels, and image IDs.
         '''
 
         # Set class members.
@@ -230,6 +230,7 @@ class DataGenerator:
 
         # Erase data that might have been parsed before
         self.filenames = []
+        self.image_ids = []
         self.labels = []
 
         # First, just read in the CSV file lines and sort them.
@@ -253,6 +254,7 @@ class DataGenerator:
         # we can compile the actual samples and labels lists
 
         current_file = data[0][0] # The current image for which we're collecting the ground truth boxes
+        current_image_id = data[0][0].split('.')[0] # The image ID will be the portion of the image name before the first dot.
         current_labels = [] # The list where we collect all ground truth boxes for a given image
         add_to_dataset = False
         for i, box in enumerate(data):
@@ -265,20 +267,25 @@ class DataGenerator:
                         if p >= (1-random_sample):
                             self.labels.append(np.stack(current_labels, axis=0))
                             self.filenames.append(os.path.join(self.images_dir, current_file))
+                            self.image_ids.append(current_image_id)
                     else:
                         self.labels.append(np.stack(current_labels, axis=0))
                         self.filenames.append(os.path.join(self.images_dir, current_file))
+                        self.image_ids.append(current_image_id)
             else: # If this box belongs to a new image file
                 if random_sample: # In case we're not using the full dataset, but a random sample of it.
                     p = np.random.uniform(0,1)
                     if p >= (1-random_sample):
                         self.labels.append(np.stack(current_labels, axis=0))
                         self.filenames.append(os.path.join(self.images_dir, current_file))
+                        self.image_ids.append(current_image_id)
                 else:
                     self.labels.append(np.stack(current_labels, axis=0))
                     self.filenames.append(os.path.join(self.images_dir, current_file))
+                    self.image_ids.append(current_image_id)
                 current_labels = [] # Reset the labels list because this is a new file.
                 current_file = box[0]
+                current_image_id = box[0].split('.')[0]
                 current_labels.append(box[1:])
                 if i == len(data)-1: # If this is the last line of the CSV file
                     if random_sample: # In case we're not using the full dataset, but a random sample of it.
@@ -286,12 +293,14 @@ class DataGenerator:
                         if p >= (1-random_sample):
                             self.labels.append(np.stack(current_labels, axis=0))
                             self.filenames.append(os.path.join(self.images_dir, current_file))
+                            self.image_ids.append(current_image_id)
                     else:
                         self.labels.append(np.stack(current_labels, axis=0))
                         self.filenames.append(os.path.join(self.images_dir, current_file))
+                        self.image_ids.append(current_image_id)
 
         if ret: # In case we want to return these
-            return self.filenames, self.labels
+            return self.filenames, self.labels, self.image_ids
 
     def parse_xml(self,
                   images_dirs,
