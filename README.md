@@ -148,8 +148,8 @@ How to use one of the provided trained models for transfer learning on your own 
 * [Read below](#how-to-fine-tune-one-of-the-trained-models-on-your-own-dataset)
 
 How to evaluate a trained model:
+* In general: [`ssd300_evaluation.ipynb`](ssd300_evaluation.ipynb)
 * On MS COCO: [`ssd300_evaluation_COCO.ipynb`](ssd300_evaluation_COCO.ipynb)
-* On Pascal VOC: [`ssd300_evaluation_Pascal_VOC.ipynb`](ssd300_evaluation_Pascal_VOC.ipynb)
 
 How to use the data generator:
 * The data generator used here has its own repository with a detailed tutorial [here](https://github.com/pierluigiferrari/data_generator_object_detection_2d)
