@@ -218,7 +218,6 @@ class Evaluator:
                                matching_iou_threshold=matching_iou_threshold,
                                include_border_pixels=include_border_pixels,
                                sorting_algorithm=sorting_algorithm,
-                               pred_format={'image_id': 0, 'conf': 1, 'xmin': 2, 'ymin': 3, 'xmax': 4, 'ymax': 5},
                                verbose=verbose,
                                ret=False)
 
@@ -404,7 +403,7 @@ class Evaluator:
             # Iterate over all batch items.
             for k, batch_item in enumerate(y_pred):
 
-                image_id = int(batch_image_ids[k])
+                image_id = batch_image_ids[k]
 
                 for box in batch_item:
                     class_id = int(box[class_id_pred])
@@ -417,12 +416,9 @@ class Evaluator:
                     ymin = round(box[ymin_pred], 1)
                     xmax = round(box[xmax_pred], 1)
                     ymax = round(box[ymax_pred], 1)
-                    prediction = [image_id, confidence, xmin, ymin, xmax, ymax]
+                    prediction = (image_id, confidence, xmin, ymin, xmax, ymax)
                     # Append the predicted box to the results list for its class.
                     results[class_id].append(prediction)
-
-        for i in range(self.n_classes + 1):
-            results[i] = np.asarray(results[i])
 
         self.prediction_results = results
 
@@ -546,7 +542,6 @@ class Evaluator:
                           matching_iou_threshold=0.5,
                           include_border_pixels=True,
                           sorting_algorithm='quicksort',
-                          pred_format={'image_id': 0, 'conf': 1, 'xmin': 2, 'ymin': 3, 'xmax': 4, 'ymax': 5},
                           verbose=True,
                           ret=False):
         '''
@@ -571,8 +566,6 @@ class Evaluator:
                 The official Matlab evaluation algorithm uses a stable sorting algorithm, so this algorithm is only guaranteed
                 to behave identically if you choose 'mergesort' as the sorting algorithm, but it will almost always behave identically
                 even if you choose 'quicksort' (but no guarantees).
-            pred_format (dict, optional): In what format to expect the predictions. This argument usually doesn't need be touched,
-                because the default setting matches what `predict_on_dataset()` outputs.
             verbose (bool, optional): If `True`, will print out the progress during runtime.
             ret (bool, optional): If `True`, returns the true and false positives.
 
@@ -587,13 +580,6 @@ class Evaluator:
         if self.prediction_results is None:
             raise ValueError("There are no prediction results. You must run `predict_on_dataset()` before calling this method.")
 
-        image_id_pred = pred_format['image_id']
-        conf_pred = pred_format['conf']
-        xmin_pred = pred_format['xmin']
-        ymin_pred = pred_format['ymin']
-        xmax_pred = pred_format['xmax']
-        ymax_pred = pred_format['ymax']
-
         class_id_gt = self.gt_format['class_id']
         xmin_gt = self.gt_format['xmin']
         ymin_gt = self.gt_format['ymin']
@@ -605,7 +591,7 @@ class Evaluator:
         ground_truth = {}
         eval_neutral_available = not (self.data_generator.eval_neutral is None) # Whether or not we have annotations to decide whether ground truth boxes should be neutral or not.
         for i in range(len(self.data_generator.image_ids)):
-            image_id = int(self.data_generator.image_ids[i])
+            image_id = str(self.data_generator.image_ids[i])
             labels = self.data_generator.labels[i]
             if ignore_neutral_boxes and eval_neutral_available:
                 ground_truth[image_id] = (np.asarray(labels), np.asarray(self.data_generator.eval_neutral[i]))
@@ -623,25 +609,39 @@ class Evaluator:
             predictions = self.prediction_results[class_id]
 
             # Store the matching results in these lists:
-            true_pos = np.zeros(predictions.shape[0], dtype=np.int) # 1 for every prediction that is a true positive, 0 otherwise
-            false_pos = np.zeros(predictions.shape[0], dtype=np.int) # 1 for every prediction that is a false positive, 0 otherwise
+            true_pos = np.zeros(len(predictions), dtype=np.int) # 1 for every prediction that is a true positive, 0 otherwise
+            false_pos = np.zeros(len(predictions), dtype=np.int) # 1 for every prediction that is a false positive, 0 otherwise
 
             # In case there are no predictions at all for this class, we're done here.
-            if predictions.size == 0:
+            if len(predictions) == 0:
                 print("No predictions for class {}/{}".format(class_id, self.n_classes))
                 true_positives.append(true_pos)
                 false_positives.append(false_pos)
                 continue
 
+            # Convert the predictions list for this class into a structured array so that we can sort it by confidence.
+
+            # Get the number of characters needed to store the image ID strings in the structured array.
+            num_chars_per_image_id = len(str(predictions[0][0])) + 6 # Keep a few characters buffer in case some image IDs are longer than others.
+            # Create the data type for the structured array.
+            preds_data_type = np.dtype([('image_id', 'U{}'.format(num_chars_per_image_id)),
+                                        ('confidence', 'f4'),
+                                        ('xmin', 'f4'),
+                                        ('ymin', 'f4'),
+                                        ('xmax', 'f4'),
+                                        ('ymax', 'f4')])
+            # Create the structured array
+            predictions = np.array(predictions, dtype=preds_data_type)
+
             # Sort the detections by decreasing confidence.
-            descending_indices = np.argsort(-predictions[:, conf_pred], axis=0, kind=sorting_algorithm)
+            descending_indices = np.argsort(-predictions['confidence'], kind=sorting_algorithm)
             predictions_sorted = predictions[descending_indices]
 
             if verbose:
-                tr = trange(predictions.shape[0], file=sys.stdout)
+                tr = trange(len(predictions), file=sys.stdout)
                 tr.set_description("Matching predictions to ground truth, class {}/{}.".format(class_id, self.n_classes))
             else:
-                tr = range(predictions.shape[0])
+                tr = range(len(predictions.shape))
 
             # Keep track of which ground truth boxes were already matched to a detection.
             gt_matched = {}
@@ -650,8 +650,8 @@ class Evaluator:
             for i in tr:
 
                 prediction = predictions_sorted[i]
-                image_id = int(prediction[image_id_pred])
-                pred_box = np.asarray(prediction[[conf_pred, xmin_pred, ymin_pred, xmax_pred, ymax_pred]], dtype=np.float)
+                image_id = prediction['image_id']
+                pred_box = np.asarray(list(prediction[['xmin', 'ymin', 'xmax', 'ymax']])) # Convert the structured array element to a regular array.
 
                 # Get the relevant ground truth boxes for this prediction,
                 # i.e. all ground truth boxes that match the prediction's
@@ -677,7 +677,7 @@ class Evaluator:
 
                 # Compute the IoU of this prediction with all ground truth boxes of the same class.
                 overlaps = iou(boxes1=gt[:,[xmin_gt, ymin_gt, xmax_gt, ymax_gt]],
-                               boxes2=pred_box[1:],
+                               boxes2=pred_box,
                                coords='corners',
                                mode='element-wise',
                                include_border_pixels=include_border_pixels)
