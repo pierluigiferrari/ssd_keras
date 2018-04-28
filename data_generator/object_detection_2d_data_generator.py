@@ -211,7 +211,7 @@ class DataGenerator:
             self.eval_neutral = None
 
         if not hdf5_dataset_path is None:
-            self.hdf5_dataset_path = file_path
+            self.hdf5_dataset_path = hdf5_dataset_path
             self.load_hdf5_dataset(verbose=verbose)
         else:
             self.hdf5_dataset = None
