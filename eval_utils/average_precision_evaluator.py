@@ -797,7 +797,7 @@ class Evaluator:
                 of 'sample' mode as the number of sample points increases. For details, see the references below.
             num_recall_points (int, optional): Only relevant if mode is 'sample'. The number of points to sample from the precision-recall-curve
                 to compute the average precisions. In other words, this is the number of equidistant recall values for which the resulting
-                precision will be computed. 11 points is the value used in the official Pascal VOC 2007 detection evaluation algorithm.
+                precision will be computed. 11 points is the value used in the official Pascal VOC pre-2010 detection evaluation algorithm.
             verbose (bool, optional): If `True`, will print out the progress during runtime.
             ret (bool, optional): If `True`, returns the average precisions.
 
