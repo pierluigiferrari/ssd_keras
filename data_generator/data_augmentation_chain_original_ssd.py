@@ -80,7 +80,8 @@ class SSDRandomCrop:
         # meets the requirements defined by `bound_generator`.
         self.image_validator = ImageValidator(overlap_criterion='iou',
                                               n_boxes_min=1,
-                                              labels_format=self.labels_format)
+                                              labels_format=self.labels_format,
+                                              border_pixels='half')
 
         # Performs crops according to the parameters set in the objects above.
         # Runs until either a valid patch is found or the original input image

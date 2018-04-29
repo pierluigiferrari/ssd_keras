@@ -236,10 +236,10 @@ class AnchorBoxes(Layer):
         # TODO: Implement box limiting directly for `(cx, cy, w, h)` so that we don't have to unnecessarily convert back and forth.
         if self.coords == 'centroids':
             # Convert `(xmin, ymin, xmax, ymax)` back to `(cx, cy, w, h)`.
-            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2centroids')
+            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2centroids', border_pixels='half')
         elif self.coords == 'minmax':
             # Convert `(xmin, ymin, xmax, ymax)` to `(xmin, xmax, ymin, ymax).
-            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2minmax')
+            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2minmax', border_pixels='half')
 
         # Create a tensor to contain the variances and append it to `boxes_tensor`. This tensor has the same shape
         # as `boxes_tensor` and simply contains the same 4 variance values for every position in the last axis.

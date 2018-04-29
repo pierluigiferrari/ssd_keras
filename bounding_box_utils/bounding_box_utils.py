@@ -22,7 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import division
 import numpy as np
 
-def convert_coordinates(tensor, start_index, conversion):
+def convert_coordinates(tensor, start_index, conversion, border_pixels='half'):
     '''
     Convert coordinates for axis-aligned 2D boxes between two coordinate formats.
 
@@ -39,19 +39,31 @@ def convert_coordinates(tensor, start_index, conversion):
         conversion (str, optional): The conversion direction. Can be 'minmax2centroids',
             'centroids2minmax', 'corners2centroids', 'centroids2corners', 'minmax2corners',
             or 'corners2minmax'.
+        border_pixels (str, optional): How to treat the border pixels of the bounding boxes.
+            Can be 'include', 'exclude', or 'half'. If 'include', the border pixels belong
+            to the boxes. If 'exclude', the border pixels do not belong to the boxes.
+            If 'half', then one of each of the two horizontal and vertical borders belong
+            to the boxex, but not the other.
 
     Returns:
         A Numpy nD array, a copy of the input tensor with the converted coordinates
         in place of the original coordinates and the unaltered elements of the original
         tensor elsewhere.
     '''
+    if border_pixels == 'half':
+        d = 0
+    elif border_pixels == 'include':
+        d = 1
+    elif border_pixels == 'exclude':
+        d = -1
+
     ind = start_index
     tensor1 = np.copy(tensor).astype(np.float)
     if conversion == 'minmax2centroids':
         tensor1[..., ind] = (tensor[..., ind] + tensor[..., ind+1]) / 2.0 # Set cx
         tensor1[..., ind+1] = (tensor[..., ind+2] + tensor[..., ind+3]) / 2.0 # Set cy
-        tensor1[..., ind+2] = tensor[..., ind+1] - tensor[..., ind] # Set w
-        tensor1[..., ind+3] = tensor[..., ind+3] - tensor[..., ind+2] # Set h
+        tensor1[..., ind+2] = tensor[..., ind+1] - tensor[..., ind] + d # Set w
+        tensor1[..., ind+3] = tensor[..., ind+3] - tensor[..., ind+2] + d # Set h
     elif conversion == 'centroids2minmax':
         tensor1[..., ind] = tensor[..., ind] - tensor[..., ind+2] / 2.0 # Set xmin
         tensor1[..., ind+1] = tensor[..., ind] + tensor[..., ind+2] / 2.0 # Set xmax
@@ -60,8 +72,8 @@ def convert_coordinates(tensor, start_index, conversion):
     elif conversion == 'corners2centroids':
         tensor1[..., ind] = (tensor[..., ind] + tensor[..., ind+2]) / 2.0 # Set cx
         tensor1[..., ind+1] = (tensor[..., ind+1] + tensor[..., ind+3]) / 2.0 # Set cy
-        tensor1[..., ind+2] = tensor[..., ind+2] - tensor[..., ind] # Set w
-        tensor1[..., ind+3] = tensor[..., ind+3] - tensor[..., ind+1] # Set h
+        tensor1[..., ind+2] = tensor[..., ind+2] - tensor[..., ind] + d # Set w
+        tensor1[..., ind+3] = tensor[..., ind+3] - tensor[..., ind+1] + d # Set h
     elif conversion == 'centroids2corners':
         tensor1[..., ind] = tensor[..., ind] - tensor[..., ind+2] / 2.0 # Set xmin
         tensor1[..., ind+1] = tensor[..., ind+1] - tensor[..., ind+3] / 2.0 # Set ymin
@@ -105,7 +117,7 @@ def convert_coordinates2(tensor, start_index, conversion):
 
     return tensor1
 
-def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product', include_border_pixels=True):
+def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product', border_pixels='half'):
     '''
     Computes the intersection areas of two sets of axis-aligned 2D rectangular boxes.
 
@@ -132,9 +144,11 @@ def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product', 
             `n` boxes in `boxes2`. In 'element-wise' mode, returns a 1D array and the shapes of `boxes1` and `boxes2`
             must be boadcast-compatible. If both `boxes1` and `boxes2` have `m` boxes, then this returns an array of
             length `m` where the i-th position contains the intersection area of `boxes1[i]` with `boxes2[i]`.
-        include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
-            For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
-            x-value 367 belong to the bounding box or not.
+        border_pixels (str, optional): How to treat the border pixels of the bounding boxes.
+            Can be 'include', 'exclude', or 'half'. If 'include', the border pixels belong
+            to the boxes. If 'exclude', the border pixels do not belong to the boxes.
+            If 'half', then one of each of the two horizontal and vertical borders belong
+            to the boxex, but not the other.
 
     Returns:
         A 1D or 2D Numpy array (refer to the `mode` argument for details) of dtype float containing values with
@@ -174,9 +188,11 @@ def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product', 
         ymin = 2
         ymax = 3
 
-    if include_border_pixels: # Whether to include or exclude the border pixels of the boxes.
+    if border_pixels == 'half':
+        d = 0
+    elif border_pixels == 'include':
         d = 1 # If border pixels are supposed to belong to the bounding boxes, we have to add one pixel to any difference `xmax - xmin` or `ymax - ymin`.
-    else:
+    elif border_pixels == 'exclude':
         d = -1 # If border pixels are not supposed to belong to the bounding boxes, we have to subtract one pixel from any difference `xmax - xmin` or `ymax - ymin`.
 
     # Compute the intersection areas.
@@ -208,7 +224,7 @@ def intersection_area(boxes1, boxes2, coords='centroids', mode='outer_product', 
 
         return side_lengths[:,0] * side_lengths[:,1]
 
-def intersection_area_(boxes1, boxes2, coords='corners', mode='outer_product', include_border_pixels=True):
+def intersection_area_(boxes1, boxes2, coords='corners', mode='outer_product', border_pixels='half'):
     '''
     The same as 'intersection_area()' but for internal use, i.e. without all the safety checks.
     '''
@@ -228,9 +244,11 @@ def intersection_area_(boxes1, boxes2, coords='corners', mode='outer_product', i
         ymin = 2
         ymax = 3
 
-    if include_border_pixels: # Whether to include or exclude the border pixels of the boxes.
+    if border_pixels == 'half':
+        d = 0
+    elif border_pixels == 'include':
         d = 1 # If border pixels are supposed to belong to the bounding boxes, we have to add one pixel to any difference `xmax - xmin` or `ymax - ymin`.
-    else:
+    elif border_pixels == 'exclude':
         d = -1 # If border pixels are not supposed to belong to the bounding boxes, we have to subtract one pixel from any difference `xmax - xmin` or `ymax - ymin`.
 
     # Compute the intersection areas.
@@ -263,7 +281,7 @@ def intersection_area_(boxes1, boxes2, coords='corners', mode='outer_product', i
         return side_lengths[:,0] * side_lengths[:,1]
 
 
-def iou(boxes1, boxes2, coords='centroids', mode='outer_product', include_border_pixels=True):
+def iou(boxes1, boxes2, coords='centroids', mode='outer_product', border_pixels='half'):
     '''
     Computes the intersection-over-union similarity (also known as Jaccard similarity)
     of two sets of axis-aligned 2D rectangular boxes.
@@ -291,9 +309,11 @@ def iou(boxes1, boxes2, coords='centroids', mode='outer_product', include_border
             `n` boxes in `boxes2`. In 'element-wise' mode, returns a 1D array and the shapes of `boxes1` and `boxes2`
             must be boadcast-compatible. If both `boxes1` and `boxes2` have `m` boxes, then this returns an array of
             length `m` where the i-th position contains the IoU overlap of `boxes1[i]` with `boxes2[i]`.
-        include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
-            For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
-            x-value 367 belong to the bounding box or not.
+        border_pixels (str, optional): How to treat the border pixels of the bounding boxes.
+            Can be 'include', 'exclude', or 'half'. If 'include', the border pixels belong
+            to the boxes. If 'exclude', the border pixels do not belong to the boxes.
+            If 'half', then one of each of the two horizontal and vertical borders belong
+            to the boxex, but not the other.
 
     Returns:
         A 1D or 2D Numpy array (refer to the `mode` argument for details) of dtype float containing values in [0,1],
@@ -342,9 +362,11 @@ def iou(boxes1, boxes2, coords='centroids', mode='outer_product', include_border
         ymin = 2
         ymax = 3
 
-    if include_border_pixels: # Whether to include or exclude the border pixels of the boxes.
+    if border_pixels == 'half':
+        d = 0
+    elif border_pixels == 'include':
         d = 1 # If border pixels are supposed to belong to the bounding boxes, we have to add one pixel to any difference `xmax - xmin` or `ymax - ymin`.
-    else:
+    elif border_pixels == 'exclude':
         d = -1 # If border pixels are not supposed to belong to the bounding boxes, we have to subtract one pixel from any difference `xmax - xmin` or `ymax - ymin`.
 
     if mode == 'outer_product':

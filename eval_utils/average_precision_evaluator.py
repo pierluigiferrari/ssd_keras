@@ -1,4 +1,4 @@
-'''
+border_pixels='include''''
 An evaluator to compute the Pascal VOC-style mean average precision (both the pre-2010
 and post-2010 algorithm versions) of a given Keras SSD model on a given dataset.
 
@@ -102,7 +102,7 @@ class Evaluator:
                  data_generator_mode='resize',
                  round_confidences=False,
                  matching_iou_threshold=0.5,
-                 include_border_pixels=True,
+                 border_pixels='include',
                  sorting_algorithm='quicksort',
                  average_precision_mode='sample',
                  num_recall_points=11,
@@ -136,9 +136,11 @@ class Evaluator:
                 confidences will be rounded to. If `False`, the confidences will not be rounded.
             matching_iou_threshold (float, optional): A prediction will be considered a true positive if it has a Jaccard overlap
                 of at least `matching_iou_threshold` with any ground truth bounding box of the same class.
-            include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
-                For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
-                x-value 367 belong to the bounding box or not.
+            border_pixels (str, optional): How to treat the border pixels of the bounding boxes.
+                Can be 'include', 'exclude', or 'half'. If 'include', the border pixels belong
+                to the boxes. If 'exclude', the border pixels do not belong to the boxes.
+                If 'half', then one of each of the two horizontal and vertical borders belong
+                to the boxex, but not the other.
             sorting_algorithm (str, optional): Which sorting algorithm the matching algorithm should use. This argument accepts
                 any valid sorting algorithm for Numpy's `argsort()` function. You will usually want to choose between 'quicksort'
                 (fastest and most memory efficient, but not stable) and 'mergesort' (slight slower and less memory efficient, but stable).
@@ -197,7 +199,7 @@ class Evaluator:
                                 decoding_top_k=decoding_top_k,
                                 decoding_pred_coords=decoding_pred_coords,
                                 decoding_normalize_coords=decoding_normalize_coords,
-                                decoding_include_border_pixels=include_border_pixels,
+                                decoding_border_pixels=border_pixels,
                                 round_confidences=round_confidences,
                                 verbose=verbose,
                                 ret=False)
@@ -216,7 +218,7 @@ class Evaluator:
 
         self.match_predictions(ignore_neutral_boxes=ignore_neutral_boxes,
                                matching_iou_threshold=matching_iou_threshold,
-                               include_border_pixels=include_border_pixels,
+                               border_pixels=border_pixels,
                                sorting_algorithm=sorting_algorithm,
                                verbose=verbose,
                                ret=False)
@@ -267,7 +269,7 @@ class Evaluator:
                            decoding_top_k=200,
                            decoding_pred_coords='centroids',
                            decoding_normalize_coords=True,
-                           decoding_include_border_pixels=True,
+                           decoding_border_pixels='include',
                            round_confidences=False,
                            verbose=True,
                            ret=False):
@@ -390,7 +392,7 @@ class Evaluator:
                                            normalize_coords=decoding_normalize_coords,
                                            img_height=img_height,
                                            img_width=img_width,
-                                           include_border_pixels=decoding_include_border_pixels)
+                                           border_pixels=decoding_border_pixels)
             else:
                 # Filter out the all-zeros dummy elements of `y_pred`.
                 y_pred_filtered = []
@@ -540,7 +542,7 @@ class Evaluator:
     def match_predictions(self,
                           ignore_neutral_boxes=True,
                           matching_iou_threshold=0.5,
-                          include_border_pixels=True,
+                          border_pixels='include',
                           sorting_algorithm='quicksort',
                           verbose=True,
                           ret=False):
@@ -557,9 +559,11 @@ class Evaluator:
                 annotated as "difficult" in the Pascal VOC datasets, which are usually treated as neutral for the evaluation.
             matching_iou_threshold (float, optional): A prediction will be considered a true positive if it has a Jaccard overlap
                 of at least `matching_iou_threshold` with any ground truth bounding box of the same class.
-            include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
-                For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
-                x-value 367 belong to the bounding box or not.
+            border_pixels (str, optional): How to treat the border pixels of the bounding boxes.
+                Can be 'include', 'exclude', or 'half'. If 'include', the border pixels belong
+                to the boxes. If 'exclude', the border pixels do not belong to the boxes.
+                If 'half', then one of each of the two horizontal and vertical borders belong
+                to the boxex, but not the other.
             sorting_algorithm (str, optional): Which sorting algorithm the matching algorithm should use. This argument accepts
                 any valid sorting algorithm for Numpy's `argsort()` function. You will usually want to choose between 'quicksort'
                 (fastest and most memory efficient, but not stable) and 'mergesort' (slight slower and less memory efficient, but stable).
@@ -680,7 +684,7 @@ class Evaluator:
                                boxes2=pred_box,
                                coords='corners',
                                mode='element-wise',
-                               include_border_pixels=include_border_pixels)
+                               border_pixels=border_pixels)
 
                 # For each detection, match the ground truth box with the highest overlap.
                 # It's possible that the same ground truth box will be matched to multiple

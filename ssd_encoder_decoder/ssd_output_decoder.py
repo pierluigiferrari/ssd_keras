@@ -25,7 +25,7 @@ import numpy as np
 
 from bounding_box_utils.bounding_box_utils import iou, convert_coordinates
 
-def greedy_nms(y_pred_decoded, iou_threshold=0.45, coords='corners', include_border_pixels=True):
+def greedy_nms(y_pred_decoded, iou_threshold=0.45, coords='corners', border_pixels='half'):
     '''
     Perform greedy non-maximum suppression on the input boxes.
 
@@ -50,9 +50,11 @@ def greedy_nms(y_pred_decoded, iou_threshold=0.45, coords='corners', include_bor
             from the set of predictions, where 'maximal' refers to the box score.
         coords (str, optional): The coordinate format of `y_pred_decoded`.
             Can be one of the formats supported by `iou()`.
-        include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
-            For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
-            x-value 367 belong to the bounding box or not.
+        border_pixels (str, optional): How to treat the border pixels of the bounding boxes.
+            Can be 'include', 'exclude', or 'half'. If 'include', the border pixels belong
+            to the boxes. If 'exclude', the border pixels do not belong to the boxes.
+            If 'half', then one of each of the two horizontal and vertical borders belong
+            to the boxex, but not the other.
 
     Returns:
         The predictions after removing non-maxima. The format is the same as the input format.
@@ -67,13 +69,13 @@ def greedy_nms(y_pred_decoded, iou_threshold=0.45, coords='corners', include_bor
             maxima.append(maximum_box) # ...append it to `maxima` because we'll definitely keep it
             boxes_left = np.delete(boxes_left, maximum_index, axis=0) # Now remove the maximum box from `boxes_left`
             if boxes_left.shape[0] == 0: break # If there are no boxes left after this step, break. Otherwise...
-            similarities = iou(boxes_left[:,2:], maximum_box[2:], coords=coords, mode='element-wise', include_border_pixels=include_border_pixels) # ...compare (IoU) the other left over boxes to the maximum box...
+            similarities = iou(boxes_left[:,2:], maximum_box[2:], coords=coords, mode='element-wise', border_pixels=border_pixels) # ...compare (IoU) the other left over boxes to the maximum box...
             boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
         y_pred_decoded_nms.append(np.array(maxima))
 
     return y_pred_decoded_nms
 
-def _greedy_nms(predictions, iou_threshold=0.45, coords='corners', include_border_pixels=True):
+def _greedy_nms(predictions, iou_threshold=0.45, coords='corners', border_pixels='half'):
     '''
     The same greedy non-maximum suppression algorithm as above, but slightly modified for use as an internal
     function for per-class NMS in `decode_detections()`.
@@ -86,11 +88,11 @@ def _greedy_nms(predictions, iou_threshold=0.45, coords='corners', include_borde
         maxima.append(maximum_box) # ...append it to `maxima` because we'll definitely keep it
         boxes_left = np.delete(boxes_left, maximum_index, axis=0) # Now remove the maximum box from `boxes_left`
         if boxes_left.shape[0] == 0: break # If there are no boxes left after this step, break. Otherwise...
-        similarities = iou(boxes_left[:,1:], maximum_box[1:], coords=coords, mode='element-wise', include_border_pixels=include_border_pixels) # ...compare (IoU) the other left over boxes to the maximum box...
+        similarities = iou(boxes_left[:,1:], maximum_box[1:], coords=coords, mode='element-wise', border_pixels=border_pixels) # ...compare (IoU) the other left over boxes to the maximum box...
         boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
     return np.array(maxima)
 
-def _greedy_nms2(predictions, iou_threshold=0.45, coords='corners', include_border_pixels=True):
+def _greedy_nms2(predictions, iou_threshold=0.45, coords='corners', border_pixels='half'):
     '''
     The same greedy non-maximum suppression algorithm as above, but slightly modified for use as an internal
     function in `decode_detections_fast()`.
@@ -103,7 +105,7 @@ def _greedy_nms2(predictions, iou_threshold=0.45, coords='corners', include_bord
         maxima.append(maximum_box) # ...append it to `maxima` because we'll definitely keep it
         boxes_left = np.delete(boxes_left, maximum_index, axis=0) # Now remove the maximum box from `boxes_left`
         if boxes_left.shape[0] == 0: break # If there are no boxes left after this step, break. Otherwise...
-        similarities = iou(boxes_left[:,2:], maximum_box[2:], coords=coords, mode='element-wise', include_border_pixels=include_border_pixels) # ...compare (IoU) the other left over boxes to the maximum box...
+        similarities = iou(boxes_left[:,2:], maximum_box[2:], coords=coords, mode='element-wise', border_pixels=border_pixels) # ...compare (IoU) the other left over boxes to the maximum box...
         boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
     return np.array(maxima)
 
@@ -115,7 +117,7 @@ def decode_detections(y_pred,
                       normalize_coords=True,
                       img_height=None,
                       img_width=None,
-                      include_border_pixels=True):
+                      border_pixels='half'):
     '''
     Convert model prediction output back to a format that contains only the positive box predictions
     (i.e. the same format that `SSDInputEncoder` takes as input).
@@ -152,9 +154,11 @@ def decode_detections(y_pred,
             coordinates. Requires `img_height` and `img_width` if set to `True`.
         img_height (int, optional): The height of the input images. Only needed if `normalize_coords` is `True`.
         img_width (int, optional): The width of the input images. Only needed if `normalize_coords` is `True`.
-        include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
-            For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
-            x-value 367 belong to the bounding box or not.
+        border_pixels (str, optional): How to treat the border pixels of the bounding boxes.
+            Can be 'include', 'exclude', or 'half'. If 'include', the border pixels belong
+            to the boxes. If 'exclude', the border pixels do not belong to the boxes.
+            If 'half', then one of each of the two horizontal and vertical borders belong
+            to the boxex, but not the other.
 
     Returns:
         A python list of length `batch_size` where each list element represents the predicted boxes
@@ -205,7 +209,7 @@ def decode_detections(y_pred,
             single_class = batch_item[:,[class_id, -4, -3, -2, -1]] # ...keep only the confidences for that class, making this an array of shape `[n_boxes, 5]` and...
             threshold_met = single_class[single_class[:,0] > confidence_thresh] # ...keep only those boxes with a confidence above the set threshold.
             if threshold_met.shape[0] > 0: # If any boxes made the threshold...
-                maxima = _greedy_nms(threshold_met, iou_threshold=iou_threshold, coords='corners', include_border_pixels=include_border_pixels) # ...perform NMS on them.
+                maxima = _greedy_nms(threshold_met, iou_threshold=iou_threshold, coords='corners', border_pixels=border_pixels) # ...perform NMS on them.
                 maxima_output = np.zeros((maxima.shape[0], maxima.shape[1] + 1)) # Expand the last dimension by one element to have room for the class ID. This is now an arrray of shape `[n_boxes, 6]`
                 maxima_output[:,0] = class_id # Write the class ID to the first column...
                 maxima_output[:,1:] = maxima # ...and write the maxima to the other columns...
@@ -230,7 +234,7 @@ def decode_detections_fast(y_pred,
                            normalize_coords=True,
                            img_height=None,
                            img_width=None,
-                           include_border_pixels=True):
+                           border_pixels='half'):
     '''
     Convert model prediction output back to a format that contains only the positive box predictions
     (i.e. the same format that `enconde_y()` takes as input).
@@ -270,9 +274,11 @@ def decode_detections_fast(y_pred,
             coordinates. Requires `img_height` and `img_width` if set to `True`.
         img_height (int, optional): The height of the input images. Only needed if `normalize_coords` is `True`.
         img_width (int, optional): The width of the input images. Only needed if `normalize_coords` is `True`.
-        include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
-            For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
-            x-value 367 belong to the bounding box or not.
+        border_pixels (str, optional): How to treat the border pixels of the bounding boxes.
+            Can be 'include', 'exclude', or 'half'. If 'include', the border pixels belong
+            to the boxes. If 'exclude', the border pixels do not belong to the boxes.
+            If 'half', then one of each of the two horizontal and vertical borders belong
+            to the boxex, but not the other.
 
     Returns:
         A python list of length `batch_size` where each list element represents the predicted boxes
@@ -319,7 +325,7 @@ def decode_detections_fast(y_pred,
         boxes = batch_item[np.nonzero(batch_item[:,0])] # ...get all boxes that don't belong to the background class,...
         boxes = boxes[boxes[:,1] >= confidence_thresh] # ...then filter out those positive boxes for which the prediction confidence is too low and after that...
         if iou_threshold: # ...if an IoU threshold is set...
-            boxes = _greedy_nms2(boxes, iou_threshold=iou_threshold, coords='corners', include_border_pixels=include_border_pixels) # ...perform NMS on the remaining boxes.
+            boxes = _greedy_nms2(boxes, iou_threshold=iou_threshold, coords='corners', border_pixels=border_pixels) # ...perform NMS on the remaining boxes.
         if top_k != 'all' and boxes.shape[0] > top_k: # If we have more than `top_k` results left at this point...
             top_k_indices = np.argpartition(boxes[:,1], kth=boxes.shape[0]-top_k, axis=0)[boxes.shape[0]-top_k:] # ...get the indices of the `top_k` highest-scoring boxes...
             boxes = boxes[top_k_indices] # ...and keep only those boxes...
@@ -343,7 +349,7 @@ def decode_detections_debug(y_pred,
                             img_height=None,
                             img_width=None,
                             variance_encoded_in_target=False,
-                            include_border_pixels=True):
+                            border_pixels='half'):
     '''
     This decoder performs the same processing as `decode_detections()`, but the output format for each left-over
     predicted box is `[box_id, class_id, confidence, xmin, ymin, xmax, ymax]`.
@@ -378,9 +384,11 @@ def decode_detections_debug(y_pred,
             coordinates. Requires `img_height` and `img_width` if set to `True`.
         img_height (int, optional): The height of the input images. Only needed if `normalize_coords` is `True`.
         img_width (int, optional): The width of the input images. Only needed if `normalize_coords` is `True`.
-        include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
-            For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
-            x-value 367 belong to the bounding box or not.
+        border_pixels (str, optional): How to treat the border pixels of the bounding boxes.
+            Can be 'include', 'exclude', or 'half'. If 'include', the border pixels belong
+            to the boxes. If 'exclude', the border pixels do not belong to the boxes.
+            If 'half', then one of each of the two horizontal and vertical borders belong
+            to the boxex, but not the other.
 
     Returns:
         A python list of length `batch_size` where each list element represents the predicted boxes
@@ -444,7 +452,7 @@ def decode_detections_debug(y_pred,
             single_class = batch_item[:,[0, class_id + 1, -4, -3, -2, -1]] # ...keep only the confidences for that class, making this an array of shape `[n_boxes, 6]` and...
             threshold_met = single_class[single_class[:,1] > confidence_thresh] # ...keep only those boxes with a confidence above the set threshold.
             if threshold_met.shape[0] > 0: # If any boxes made the threshold...
-                maxima = _greedy_nms_debug(threshold_met, iou_threshold=iou_threshold, coords='corners', include_border_pixels=include_border_pixels) # ...perform NMS on them.
+                maxima = _greedy_nms_debug(threshold_met, iou_threshold=iou_threshold, coords='corners', border_pixels=border_pixels) # ...perform NMS on them.
                 maxima_output = np.zeros((maxima.shape[0], maxima.shape[1] + 1)) # Expand the last dimension by one element to have room for the class ID. This is now an arrray of shape `[n_boxes, 6]`
                 maxima_output[:,0] = maxima[:,0] # Write the box index to the first column...
                 maxima_output[:,1] = class_id # ...and write the class ID to the second column...
@@ -459,7 +467,7 @@ def decode_detections_debug(y_pred,
 
     return y_pred_decoded
 
-def _greedy_nms_debug(predictions, iou_threshold=0.45, coords='corners', include_border_pixels=True):
+def _greedy_nms_debug(predictions, iou_threshold=0.45, coords='corners', border_pixels='half'):
     '''
     The same greedy non-maximum suppression algorithm as above, but slightly modified for use as an internal
     function for per-class NMS in `decode_detections_debug()`. The difference is that it keeps the indices of all
@@ -474,7 +482,7 @@ def _greedy_nms_debug(predictions, iou_threshold=0.45, coords='corners', include
         maxima.append(maximum_box) # ...append it to `maxima` because we'll definitely keep it
         boxes_left = np.delete(boxes_left, maximum_index, axis=0) # Now remove the maximum box from `boxes_left`
         if boxes_left.shape[0] == 0: break # If there are no boxes left after this step, break. Otherwise...
-        similarities = iou(boxes_left[:,2:], maximum_box[2:], coords=coords, mode='element-wise', include_border_pixels=include_border_pixels) # ...compare (IoU) the other left over boxes to the maximum box...
+        similarities = iou(boxes_left[:,2:], maximum_box[2:], coords=coords, mode='element-wise', border_pixels=border_pixels) # ...compare (IoU) the other left over boxes to the maximum box...
         boxes_left = boxes_left[similarities <= iou_threshold] # ...so that we can remove the ones that overlap too much with the maximum box
     return np.array(maxima)
 

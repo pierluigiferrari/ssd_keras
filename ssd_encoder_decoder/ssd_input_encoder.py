@@ -52,7 +52,7 @@ class SSDInputEncoder:
                  matching_type='multi',
                  pos_iou_threshold=0.5,
                  neg_iou_limit=0.3,
-                 include_border_pixels=True,
+                 border_pixels='half',
                  coords='centroids',
                  normalize_coords=True,
                  background_id=0):
@@ -119,9 +119,11 @@ class SSDInputEncoder:
             neg_iou_limit (float, optional): The maximum allowed intersection-over-union similarity of an
                 anchor box with any ground truth box to be labeled a negative (i.e. background) box. If an
                 anchor box is neither a positive, nor a negative box, it will be ignored during training.
-            include_border_pixels (bool, optional): Whether the border pixels of the bounding boxes belong to them or not.
-                For example, if a bounding box has an `xmax` pixel value of 367, this determines whether the pixels with
-                x-value 367 belong to the bounding box or not.
+            border_pixels (str, optional): How to treat the border pixels of the bounding boxes.
+                Can be 'include', 'exclude', or 'half'. If 'include', the border pixels belong
+                to the boxes. If 'exclude', the border pixels do not belong to the boxes.
+                If 'half', then one of each of the two horizontal and vertical borders belong
+                to the boxex, but not the other.
             coords (str, optional): The box coordinate format to be used internally by the model (i.e. this is not the input format
                 of the ground truth labels). Can be either 'centroids' for the format `(cx, cy, w, h)` (box center coordinates, width,
                 and height), 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`.
@@ -218,7 +220,7 @@ class SSDInputEncoder:
         self.matching_type = matching_type
         self.pos_iou_threshold = pos_iou_threshold
         self.neg_iou_limit = neg_iou_limit
-        self.include_border_pixels = include_border_pixels
+        self.border_pixels = border_pixels
         self.coords = coords
         self.normalize_coords = normalize_coords
         self.background_id = background_id
@@ -341,7 +343,7 @@ class SSDInputEncoder:
 
             # Maybe convert the box coordinate format.
             if self.coords == 'centroids':
-                labels = convert_coordinates(labels, start_index=xmin, conversion='corners2centroids')
+                labels = convert_coordinates(labels, start_index=xmin, conversion='corners2centroids', border_pixels=self.border_pixels)
             elif self.coords == 'minmax':
                 labels = convert_coordinates(labels, start_index=xmin, conversion='corners2minmax')
 
@@ -350,7 +352,7 @@ class SSDInputEncoder:
 
             # Compute the IoU similarities between all anchor boxes and all ground truth boxes for this batch item.
             # This is a matrix of shape `(num_ground_truth_boxes, num_anchor_boxes)`.
-            similarities = iou(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', include_border_pixels=self.include_border_pixels)
+            similarities = iou(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
 
             # First: Do bipartite matching, i.e. match each ground truth box to the one anchor box with the highest IoU.
             #        This ensures that each ground truth box will have at least one good match.
@@ -536,10 +538,10 @@ class SSDInputEncoder:
         # TODO: Implement box limiting directly for `(cx, cy, w, h)` so that we don't have to unnecessarily convert back and forth.
         if self.coords == 'centroids':
             # Convert `(xmin, ymin, xmax, ymax)` back to `(cx, cy, w, h)`.
-            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2centroids')
+            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2centroids', border_pixels='half')
         elif self.coords == 'minmax':
             # Convert `(xmin, ymin, xmax, ymax)` to `(xmin, xmax, ymin, ymax).
-            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2minmax')
+            boxes_tensor = convert_coordinates(boxes_tensor, start_index=0, conversion='corners2minmax', border_pixels='half')
 
         if diagnostics:
             return boxes_tensor, (cy, cx), wh_list, (step_height, step_width), (offset_height, offset_width)
