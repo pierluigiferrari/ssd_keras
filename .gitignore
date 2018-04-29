@@ -94,5 +94,5 @@ ENV/
 # Rope project settings
 .ropeproject
 
-# Custom files
-local
+# Ignore any files and directories that begin with the word "local"
+local*
