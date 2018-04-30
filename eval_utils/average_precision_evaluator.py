@@ -1,4 +1,4 @@
-border_pixels='include''''
+'''
 An evaluator to compute the Pascal VOC-style mean average precision (both the pre-2010
 and post-2010 algorithm versions) of a given Keras SSD model on a given dataset.
 
