@@ -116,8 +116,8 @@ The models achieve the following average number of frames per second (FPS) on Pa
   <tr>
     <td><b>SSD7</td>
     <td align=center><b></td>
-    <td align=center><b>227</td>
-    <td align=center><b>136</td>
+    <td align=center><b>216</td>
+    <td align=center><b>127</td>
   </tr>
 </table>
 
