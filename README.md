@@ -3,7 +3,7 @@
 ### Contents
 
 1. [Overview](#overview)
-2. [Evaluation results](#evaluation-results)
+2. [Performance](#performance)
 3. [Examples](#examples)
 4. [Dependencies](#dependencies)
 5. [How to use it](#how-to-use-it)
@@ -18,7 +18,7 @@
 
 This is a Keras implementation of the SSD model architecture introduced by Wei Liu et al. in the paper [SSD: Single Shot MultiBox Detector](https://arxiv.org/abs/1512.02325).
 
-Ports of the trained weights of all the original models are provided below. This implementation is accurate, meaning that both the ported weights and models trained from scratch produce the same mAP values as the respective models of the original Caffe implementation (see evaluation section below).
+Ports of the trained weights of all the original models are provided below. This implementation is accurate, meaning that both the ported weights and models trained from scratch produce the same mAP values as the respective models of the original Caffe implementation (see performance section below).
 
 The main goal of this project is to create an SSD implementation that is well documented for those who are interested in a low-level understanding of the model. The provided tutorials, documentation and detailed comments hopefully make it a bit easier to dig into the code and adapt or build upon the model than with most other implementations out there (Keras or otherwise) that provide little to no documentation and comments.
 
@@ -31,11 +31,14 @@ If you would like to use one of the provided trained models for transfer learnin
 
 If you would like to build an SSD with your own base network architecture, you can use [`keras_ssd7.py`](models/keras_ssd7.py) as a template, it provides documentation and comments to help you.
 
-### Evaluation results
+### Performance
 
 Here are the mAP evaluation results of the ported weights and below that the evaluation results of a model trained from scratch using this implementation. All models were evaluated using the official Pascal VOC test server (for 2012 `test`) or the official Pascal VOC Matlab evaluation script (for 2007 `test`). In all cases the results are either identical to those of the original Caffe models or surpass them slightly. Download links to all ported weights are available further below.
 
 <table width="70%">
+  <tr>
+    <td colspan=4 align=center>Mean Average Precision</td>
+  </tr>
   <tr>
     <td>evaluated on</td>
     <td colspan=2 align=center>VOC2007 test</td>
@@ -65,10 +68,13 @@ Training an SSD300 from scratch to convergence on Pascal VOC 2007 `trainval` and
 
 <table width="95%">
   <tr>
-    <td>Model</td>
-    <td align=center>original Caffe model</td>
-    <td align=center>ported weights</td>
-    <td align=center>trained from scratch</td>
+    <td colspan=4 align=center>Mean Average Precision</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td align=center>Original Caffe Model</td>
+    <td align=center>Ported Weights</td>
+    <td align=center>Trained from Scratch</td>
   </tr>
   <tr>
     <td><b>SSD300 "07+12"</td>
@@ -78,28 +84,40 @@ Training an SSD300 from scratch to convergence on Pascal VOC 2007 `trainval` and
   </tr>
 </table>
 
-The models achieve the following average number of frames per second (FPS) on Pascal VOC on an NVIDIA GeForce GTX 1070 mobile (i.e. the laptop version). Note that the benchmark prediction speeds of the original Caffe implementation were achieved using a faster TitanX GPU. The first number (FPS) is the prediction speed using the same process as the original Caffe implementation for decoding and filtering the raw model output, while the second number (FPS Fast Mode) is the prediction speed using a filtering process that is more efficient but less accurate.
+The models achieve the following average number of frames per second (FPS) on Pascal VOC on an NVIDIA GeForce GTX 1070 mobile (i.e. the laptop version). There are two things to note here. First, note that the benchmark prediction speeds of the original Caffe implementation were achieved using a TitanX GPU. Second, the paper says they measured the prediction speed at batch size 8, which I think isn't a meaningful way of measuring the speed. The whole point of measuring the speed of a detection model is to know how many individual sequential images the model can process per second, therefore measuring the prediction speed on batches and then deducing the time spent on each individual image in the batch defeats the whole purpose. For the sake of comparability, below you find the predictions speed for the original Caffe SSD implementation and the prediction speed for this implementation under the same conditions, i.e. at batch size 8. In addition you find the prediction speed for this implementation at batch size 1, which in my opinion is the more meaningful number.
 
 <table width>
   <tr>
-    <td>Model</td>
-    <td align=center>FPS</td>
-    <td align=center>FPS (Fast Mode)</td>
+    <td colspan=4 align=center>Frames per Second</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td align=center>Original Caffe Implementation</td>
+    <td colspan=2 align=center>This Implementation</td>
+  </tr>
+  <tr>
+    <td width="14%">Batch Size</td>
+    <td width="27%" align=center>8</td>
+    <td width="27%" align=center>8</td>
+    <td width="27%" align=center>1</td>
   </tr>
   <tr>
     <td><b>SSD300</td>
-    <td align=center width="40%"><b>40</td>
-    <td align=center width="40%"><b>45</td>
+    <td align=center><b>46</td>
+    <td align=center><b>49</td>
+    <td align=center><b>39</td>
   </tr>
   <tr>
     <td><b>SSD512</td>
-    <td align=center><b>18</td>
-    <td align=center><b>23</td>
+    <td align=center><b>19</td>
+    <td align=center><b>25</td>
+    <td align=center><b>20</td>
   </tr>
   <tr>
     <td><b>SSD7</td>
-    <td align=center><b>112</td>
-    <td align=center><b>131</td>
+    <td align=center><b></td>
+    <td align=center><b>227</td>
+    <td align=center><b>136</td>
   </tr>
 </table>
 
