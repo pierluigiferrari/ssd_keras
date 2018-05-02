@@ -41,9 +41,9 @@ class Evaluator:
     Can compute the Pascal-VOC-style average precision in both the pre-2010 (k-point sampling)
     and post-2010 (integration) algorithm versions.
 
-    Optionally also returns the averages precisions, precisions, and recalls.
+    Optionally also returns the average precisions, precisions, and recalls.
 
-    The algorithm is identical to the official Pascal VOC 2007 detection evaluation algorithm
+    The algorithm is identical to the official Pascal VOC pre-2010 detection evaluation algorithm
     in its default settings, but can be cusomized in a number of ways.
     '''
 
@@ -62,9 +62,6 @@ class Evaluator:
             model_mode (str, optional): The mode in which the model was created, i.e. 'training', 'inference' or 'inference_fast'.
                 This is needed in order to know whether the model output is already decoded or still needs to be decoded. Refer to
                 the model documentation for the meaning of the individual modes.
-            pred_format (dict, optional): A dictionary that defines which index in the last axis of the model's decoded predictions
-                contains which bounding box coordinate. The dictionary maps at least the keywords 'xmin', 'ymin', 'xmax', and 'ymax'
-                to their respective indices within last axis.
             pred_format (dict, optional): A dictionary that defines which index in the last axis of the model's decoded predictions
                 contains which bounding box coordinate. The dictionary must map the keywords 'class_id', 'conf' (for the confidence),
                 'xmin', 'ymin', 'xmax', and 'ymax' to their respective indices within last axis.
@@ -771,7 +768,8 @@ class Evaluator:
             tp = self.cumulative_true_positives[class_id]
             fp = self.cumulative_false_positives[class_id]
 
-            cumulative_precision = tp / (tp + fp) # 1D array with shape `(num_predictions,)`
+
+            cumulative_precision = np.where(tp + fp > 0, tp / (tp + fp), 0) # 1D array with shape `(num_predictions,)`
             cumulative_recall = tp / self.num_gt_per_class[class_id] # 1D array with shape `(num_predictions,)`
 
             cumulative_precisions.append(cumulative_precision)
