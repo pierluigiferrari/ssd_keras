@@ -641,7 +641,7 @@ class Evaluator:
                 tr = trange(len(predictions), file=sys.stdout)
                 tr.set_description("Matching predictions to ground truth, class {}/{}.".format(class_id, self.n_classes))
             else:
-                tr = range(len(predictions.shape))
+                tr = range(len(predictions))
 
             # Keep track of which ground truth boxes were already matched to a detection.
             gt_matched = {}
