@@ -227,7 +227,7 @@ class CropPad:
             patch_ymin (int, optional): The vertical coordinate of the top left corner of the output
                 patch relative to the image coordinate system. Can be negative (i.e. lie outside the image)
                 as long as the resulting patch still overlaps with the image.
-            patch_ymin (int, optional): The horizontal coordinate of the top left corner of the output
+            patch_xmin (int, optional): The horizontal coordinate of the top left corner of the output
                 patch relative to the image coordinate system. Can be negative (i.e. lie outside the image)
                 as long as the resulting patch still overlaps with the image.
             patch_height (int): The height of the patch to be sampled from the image. Can be greater
