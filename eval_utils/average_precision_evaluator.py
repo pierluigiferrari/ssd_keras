@@ -617,6 +617,8 @@ class Evaluator:
                 print("No predictions for class {}/{}".format(class_id, self.n_classes))
                 true_positives.append(true_pos)
                 false_positives.append(false_pos)
+                cumulative_true_positives.append(np.cumsum(true_pos))
+                cumulative_false_positives.append(np.cumsum(false_pos))
                 continue
 
             # Convert the predictions list for this class into a structured array so that we can sort it by confidence.
