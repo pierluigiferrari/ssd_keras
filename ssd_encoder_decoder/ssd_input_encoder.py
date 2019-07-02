@@ -53,7 +53,7 @@ class SSDInputEncoder:
                  neg_iou_limit=0.3,
                  border_pixels='half',
                  coords='centroids',
-                 normalize_coords=True,
+                 normalize_coords=False,
                  background_id=0):
         '''
         Arguments:
