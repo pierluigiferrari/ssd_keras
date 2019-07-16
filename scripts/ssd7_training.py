@@ -88,7 +88,7 @@ model = build_model(
     image_size=(img_height, img_width, img_channels),
     n_classes=n_classes,
     mode="training",
-    l2_regularization=0.01  # 0.0005,
+    l2_regularization=0.001,  # 0.0005,
     scales=scales,
     aspect_ratios_global=aspect_ratios,
     aspect_ratios_per_layer=None,
@@ -108,7 +108,7 @@ model = build_model(
 
 # 3: Instantiate an Adam optimizer and the SSD loss function and compile the model
 
-adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+adam = Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
 
 ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
 
@@ -311,8 +311,8 @@ callbacks = [csv_logger, early_stopping, reduce_learning_rate]  # model_checkpoi
 # %%
 # If resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
 initial_epoch = 0
-final_epoch = 5
-steps_per_epoch = 50  # 1000
+final_epoch = 50
+steps_per_epoch = 40  # 1000
 
 history = model.fit_generator(
     generator=train_generator,
@@ -334,7 +334,7 @@ plt.legend(loc="upper right", prop={"size": 24})
 # 1: Set the generator for the predictions.
 
 predict_generator = val_dataset.generate(
-    batch_size=10,
+    batch_size=1,
     shuffle=True,
     transformations=[],
     label_encoder=None,
@@ -353,15 +353,12 @@ print(batch_labels[i])
 
 # prediction
 y_pred = model.predict(batch_images)
-# confidences of predictions
-max_confidence = np.max(y_pred[:, 0, 0])
-print(f"Maximum confidence value of predicted box: {max_confidence}")
 
 y_pred_decoded = decode_detections(
     y_pred,
     confidence_thresh=0.5,
     iou_threshold=0.45,
-    top_k=200,
+    top_k=10,
     normalize_coords=normalize_coords,
     img_height=img_height,
     img_width=img_width,
@@ -371,8 +368,6 @@ np.set_printoptions(precision=2, suppress=True, linewidth=90)
 print("Predicted boxes:\n")
 print("   class   conf xmin   ymin   xmax   ymax")
 print(y_pred_decoded[i])
-
-#%%
 # 5: Draw the predicted boxes onto the image
 
 plt.figure(figsize=(8, 5))
@@ -388,10 +383,10 @@ if NEW_DATA:
     classes = [
         "tire",
         "car",
-        "truck",
-        "pedestrian",
-        "bicyclist",
-        "light",
+        # "truck",
+        # "pedestrian",
+        # "bicyclist",
+        # "light",
     ]  # Just so we can print class names onto the image instead of IDs
 else:
     classes = [
