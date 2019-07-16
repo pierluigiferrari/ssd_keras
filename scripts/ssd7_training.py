@@ -310,9 +310,9 @@ callbacks = [csv_logger, early_stopping, reduce_learning_rate]  # model_checkpoi
 
 # %%
 # If resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
-initial_epoch = 50
-final_epoch = 75  # 50
-steps_per_epoch = 80  # 1000
+initial_epoch = 0
+final_epoch = 40
+steps_per_epoch = 80
 
 history = model.fit_generator(
     generator=train_generator,
@@ -357,8 +357,8 @@ y_pred = model.predict(batch_images)
 y_pred_decoded = decode_detections(
     y_pred,
     confidence_thresh=0.5,
-    iou_threshold=0.45,
-    top_k=10,
+    iou_threshold=0.4,
+    top_k=20,
     normalize_coords=normalize_coords,
     img_height=img_height,
     img_width=img_width,
