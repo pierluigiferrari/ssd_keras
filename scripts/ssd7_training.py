@@ -311,7 +311,7 @@ callbacks = [csv_logger, early_stopping, reduce_learning_rate]  # model_checkpoi
 # %%
 # If resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
 initial_epoch = 0
-final_epoch = 50
+final_epoch = 5  # 50
 steps_per_epoch = 40  # 1000
 
 history = model.fit_generator(
@@ -381,22 +381,18 @@ colors = plt.cm.hsv(
 
 if NEW_DATA:
     classes = [
+        "background",
         "tire",
-        "car",
-        # "truck",
-        # "pedestrian",
-        # "bicyclist",
-        # "light",
-    ]  # Just so we can print class names onto the image instead of IDs
+    ]
 else:
     classes = [
-        "tire",
+        "background",
         "car",
         "truck",
         "pedestrian",
         "bicyclist",
         "light",
-    ]  # Just so we can print class names onto the image instead of IDs
+    ]
 
 # Draw the ground truth boxes in green (omit the label for more clarity)
 for box in batch_labels[i]:
