@@ -1,0 +1,17 @@
+name: ssd_keras
+
+dependencies:
+  - python=3.6
+  - pip
+  - pip:
+          - beautifulsoup4
+          - jupyter
+          - keras
+          - numpy
+          - matplotlib
+          - opencv-python
+          - Pillow
+          - tqdm
+          - sklearn
+          - tensorflow~=1.14.0
+
