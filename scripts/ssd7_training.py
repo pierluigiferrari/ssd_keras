@@ -311,8 +311,8 @@ callbacks = [csv_logger, early_stopping, reduce_learning_rate]  # model_checkpoi
 # %%
 # If resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
 initial_epoch = 0
-final_epoch = 5  # 50
-steps_per_epoch = 40  # 1000
+final_epoch = 50  # 50
+steps_per_epoch = 80  # 1000
 
 history = model.fit_generator(
     generator=train_generator,
@@ -333,7 +333,7 @@ plt.legend(loc="upper right", prop={"size": 24})
 #%%
 # 1: Set the generator for the predictions.
 
-predict_generator = val_dataset.generate(
+predict_generator = train_dataset.generate(
     batch_size=1,
     shuffle=True,
     transformations=[],
