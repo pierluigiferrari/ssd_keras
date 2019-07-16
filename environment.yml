@@ -10,8 +10,15 @@ dependencies:
           - numpy
           - matplotlib
           - opencv-python
+          - pandas
           - Pillow
           - tqdm
           - sklearn
-          - tensorflow~=1.14.0
-
+          - tensorflow-gpu~=1.14.0
+          # labelImg
+          - labelImg
+          # dev
+          - pylint
+          - black
+          - flake8
+          - rope
