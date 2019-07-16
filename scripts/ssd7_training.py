@@ -1,39 +1,34 @@
 # %%
-import numpy as np
 import sys
-from keras.optimizers import Adam
-from keras.callbacks import (
-    ModelCheckpoint,
-    EarlyStopping,
-    ReduceLROnPlateau,
-    TerminateOnNaN,
-    CSVLogger,
-)
-from keras import backend as K
-from keras.models import load_model
 from math import ceil
+
+import numpy as np
+from keras import backend as K
+from keras.callbacks import (CSVLogger, EarlyStopping, ModelCheckpoint,
+                             ReduceLROnPlateau, TerminateOnNaN)
+from keras.models import load_model
+from keras.optimizers import Adam
 from matplotlib import pyplot as plt
 
-sys.path.append(".")
-from models.keras_ssd7 import build_model
-from keras_loss_function.keras_ssd_loss import SSDLoss
+from data_generator.data_augmentation_chain_constant_input_size import \
+    DataAugmentationConstantInputSize
+from data_generator.data_augmentation_chain_original_ssd import \
+    SSDDataAugmentation
+from data_generator.data_augmentation_chain_variable_input_size import \
+    DataAugmentationVariableInputSize
+from data_generator.object_detection_2d_data_generator import DataGenerator
+from data_generator.object_detection_2d_misc_utils import \
+    apply_inverse_transforms
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_DecodeDetections import DecodeDetections
 from keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
+from keras_loss_function.keras_ssd_loss import SSDLoss
+from models.keras_ssd7 import build_model
 from ssd_encoder_decoder.ssd_input_encoder import SSDInputEncoder
-from ssd_encoder_decoder.ssd_output_decoder import (
-    decode_detections,
-    decode_detections_fast,
-)
-from data_generator.object_detection_2d_data_generator import DataGenerator
-from data_generator.object_detection_2d_misc_utils import apply_inverse_transforms
-from data_generator.data_augmentation_chain_variable_input_size import (
-    DataAugmentationVariableInputSize,
-)
-from data_generator.data_augmentation_chain_constant_input_size import (
-    DataAugmentationConstantInputSize,
-)
-from data_generator.data_augmentation_chain_original_ssd import SSDDataAugmentation
+from ssd_encoder_decoder.ssd_output_decoder import (decode_detections,
+                                                    decode_detections_fast)
+
+sys.path.append(".")
 
 
 # %%
@@ -93,7 +88,7 @@ model = build_model(
     image_size=(img_height, img_width, img_channels),
     n_classes=n_classes,
     mode="training",
-    l2_regularization=0.0005,
+    l2_regularization=0.01  # 0.0005,
     scales=scales,
     aspect_ratios_global=aspect_ratios,
     aspect_ratios_per_layer=None,
@@ -315,9 +310,9 @@ callbacks = [csv_logger, early_stopping, reduce_learning_rate]  # model_checkpoi
 
 # %%
 # If resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
-initial_epoch = 2
+initial_epoch = 0
 final_epoch = 5
-steps_per_epoch = 1000  # 1000
+steps_per_epoch = 50  # 1000
 
 history = model.fit_generator(
     generator=train_generator,
