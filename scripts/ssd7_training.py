@@ -310,8 +310,8 @@ callbacks = [csv_logger, early_stopping, reduce_learning_rate]  # model_checkpoi
 
 # %%
 # If resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
-initial_epoch = 0
-final_epoch = 50  # 50
+initial_epoch = 50
+final_epoch = 75  # 50
 steps_per_epoch = 80  # 1000
 
 history = model.fit_generator(
