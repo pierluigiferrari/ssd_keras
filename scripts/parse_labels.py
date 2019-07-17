@@ -11,7 +11,7 @@ Box = namedtuple("Box", ["file_name", "xmin", "xmax", "ymin", "ymax", "class_id"
 PATH_TRAIN = "../../datasets/tires-data/train/"
 PATH_VALID = "../../datasets/tires-data/valid/"
 PATH_LABEL = "../../datasets/tires-data/"
-CLASS_ID = 0
+CLASS_ID = 1
 
 # label files to collect boxes from
 train_files = [i for i in os.listdir(PATH_TRAIN) if i.endswith(".xml")]

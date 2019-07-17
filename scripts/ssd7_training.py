@@ -4,41 +4,46 @@ from math import ceil
 
 import numpy as np
 from keras import backend as K
-from keras.callbacks import (CSVLogger, EarlyStopping, ModelCheckpoint,
-                             ReduceLROnPlateau, TerminateOnNaN)
+from keras.callbacks import (
+    CSVLogger,
+    EarlyStopping,
+    ModelCheckpoint,
+    ReduceLROnPlateau,
+    TerminateOnNaN,
+)
 from keras.models import load_model
 from keras.optimizers import Adam
 from matplotlib import pyplot as plt
 
-from data_generator.data_augmentation_chain_constant_input_size import \
-    DataAugmentationConstantInputSize
-from data_generator.data_augmentation_chain_original_ssd import \
-    SSDDataAugmentation
-from data_generator.data_augmentation_chain_variable_input_size import \
-    DataAugmentationVariableInputSize
+sys.path.append(".")
+from data_generator.data_augmentation_chain_constant_input_size import (
+    DataAugmentationConstantInputSize,
+)
+from data_generator.data_augmentation_chain_original_ssd import SSDDataAugmentation
+from data_generator.data_augmentation_chain_variable_input_size import (
+    DataAugmentationVariableInputSize,
+)
 from data_generator.object_detection_2d_data_generator import DataGenerator
-from data_generator.object_detection_2d_misc_utils import \
-    apply_inverse_transforms
+from data_generator.object_detection_2d_misc_utils import apply_inverse_transforms
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_DecodeDetections import DecodeDetections
 from keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
 from keras_loss_function.keras_ssd_loss import SSDLoss
 from models.keras_ssd7 import build_model
 from ssd_encoder_decoder.ssd_input_encoder import SSDInputEncoder
-from ssd_encoder_decoder.ssd_output_decoder import (decode_detections,
-                                                    decode_detections_fast)
+from ssd_encoder_decoder.ssd_output_decoder import (
+    decode_detections,
+    decode_detections_fast,
+)
 
-sys.path.append(".")
-
-
-# %%
-NEW_DATA = False
+# %% CONFIG
+NEW_DATA = True
 
 img_height = 300  # Height of the input images
 if NEW_DATA:
-    img_width = 300  # Width of the input images
+    img_width = 300
 else:
-    img_width = 480
+    img_width = 480  # Width of the input images
 img_channels = 3  # Number of color channels of the input images
 intensity_mean = (
     127.5
@@ -80,8 +85,7 @@ normalize_coords = (
     True
 )  # Whether or not the model is supposed to use coordinates relative to the image size
 
-# %% [markdown]
-# 1: Build the Keras model
+# %% Build the Keras model
 
 K.clear_session()  # Clear previous models from memory.
 
@@ -109,14 +113,14 @@ model = build_model(
 
 # 3: Instantiate an Adam optimizer and the SSD loss function and compile the model
 
-adam = Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
 
 ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
 
 model.compile(optimizer=adam, loss=ssd_loss.compute_loss)
 
-# %%
-# 1: Instantiate two `DataGenerator` objects: One for training, one for validation.
+# %% Instantiate two `DataGenerator` objects
+# One for training, one for validation.
 
 # Optional: If you have enough memory, consider loading the images into memory for the reasons explained above.
 
@@ -125,34 +129,37 @@ val_dataset = DataGenerator(load_images_into_memory=False, hdf5_dataset_path=Non
 
 # 2: Parse the image and label lists for the training and validation datasets.
 
-# TODO: Set the paths to your dataset here.
-
-# Images
 if NEW_DATA:
     # Images
-    images_train_dir = "../../datasets/tires-data/train/"
-    images_valid_dir = "../../datasets/tires-data/valid/"
-
+    images_dir_train = "../../datasets/tires-data/train/"
+    images_dir_valid = "../../datasets/tires-data/valid/"
     # Ground truth
     train_labels_filename = "../../datasets/tires-data/labels_train.csv"
     val_labels_filename = "../../datasets/tires-data/labels_valid.csv"
 
     train_dataset.parse_csv(
-        images_dir=images_train_dir,
+        images_dir=images_dir_train,
         labels_filename=train_labels_filename,
-        input_format=["image_name", "xmin", "xmax", "ymin", "ymax", "class_id"],
+        input_format=[
+            "image_name",
+            "xmin",
+            "xmax",
+            "ymin",
+            "ymax",
+            "class_id",
+        ],  # This is the order of the first six columns in the CSV file that contains the labels for your dataset. If your labels are in XML format, maybe the XML parser will be helpful, check the documentation.
         include_classes="all",
     )
-
     val_dataset.parse_csv(
-        images_dir=images_valid_dir,
+        images_dir=images_dir_valid,
         labels_filename=val_labels_filename,
         input_format=["image_name", "xmin", "xmax", "ymin", "ymax", "class_id"],
         include_classes="all",
     )
-else:
-    images_dir = "../../datasets/udacity_driving_datasets/"
 
+else:
+    # Images
+    images_dir = "../../datasets/udacity_driving_datasets/"
     # Ground truth
     train_labels_filename = "../../datasets/udacity_driving_datasets/labels_train.csv"
     val_labels_filename = "../../datasets/udacity_driving_datasets/labels_val.csv"
@@ -170,7 +177,6 @@ else:
         ],  # This is the order of the first six columns in the CSV file that contains the labels for your dataset. If your labels are in XML format, maybe the XML parser will be helpful, check the documentation.
         include_classes="all",
     )
-
     val_dataset.parse_csv(
         images_dir=images_dir,
         labels_filename=val_labels_filename,
@@ -202,29 +208,26 @@ print("Number of images in the training dataset:\t{:>6}".format(train_dataset_si
 print("Number of images in the validation dataset:\t{:>6}".format(val_dataset_size))
 
 
-# %%
-# 3: Set the batch size.
+# %% Set the batch size and define the image processing chain.
 
 batch_size = 16
 
-# 4: Define the image processing chain.
-
-# data_augmentation_chain = DataAugmentationConstantInputSize(
-#     random_brightness=(-48, 48, 0.5),
-#     random_contrast=(0.5, 1.8, 0.5),
-#     random_saturation=(0.5, 1.8, 0.5),
-#     random_hue=(18, 0.5),
-#     random_flip=0.5,
-#     random_translate=((0.03, 0.5), (0.03, 0.5), 0.5),
-#     random_scale=(0.5, 2.0, 0.5),
-#     n_trials_max=3,
-#     clip_boxes=True,
-#     overlap_criterion="area",
-#     bounds_box_filter=(0.3, 1.0),
-#     bounds_validator=(0.5, 1.0),
-#     n_boxes_min=1,
-#     background=(0, 0, 0),
-# )
+data_augmentation_chain = DataAugmentationConstantInputSize(
+    random_brightness=(-48, 48, 0.5),
+    random_contrast=(0.5, 1.8, 0.5),
+    random_saturation=(0.5, 1.8, 0.5),
+    random_hue=(18, 0.5),
+    random_flip=0.5,
+    random_translate=((0.03, 0.5), (0.03, 0.5), 0.5),
+    random_scale=(0.5, 2.0, 0.5),
+    n_trials_max=3,
+    clip_boxes=True,
+    overlap_criterion="area",
+    bounds_box_filter=(0.3, 1.0),
+    bounds_validator=(0.5, 1.0),
+    n_boxes_min=1,
+    background=(0, 0, 0),
+)
 
 # 5: Instantiate an encoder that can encode ground truth labels into the format needed by the SSD loss function.
 
@@ -259,7 +262,7 @@ ssd_input_encoder = SSDInputEncoder(
 train_generator = train_dataset.generate(
     batch_size=batch_size,
     shuffle=True,
-    transformations=[],  # [data_augmentation_chain],
+    transformations=[data_augmentation_chain],
     label_encoder=ssd_input_encoder,
     returns={"processed_images", "encoded_labels"},
     keep_images_without_gt=False,
@@ -274,15 +277,16 @@ val_generator = val_dataset.generate(
     keep_images_without_gt=False,
 )
 
-# %%
-# Define model callbacks.
-# model_checkpoint = ModelCheckpoint(filepath='ssd7_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
-#                                    monitor='val_loss',
-#                                    verbose=1,
-#                                    save_best_only=True,
-#                                    save_weights_only=False,
-#                                    mode='auto',
-#                                    period=1)
+# %% Define model callbacks.
+model_checkpoint = ModelCheckpoint(
+    filepath="ssd7_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5",
+    monitor="val_loss",
+    verbose=1,
+    save_best_only=True,
+    save_weights_only=False,
+    mode="auto",
+    period=1,
+)
 
 csv_logger = CSVLogger(filename="ssd7_training_log.csv", separator=",", append=True)
 
@@ -290,23 +294,23 @@ early_stopping = EarlyStopping(
     monitor="val_loss", min_delta=0.0, patience=10, verbose=1
 )
 
-# reduce_learning_rate = ReduceLROnPlateau(
-#     monitor="val_loss",
-#     factor=0.2,
-#     patience=8,
-#     verbose=1,
-#     epsilon=0.001,
-#     cooldown=0,
-#     min_lr=0.00001,
-# )
+reduce_learning_rate = ReduceLROnPlateau(
+    monitor="val_loss",
+    factor=0.2,
+    patience=8,
+    verbose=1,
+    epsilon=0.001,
+    cooldown=0,
+    min_lr=0.00001,
+)
 
-callbacks = [csv_logger, early_stopping]  # reduce_learning_rate]  # model_checkpoint,
+callbacks = [csv_logger, early_stopping, reduce_learning_rate, model_checkpoint]
 
-# %%
+# %% TRAINING
 # If resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
 initial_epoch = 0
 final_epoch = 10
-steps_per_epoch = 50
+steps_per_epoch = 300
 
 history = model.fit_generator(
     generator=train_generator,
@@ -315,6 +319,7 @@ history = model.fit_generator(
     callbacks=callbacks,
     validation_data=val_generator,  # val_generator,
     validation_steps=1,  # ceil(val_dataset_size / batch_size),
+    verbose=1,
     initial_epoch=initial_epoch,
 )
 
@@ -350,9 +355,9 @@ y_pred = model.predict(batch_images)
 
 y_pred_decoded = decode_detections(
     y_pred,
-    confidence_thresh=0.5,
+    confidence_thresh=0.6,
     iou_threshold=0.45,
-    top_k=20,
+    top_k=10,
     normalize_coords=normalize_coords,
     img_height=img_height,
     img_width=img_width,
@@ -374,19 +379,9 @@ colors = plt.cm.hsv(
 ).tolist()  # Set the colors for the bounding boxes
 
 if NEW_DATA:
-    classes = [
-        "background",
-        "tire",
-    ]
+    classes = ["background", "tire"]
 else:
-    classes = [
-        "background",
-        "car",
-        "truck",
-        "pedestrian",
-        "bicyclist",
-        "light",
-    ]
+    classes = ["background", "car", "truck", "pedestrian", "bicyclist", "light"]
 
 # Draw the ground truth boxes in green (omit the label for more clarity)
 for box in batch_labels[i]:
@@ -428,6 +423,5 @@ for box in y_pred_decoded[i]:
         color="white",
         bbox={"facecolor": color, "alpha": 1.0},
     )
-
 
 #%%
