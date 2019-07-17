@@ -122,10 +122,9 @@ model.compile(optimizer=adam, loss=ssd_loss.compute_loss)
 # %% Instantiate two `DataGenerator` objects
 # One for training, one for validation.
 
-# Optional: If you have enough memory, consider loading the images into memory for the reasons explained above.
-
-train_dataset = DataGenerator(load_images_into_memory=False, hdf5_dataset_path=None)
-val_dataset = DataGenerator(load_images_into_memory=False, hdf5_dataset_path=None)
+# consider loading the images into memory
+train_dataset = DataGenerator(load_images_into_memory=True, hdf5_dataset_path=None)
+val_dataset = DataGenerator(load_images_into_memory=True, hdf5_dataset_path=None)
 
 # 2: Parse the image and label lists for the training and validation datasets.
 
@@ -355,7 +354,7 @@ y_pred = model.predict(batch_images)
 
 y_pred_decoded = decode_detections(
     y_pred,
-    confidence_thresh=0.6,
+    confidence_thresh=0.9,
     iou_threshold=0.45,
     top_k=10,
     normalize_coords=normalize_coords,
