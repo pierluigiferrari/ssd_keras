@@ -6,7 +6,7 @@ from collections import namedtuple
 import pandas as pd
 from bs4 import BeautifulSoup
 
-Box = namedtuple("Box", ["file_name", "class_id", "xmin", "xmax", "ymin", "ymax"])
+Box = namedtuple("Box", ["file_name", "xmin", "xmax", "ymin", "ymax", "class_id"])
 
 PATH_TRAIN = "../../datasets/tires-data/train/"
 PATH_VALID = "../../datasets/tires-data/valid/"
@@ -28,7 +28,7 @@ def box_from_object(obj):
 
 
 # %% TRAIN IMAGES
-df_train = pd.DataFrame(columns=["file_name", "class_id", "xmin", "xmax", "ymin", "ymax"])
+df_train = pd.DataFrame(columns=["file_name", "xmin", "xmax", "ymin", "ymax", "class_id"])
 for voc_file in train_files:
     # read xml
     with open(PATH_TRAIN + voc_file) as f:
@@ -43,14 +43,14 @@ for voc_file in train_files:
         # parse corners
         xmin, ymin, xmax, ymax = box_from_object(obj)
         # data to dictionary
-        box = Box(file_name, CLASS_ID, xmin, xmax, ymin, ymax)
+        box = Box(file_name, xmin, xmax, ymin, ymax, CLASS_ID)
         box_dict = dict(box._asdict())
         # append to dataframe
         df_train = df_train.append(box_dict, ignore_index=True)
 
 
 # %% TEST IMAGES
-df_valid = pd.DataFrame(columns=["file_name", "class_id", "xmin", "xmax", "ymin", "ymax"])
+df_valid = pd.DataFrame(columns=["file_name", "xmin", "xmax", "ymin", "ymax", "class_id"])
 for voc_file in valid_files:
     # read xml
     with open(PATH_VALID + voc_file) as f:
@@ -65,7 +65,7 @@ for voc_file in valid_files:
         # parse corners
         xmin, ymin, xmax, ymax = box_from_object(obj)
         # data to dictionary
-        box = Box(file_name, CLASS_ID, xmin, xmax, ymin, ymax)
+        box = Box(file_name, xmin, xmax, ymin, ymax, CLASS_ID)
         box_dict = dict(box._asdict())
         # append to dataframe
         df_valid = df_valid.append(box_dict, ignore_index=True)

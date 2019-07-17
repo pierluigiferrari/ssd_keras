@@ -32,7 +32,8 @@ sys.path.append(".")
 
 
 # %%
-NEW_DATA = True
+NEW_DATA = False
+
 img_height = 300  # Height of the input images
 if NEW_DATA:
     img_width = 300  # Width of the input images
@@ -88,7 +89,7 @@ model = build_model(
     image_size=(img_height, img_width, img_channels),
     n_classes=n_classes,
     mode="training",
-    l2_regularization=0.001,  # 0.0005,
+    l2_regularization=0.0005,
     scales=scales,
     aspect_ratios_global=aspect_ratios,
     aspect_ratios_per_layer=None,
@@ -114,7 +115,7 @@ ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
 
 model.compile(optimizer=adam, loss=ssd_loss.compute_loss)
 
-#%%
+# %%
 # 1: Instantiate two `DataGenerator` objects: One for training, one for validation.
 
 # Optional: If you have enough memory, consider loading the images into memory for the reasons explained above.
@@ -139,21 +140,14 @@ if NEW_DATA:
     train_dataset.parse_csv(
         images_dir=images_train_dir,
         labels_filename=train_labels_filename,
-        input_format=[
-            "image_name",
-            "class_id",
-            "xmin",
-            "xmax",
-            "ymin",
-            "ymax",
-        ],  # This is the order of the first six columns in the CSV file that contains the labels for your dataset. If your labels are in XML format, maybe the XML parser will be helpful, check the documentation.
+        input_format=["image_name", "xmin", "xmax", "ymin", "ymax", "class_id"],
         include_classes="all",
     )
 
     val_dataset.parse_csv(
         images_dir=images_valid_dir,
         labels_filename=val_labels_filename,
-        input_format=["image_name", "class_id", "xmin", "xmax", "ymin", "ymax"],
+        input_format=["image_name", "xmin", "xmax", "ymin", "ymax", "class_id"],
         include_classes="all",
     )
 else:
@@ -215,22 +209,22 @@ batch_size = 16
 
 # 4: Define the image processing chain.
 
-data_augmentation_chain = DataAugmentationConstantInputSize(
-    random_brightness=(-48, 48, 0.5),
-    random_contrast=(0.5, 1.8, 0.5),
-    random_saturation=(0.5, 1.8, 0.5),
-    random_hue=(18, 0.5),
-    random_flip=0.5,
-    random_translate=((0.03, 0.5), (0.03, 0.5), 0.5),
-    random_scale=(0.5, 2.0, 0.5),
-    n_trials_max=3,
-    clip_boxes=True,
-    overlap_criterion="area",
-    bounds_box_filter=(0.3, 1.0),
-    bounds_validator=(0.5, 1.0),
-    n_boxes_min=1,
-    background=(0, 0, 0),
-)
+# data_augmentation_chain = DataAugmentationConstantInputSize(
+#     random_brightness=(-48, 48, 0.5),
+#     random_contrast=(0.5, 1.8, 0.5),
+#     random_saturation=(0.5, 1.8, 0.5),
+#     random_hue=(18, 0.5),
+#     random_flip=0.5,
+#     random_translate=((0.03, 0.5), (0.03, 0.5), 0.5),
+#     random_scale=(0.5, 2.0, 0.5),
+#     n_trials_max=3,
+#     clip_boxes=True,
+#     overlap_criterion="area",
+#     bounds_box_filter=(0.3, 1.0),
+#     bounds_validator=(0.5, 1.0),
+#     n_boxes_min=1,
+#     background=(0, 0, 0),
+# )
 
 # 5: Instantiate an encoder that can encode ground truth labels into the format needed by the SSD loss function.
 
@@ -265,7 +259,7 @@ ssd_input_encoder = SSDInputEncoder(
 train_generator = train_dataset.generate(
     batch_size=batch_size,
     shuffle=True,
-    transformations=[data_augmentation_chain],
+    transformations=[],  # [data_augmentation_chain],
     label_encoder=ssd_input_encoder,
     returns={"processed_images", "encoded_labels"},
     keep_images_without_gt=False,
@@ -296,44 +290,44 @@ early_stopping = EarlyStopping(
     monitor="val_loss", min_delta=0.0, patience=10, verbose=1
 )
 
-reduce_learning_rate = ReduceLROnPlateau(
-    monitor="val_loss",
-    factor=0.2,
-    patience=8,
-    verbose=1,
-    epsilon=0.001,
-    cooldown=0,
-    min_lr=0.00001,
-)
+# reduce_learning_rate = ReduceLROnPlateau(
+#     monitor="val_loss",
+#     factor=0.2,
+#     patience=8,
+#     verbose=1,
+#     epsilon=0.001,
+#     cooldown=0,
+#     min_lr=0.00001,
+# )
 
-callbacks = [csv_logger, early_stopping, reduce_learning_rate]  # model_checkpoint,
+callbacks = [csv_logger, early_stopping]  # reduce_learning_rate]  # model_checkpoint,
 
 # %%
 # If resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
 initial_epoch = 0
-final_epoch = 40
-steps_per_epoch = 80
+final_epoch = 10
+steps_per_epoch = 50
 
 history = model.fit_generator(
     generator=train_generator,
     steps_per_epoch=steps_per_epoch,
     epochs=final_epoch,
     callbacks=callbacks,
-    validation_data=val_generator,
-    validation_steps=ceil(val_dataset_size / batch_size),
+    validation_data=val_generator,  # val_generator,
+    validation_steps=1,  # ceil(val_dataset_size / batch_size),
     initial_epoch=initial_epoch,
 )
 
-# %%
+# %% PLOT PROGRESS
 plt.figure(figsize=(8, 4))
 plt.plot(history.history["loss"], label="loss")
 plt.plot(history.history["val_loss"], label="val_loss")
 plt.legend(loc="upper right", prop={"size": 24})
 
-#%%
+# %% PREDICT
 # 1: Set the generator for the predictions.
 
-predict_generator = train_dataset.generate(
+predict_generator = val_dataset.generate(
     batch_size=1,
     shuffle=True,
     transformations=[],
@@ -357,7 +351,7 @@ y_pred = model.predict(batch_images)
 y_pred_decoded = decode_detections(
     y_pred,
     confidence_thresh=0.5,
-    iou_threshold=0.4,
+    iou_threshold=0.45,
     top_k=20,
     normalize_coords=normalize_coords,
     img_height=img_height,
