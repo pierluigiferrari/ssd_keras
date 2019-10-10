@@ -171,7 +171,7 @@ class Evaluator:
                 from the set of predictions for a given class, where 'maximal' refers to the box score.
             decoding_top_k (int, optional): Only relevant if the model is in 'training' mode. The number of highest scoring
                 predictions to be kept for each batch item after the non-maximum suppression stage.
-            decoding_input_coords (str, optional): Only relevant if the model is in 'training' mode. The box coordinate format
+            decoding_pred_coords (str, optional): Only relevant if the model is in 'training' mode. The box coordinate format
                 that the model outputs. Can be either 'centroids' for the format `(cx, cy, w, h)` (box center coordinates, width, and height),
                 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`.
             decoding_normalize_coords (bool, optional): Only relevant if the model is in 'training' mode. Set to `True` if the model
@@ -290,7 +290,7 @@ class Evaluator:
                 from the set of predictions for a given class, where 'maximal' refers to the box score.
             decoding_top_k (int, optional): Only relevant if the model is in 'training' mode. The number of highest scoring
                 predictions to be kept for each batch item after the non-maximum suppression stage.
-            decoding_input_coords (str, optional): Only relevant if the model is in 'training' mode. The box coordinate format
+            decoding_pred_coords (str, optional): Only relevant if the model is in 'training' mode. The box coordinate format
                 that the model outputs. Can be either 'centroids' for the format `(cx, cy, w, h)` (box center coordinates, width, and height),
                 'minmax' for the format `(xmin, xmax, ymin, ymax)`, or 'corners' for the format `(xmin, ymin, xmax, ymax)`.
             decoding_normalize_coords (bool, optional): Only relevant if the model is in 'training' mode. Set to `True` if the model
