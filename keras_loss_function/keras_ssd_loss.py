@@ -46,9 +46,11 @@ class SSDLoss:
             alpha (float, optional): A factor to weight the localization loss in the
                 computation of the total loss. Defaults to 1.0 following the paper.
         '''
-        self.neg_pos_ratio = neg_pos_ratio
-        self.n_neg_min = n_neg_min
-        self.alpha = alpha
+        
+        # Modifying to fix the error when compiling the model_for_pruning.compile() function  --> TypeError: List of Tensors when single Tensor expected
+        self.neg_pos_ratio = tf.constant(neg_pos_ratio)
+        self.n_neg_min = tf.constant(n_neg_min)
+        self.alpha = tf.constant(alpha)
 
     def smooth_L1_loss(self, y_true, y_pred):
         '''
@@ -121,9 +123,9 @@ class SSDLoss:
         Returns:
             A scalar, the total multitask loss for classification and localization.
         '''
-        self.neg_pos_ratio = tf.constant(self.neg_pos_ratio)
-        self.n_neg_min = tf.constant(self.n_neg_min)
-        self.alpha = tf.constant(self.alpha)
+        #self.neg_pos_ratio = tf.constant(self.neg_pos_ratio)
+        #self.n_neg_min = tf.constant(self.n_neg_min)
+        #self.alpha = tf.constant(self.alpha)
 
         batch_size = tf.shape(y_pred)[0] # Output dtype: tf.int32
         n_boxes = tf.shape(y_pred)[1] # Output dtype: tf.int32, note that `n_boxes` in this context denotes the total number of boxes per image, not the number of boxes per cell.

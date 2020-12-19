@@ -1171,7 +1171,7 @@ class DataGenerator:
             if 'original_images' in returns: ret.append(batch_original_images)
             if 'original_labels' in returns: ret.append(batch_original_labels)
 
-            yield ret
+            yield tuple(ret)   # Fixes the error ValueError: Output of generator should be a tuple
 
     def save_dataset(self,
                      filenames_path='filenames.pkl',
