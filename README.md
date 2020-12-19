@@ -1,5 +1,13 @@
 ## SSD: Single-Shot MultiBox Detector implementation in Keras
 ---
+## Applying Pruning to this repository 
+
+
+
+
+
+
+
 ### Contents
 
 1. [Overview](#overview)
