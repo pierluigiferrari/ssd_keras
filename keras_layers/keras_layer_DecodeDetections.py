@@ -20,9 +20,9 @@ limitations under the License.
 from __future__ import division
 import numpy as np
 import tensorflow as tf
-import keras.backend as K
-from keras.engine.topology import InputSpec
-from keras.engine.topology import Layer
+import tensorflow.keras.backend as K
+from tensorflow.keras.layers import InputSpec #Changed for evaluation code
+from tensorflow.keras.layers import Layer     #Changed for evaluation code
 
 class DecodeDetections(Layer):
     '''

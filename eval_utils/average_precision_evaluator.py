@@ -390,11 +390,13 @@ class Evaluator:
                                            img_width=img_width,
                                            border_pixels=decoding_border_pixels)
             else:
+                
                 # Filter out the all-zeros dummy elements of `y_pred`.
                 y_pred_filtered = []
                 for i in range(len(y_pred)):
                     y_pred_filtered.append(y_pred[i][y_pred[i,:,0] != 0])
                 y_pred = y_pred_filtered
+                
             # Convert the predicted box coordinates for the original images.
             y_pred = apply_inverse_transforms(y_pred, batch_inverse_transforms)
 
@@ -617,6 +619,8 @@ class Evaluator:
                 print("No predictions for class {}/{}".format(class_id, self.n_classes))
                 true_positives.append(true_pos)
                 false_positives.append(false_pos)
+                cumulative_true_positives.append(np.cumsum(true_pos))   #Added as a part of the fix on "index out of range"
+                cumulative_false_positives.append(np.cumsum(false_pos)) #Added as a part of the fix on "index out of range"
                 continue
 
             # Convert the predictions list for this class into a structured array so that we can sort it by confidence.
@@ -754,13 +758,13 @@ class Evaluator:
 
         if (self.num_gt_per_class is None):
             raise ValueError("Number of ground truth boxes per class not available. You must run `get_num_gt_per_class()` before you call this method.")
-
+        
         cumulative_precisions = [[]]
         cumulative_recalls = [[]]
 
         # Iterate over all classes.
         for class_id in range(1, self.n_classes + 1):
-
+            print("printing class id", class_id)
             if verbose:
                 print("Computing precisions and recalls, class {}/{}".format(class_id, self.n_classes))
 
@@ -768,7 +772,9 @@ class Evaluator:
             fp = self.cumulative_false_positives[class_id]
 
 
+            #print("printing tp value ->",tp , "fp value ->", fp)
             cumulative_precision = np.where(tp + fp > 0, tp / (tp + fp), 0) # 1D array with shape `(num_predictions,)`
+            #print("printing cumulative precision - after -->", cumulative_precision, "tp value ->",tp , "fp value ->", fp)
             cumulative_recall = tp / self.num_gt_per_class[class_id] # 1D array with shape `(num_predictions,)`
 
             cumulative_precisions.append(cumulative_precision)
@@ -837,7 +843,8 @@ class Evaluator:
                         precision = 0.0
                     else:
                         precision = np.amax(cum_prec_recall_greater_t)
-
+                    
+                    print('printing individual precisions --> ', precision)
                     average_precision += precision
 
                 average_precision /= num_recall_points
@@ -873,8 +880,12 @@ class Evaluator:
                     maximal_precisions[i] = np.maximum(np.amax(cumulative_precision[begin:end]), maximal_precisions[i + 1])
                     # The differences between two adjacent recall values are the widths of our rectangle areas.
                     recall_deltas[i] = unique_recalls[i + 1] - unique_recalls[i]
+                    print('Maximal precisions -->', maximal_precisions[i], 'Recall deltas -->', recall_deltas[i])
+                    
 
                 average_precision = np.sum(maximal_precisions * recall_deltas)
+                
+                print('Average precision individual', average_precision)
 
             average_precisions.append(average_precision)
 
@@ -898,7 +909,7 @@ class Evaluator:
 
         if self.average_precisions is None:
             raise ValueError("Average precisions not available. You must run `compute_average_precisions()` before you call this method.")
-
+        print('Average Precision -> ', self.average_precisions[1:])
         mean_average_precision = np.average(self.average_precisions[1:]) # The first element is for the background class, so skip it.
         self.mean_average_precision = mean_average_precision
 
