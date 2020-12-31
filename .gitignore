@@ -96,3 +96,7 @@ ENV/
 
 # Ignore any files and directories that begin with the word "local"
 local*
+
+# Ignore .h5 files
+*.h5
+
