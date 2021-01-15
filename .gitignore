@@ -100,3 +100,6 @@ local*
 # Ignore .h5 files
 *.h5
 
+# Ignore folders
+saved_models/
+saved_logs/
