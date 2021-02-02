@@ -18,15 +18,15 @@ limitations under the License.
 
 from __future__ import division
 import numpy as np
-from keras.models import Model
-from keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, ZeroPadding2D, Reshape, Concatenate
-from keras.regularizers import l2
-import keras.backend as K
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Lambda, Activation, Conv2D, MaxPooling2D, ZeroPadding2D, Reshape, Concatenate
+from tensorflow.keras.regularizers import l2
+import tensorflow.keras.backend as K
 
-from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
-from keras_layers.keras_layer_L2Normalization import L2Normalization
-from keras_layers.keras_layer_DecodeDetections import DecodeDetections
-from keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
+from ..keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
+from ..keras_layers.keras_layer_L2Normalization import L2Normalization
+from ..keras_layers.keras_layer_DecodeDetections import DecodeDetections
+from ..keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
 
 def ssd_512(image_size,
             n_classes,
@@ -465,13 +465,13 @@ def ssd_512(image_size,
         raise ValueError("`mode` must be one of 'training', 'inference' or 'inference_fast', but received '{}'.".format(mode))
 
     if return_predictor_sizes:
-        predictor_sizes = np.array([conv4_3_norm_mbox_conf._keras_shape[1:3],
-                                    fc7_mbox_conf._keras_shape[1:3],
-                                    conv6_2_mbox_conf._keras_shape[1:3],
-                                    conv7_2_mbox_conf._keras_shape[1:3],
-                                    conv8_2_mbox_conf._keras_shape[1:3],
-                                    conv9_2_mbox_conf._keras_shape[1:3],
-                                    conv10_2_mbox_conf._keras_shape[1:3]])
+        predictor_sizes = np.array([conv4_3_norm_mbox_conf.shape[1:3],
+                                    fc7_mbox_conf.shape[1:3],
+                                    conv6_2_mbox_conf.shape[1:3],
+                                    conv7_2_mbox_conf.shape[1:3],
+                                    conv8_2_mbox_conf.shape[1:3],
+                                    conv9_2_mbox_conf.shape[1:3],
+                                    conv10_2_mbox_conf.shape[1:3]])
         return model, predictor_sizes
     else:
         return model
