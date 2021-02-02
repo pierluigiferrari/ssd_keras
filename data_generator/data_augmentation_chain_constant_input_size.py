@@ -19,9 +19,9 @@ limitations under the License.
 from __future__ import division
 import numpy as np
 
-from data_generator.object_detection_2d_photometric_ops import ConvertColor, ConvertDataType, ConvertTo3Channels, RandomBrightness, RandomContrast, RandomHue, RandomSaturation
-from data_generator.object_detection_2d_geometric_ops import RandomFlip, RandomTranslate, RandomScale
-from data_generator.object_detection_2d_image_boxes_validation_utils import BoundGenerator, BoxFilter, ImageValidator
+from .object_detection_2d_photometric_ops import ConvertColor, ConvertDataType, ConvertTo3Channels, RandomBrightness, RandomContrast, RandomHue, RandomSaturation
+from .object_detection_2d_geometric_ops import RandomFlip, RandomTranslate, RandomScale
+from .object_detection_2d_image_boxes_validation_utils import BoundGenerator, BoxFilter, ImageValidator
 
 class DataAugmentationConstantInputSize:
     '''

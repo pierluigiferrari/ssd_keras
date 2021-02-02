@@ -20,10 +20,10 @@ limitations under the License.
 from __future__ import division
 import numpy as np
 
-from data_generator.object_detection_2d_photometric_ops import ConvertColor, ConvertDataType, ConvertTo3Channels, RandomBrightness, RandomContrast, RandomHue, RandomSaturation
-from data_generator.object_detection_2d_geometric_ops import Resize, RandomFlip, RandomRotate
-from data_generator.object_detection_2d_patch_sampling_ops import PatchCoordinateGenerator, RandomPatch
-from data_generator.object_detection_2d_image_boxes_validation_utils import BoxFilter, ImageValidator
+from .object_detection_2d_photometric_ops import ConvertColor, ConvertDataType, ConvertTo3Channels, RandomBrightness, RandomContrast, RandomHue, RandomSaturation
+from .object_detection_2d_geometric_ops import Resize, RandomFlip, RandomRotate
+from .object_detection_2d_patch_sampling_ops import PatchCoordinateGenerator, RandomPatch
+from .object_detection_2d_image_boxes_validation_utils import BoxFilter, ImageValidator
 
 class DataAugmentationSatellite:
     '''
