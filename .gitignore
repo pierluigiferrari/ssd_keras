@@ -1,3 +1,10 @@
+.idea
+.gitignore
+checkpoints/
+csv_log_dir/
+*.h5
+images/
+*.csv
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
