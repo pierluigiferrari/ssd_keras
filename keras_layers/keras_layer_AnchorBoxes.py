@@ -19,8 +19,7 @@ limitations under the License.
 from __future__ import division
 import numpy as np
 import keras.backend as K
-from keras.engine.topology import InputSpec
-from keras.engine.topology import Layer
+from tensorflow.keras.layers import Layer, InputSpec
 
 from bounding_box_utils.bounding_box_utils import convert_coordinates
 
